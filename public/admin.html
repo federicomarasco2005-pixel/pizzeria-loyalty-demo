@@ -10,16 +10,17 @@
   <main class="wrap wide stack">
     <div class="row" style="align-items:baseline;flex-wrap:wrap">
       <div><h1>Dashboard</h1><span class="muted" data-cfg="pizzeriaName"></span></div>
-      <div style="text-align:right" class="small">
-        <a href="/staff.html">Cassa</a> · <a href="/poster.html" target="_blank">Stampa QR tavolo</a> ·
-        <a href="#" id="reset">Azzera dati demo</a>
-      </div>
+      <nav class="nav" style="justify-content:flex-end;flex:2">
+        <a class="chip" href="/staff.html">🍕 Cassa</a>
+        <a class="chip" href="/poster.html" target="_blank">🖨️ Stampa QR tavolo</a>
+        <button class="chip danger" id="reset">🗑️ Azzera dati demo</button>
+      </nav>
     </div>
 
     <section id="login" class="panel hidden" style="max-width:420px">
       <label for="pin">PIN</label>
       <input id="pin" type="password" inputmode="numeric">
-      <button class="btn" id="loginBtn" style="margin-top:12px">Entra</button>
+      <button class="btn" id="loginBtn" style="margin-top:14px"><span class="ico">🔓</span> Entra</button>
       <p class="error" id="err"></p>
     </section>
 

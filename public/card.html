@@ -8,25 +8,32 @@
 </head>
 <body>
   <main class="wrap stack">
-    <div id="notfound" class="panel hidden"><h2>Tessera non trovata</h2><a class="btn" href="/">Iscriviti</a></div>
+    <div id="notfound" class="panel hidden">
+      <h2>Tessera non trovata</h2>
+      <a class="btn" href="/"><span class="ico">🍕</span> Iscriviti</a>
+    </div>
 
     <div id="card" class="hidden stack">
       <h1 id="hello"></h1>
 
-      <a id="save" class="btn dark big hidden" target="_blank" rel="noopener">
-        <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3" fill="#4285F4"/><rect x="2" y="8" width="20" height="3" fill="#34A853"/><rect x="2" y="11" width="20" height="3" fill="#FBBC04"/><rect x="2" y="14" width="20" height="5" rx="2" fill="#EA4335"/></svg>
-        Aggiungi a Google Wallet
+      <a id="save" class="gwallet hidden" target="_blank" rel="noopener" aria-label="Aggiungi a Google Wallet">
+        <img src="/wallet-button-it.svg" alt="Aggiungi a Google Wallet">
       </a>
       <p id="nowallet" class="muted small hidden">Google Wallet non configurato su questo server: usa la tessera qui sotto (salva questa pagina tra i preferiti).</p>
 
-      <section class="passcard stack">
+      <section class="passcard stack" id="pass">
         <div class="top">
           <img src="/logo.png" alt="">
-          <div><strong data-cfg="pizzeriaName"></strong><div class="small" data-cfg="programName"></div></div>
+          <div style="flex:1"><strong data-cfg="pizzeriaName"></strong><div class="small" data-cfg="programName"></div></div>
+          <span class="live" id="live">live</span>
         </div>
         <div id="reward" class="hidden"><span class="badge">🎁 <span id="rewardsN"></span> premio da ritirare</span></div>
         <div>
-          <div class="small">Timbri: <strong id="count"></strong></div>
+          <div class="row" style="align-items:baseline">
+            <div class="small">Timbri</div>
+            <div style="text-align:right;font-size:1.5rem;font-weight:800"><span id="count">0</span><span style="opacity:.7;font-size:1rem"> / <span id="total"></span></span></div>
+          </div>
+          <div class="progress"><div id="bar" style="width:0"></div></div>
           <div class="stamps" id="stamps"></div>
           <div class="small" id="missing"></div>
         </div>
@@ -42,33 +49,80 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const token = decodeURIComponent(location.pathname.split('/').pop());
-    let last = null;
     let cfg;
+    let state = null; // { stamps, rewards }
+
+    function paint(c, { animate = true } = {}) {
+      $('count').textContent = c.stamps;
+      $('total').textContent = c.stampsForReward;
+      $('bar').style.width = (c.stamps / c.stampsForReward) * 100 + '%';
+      renderStamps($('stamps'), c.stamps, c.stampsForReward, { animate });
+      const miss = c.stampsForReward - c.stamps;
+      $('missing').textContent = (miss === 1 ? 'Ti manca 1 timbro' : 'Ti mancano ' + miss + ' timbri') + ' per: ' + cfg.rewardText.toLowerCase();
+      $('reward').classList.toggle('hidden', c.rewards < 1);
+      $('rewardsN').textContent = c.rewards;
+    }
+
+    function celebrate(prev, next) {
+      const n = next.stampsForReward;
+      if (next.rewards > prev.rewards) {
+        // Premio: riempi tutti i pallini, festa, poi si riparte da zero.
+        paint({ ...next, stamps: n, rewards: prev.rewards });
+        plusOne('🎉'); confetti(); vibrate([80, 60, 80, 60, 200]);
+        toast('Premio sbloccato! ' + cfg.rewardText, 3500);
+        setTimeout(() => {
+          [...$('stamps').children].forEach((d) => d.classList.add('gone'));
+          setTimeout(() => paint(next, { animate: false }), 420);
+        }, 1800);
+      } else if (next.stamps > prev.stamps) {
+        paint(next);
+        plusOne('+' + (next.stamps - prev.stamps)); bump($('count')); vibrate(80);
+        $('pass').classList.remove('flash'); void $('pass').offsetWidth; $('pass').classList.add('flash');
+        toast('Timbro aggiunto! 🍕');
+      } else if (next.rewards < prev.rewards && next.stamps === prev.stamps) {
+        paint(next, { animate: false });
+        toast('Premio consegnato. Buon appetito! 🍕', 3000);
+      } else {
+        paint(next, { animate: false });
+      }
+    }
 
     async function load() {
       try {
         const c = await api('/api/card/' + encodeURIComponent(token));
-        const sig = c.stamps + '/' + c.rewards;
-        if (last && sig !== last) toast(c.rewards > 0 && last.split('/')[1] < c.rewards ? '🎉 Premio sbloccato!' : 'Tessera aggiornata');
-        last = sig;
-        $('card').classList.remove('hidden');
-        $('hello').textContent = 'Ciao ' + c.name + '!';
-        $('count').textContent = c.stamps + ' / ' + c.stampsForReward;
-        renderStamps($('stamps'), c.stamps, c.stampsForReward);
-        const miss = c.stampsForReward - c.stamps;
-        $('missing').textContent = (miss === 1 ? 'Ti manca 1 timbro' : 'Ti mancano ' + miss + ' timbri') + ' per: ' + cfg.rewardText.toLowerCase();
-        $('reward').classList.toggle('hidden', c.rewards < 1);
-        $('rewardsN').textContent = c.rewards;
-        $('code').textContent = c.code;
-        if ($('qr').src !== c.qr) $('qr').src = c.qr;
-        if (c.saveUrl) { $('save').href = c.saveUrl; $('save').classList.remove('hidden'); }
-        else $('nowallet').classList.remove('hidden');
+        const next = { stamps: c.stamps, rewards: c.rewards, stampsForReward: c.stampsForReward };
+        if (!state) {
+          $('card').classList.remove('hidden');
+          $('hello').textContent = 'Ciao ' + c.name + '!';
+          $('code').textContent = c.code;
+          $('qr').src = c.qr;
+          if (c.saveUrl) { $('save').href = c.saveUrl; $('save').classList.remove('hidden'); }
+          else $('nowallet').classList.remove('hidden');
+          paint(next, { animate: false });
+        } else if (next.stamps !== state.stamps || next.rewards !== state.rewards) {
+          celebrate(state, next);
+        }
+        state = next;
       } catch (err) {
         if (err.status === 404) $('notfound').classList.remove('hidden');
       }
     }
 
-    applyBrand().then((c) => { cfg = c; load(); setInterval(load, 4000); });
+    // Tempo reale: il server avvisa appena la cassa assegna un timbro.
+    function connect() {
+      if (!window.EventSource) return;
+      const es = new EventSource('/api/card/' + encodeURIComponent(token) + '/stream');
+      es.onopen = () => $('live').classList.remove('off');
+      es.onmessage = () => load();
+      es.onerror = () => $('live').classList.add('off'); // EventSource si riconnette da solo
+    }
+
+    applyBrand().then((c) => {
+      cfg = c;
+      load().then(connect);
+      setInterval(load, 15000); // rete di sicurezza se la connessione live cade
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+    });
   </script>
 </body>
 </html>

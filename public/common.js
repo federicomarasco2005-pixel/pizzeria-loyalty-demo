@@ -15,15 +15,76 @@ async function applyBrand() {
   return cfg;
 }
 
-function renderStamps(el, filled, total) {
-  el.innerHTML = '';
-  for (let i = 0; i < total; i++) {
-    const d = document.createElement('div');
-    d.className = 'stamp' + (i < filled ? ' on' : '');
-    d.textContent = '🍕';
-    el.appendChild(d);
+// Disegna i timbri; quelli appena ottenuti entrano con un'animazione.
+function renderStamps(el, filled, total, { animate = true } = {}) {
+  const prev = el.dataset.filled === undefined ? null : Number(el.dataset.filled);
+  el.dataset.filled = filled;
+  if (el.children.length !== total) {
+    el.innerHTML = '';
+    for (let i = 0; i < total; i++) {
+      const d = document.createElement('div');
+      d.className = 'stamp';
+      d.textContent = i + 1;
+      el.appendChild(d);
+    }
   }
+  [...el.children].forEach((d, i) => {
+    const on = i < filled;
+    const isNew = animate && prev !== null && on && i >= prev;
+    d.classList.toggle('on', on);
+    d.classList.remove('new', 'gone');
+    if (isNew) {
+      void d.offsetWidth; // riavvia l'animazione
+      d.style.animationDelay = (i - prev) * 0.12 + 's';
+      d.classList.add('new');
+    }
+  });
 }
+
+// Grande "+1" che sale al centro dello schermo.
+function plusOne(text = '+1') {
+  const p = document.createElement('div');
+  p.className = 'plus';
+  p.textContent = text;
+  document.body.appendChild(p);
+  setTimeout(() => p.remove(), 1200);
+}
+
+// Rimbalzo di un numero (es. il contatore dei timbri).
+function bump(el) {
+  el.classList.remove('bump');
+  void el.offsetWidth;
+  el.classList.add('bump');
+}
+
+// Coriandoli leggeri su canvas, senza librerie esterne.
+function confetti(ms = 2600) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const c = document.createElement('canvas');
+  c.className = 'confetti';
+  document.body.appendChild(c);
+  const ctx = c.getContext('2d');
+  const W = (c.width = innerWidth), H = (c.height = innerHeight);
+  const colors = ['#ffcf4a', '#ffffff', '#2e7d32', '#e53935', '#ff9800'];
+  const parts = Array.from({ length: 140 }, () => ({
+    x: W / 2 + (Math.random() - 0.5) * 80, y: H * 0.35,
+    vx: (Math.random() - 0.5) * 14, vy: -Math.random() * 14 - 4,
+    r: Math.random() * 6 + 4, a: Math.random() * Math.PI, va: (Math.random() - 0.5) * 0.3,
+    c: colors[(Math.random() * colors.length) | 0],
+  }));
+  const end = performance.now() + ms;
+  (function frame(t) {
+    ctx.clearRect(0, 0, W, H);
+    parts.forEach((p) => {
+      p.vy += 0.35; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.a += p.va;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a); ctx.fillStyle = p.c;
+      ctx.fillRect(-p.r / 2, -p.r / 4, p.r, p.r / 2); ctx.restore();
+    });
+    if (t < end) requestAnimationFrame(frame); else c.remove();
+  })(performance.now());
+}
+
+function vibrate(pattern) { try { navigator.vibrate && navigator.vibrate(pattern); } catch {} }
 
 function toast(msg, ms = 2200) {
   let t = document.querySelector('.toast');

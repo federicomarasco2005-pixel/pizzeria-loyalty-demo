@@ -23,7 +23,7 @@
     <section id="login" class="panel hidden">
       <label for="pin">PIN staff</label>
       <input id="pin" type="password" inputmode="numeric" autocomplete="off">
-      <button class="btn" id="loginBtn" style="margin-top:12px">Entra</button>
+      <button class="btn" id="loginBtn" style="margin-top:14px"><span class="ico">🔓</span> Entra</button>
       <p class="error" id="loginErr"></p>
     </section>
 
@@ -41,15 +41,18 @@
       <div id="cReward" class="hidden"><span class="badge">🎁 <span id="cRewardsN"></span> premio disponibile</span></div>
       <div class="small">Timbri: <strong id="cCount"></strong> · Visite totali: <strong id="cVisits"></strong></div>
       <div class="stamps" id="cStamps"></div>
-      <button class="btn big" id="stampBtn">+1 timbro</button>
-      <button class="btn ok big hidden" id="redeemBtn">Consegna premio</button>
+      <button class="btn big" id="stampBtn"><span class="ico">🍕</span> +1 timbro</button>
+      <button class="btn ok big pulse hidden" id="redeemBtn"><span class="ico">🎁</span> Consegna premio</button>
       <div class="row">
-        <button class="btn ghost" id="undoBtn">Annulla ultima</button>
-        <button class="btn ghost" id="nextBtn">Nuovo cliente</button>
+        <button class="btn ghost" id="undoBtn"><span class="ico">↩️</span> Annulla</button>
+        <button class="btn ghost" id="nextBtn"><span class="ico">📷</span> Nuovo cliente</button>
       </div>
     </section>
 
-    <p class="small" style="text-align:center"><a href="/admin.html">Dashboard</a> · <a href="#" id="logout">Esci</a></p>
+    <nav class="nav">
+      <a class="chip" href="/admin.html">📊 Dashboard</a>
+      <button class="chip danger" id="logout">🚪 Esci</button>
+    </nav>
   </main>
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -116,13 +119,19 @@
       }
     }
 
-    function render(c) {
+    function render(c, { animate = false } = {}) {
+      const prev = current && current.token === c.token ? current : null;
       current = c;
+      if (animate && prev) {
+        if (c.rewardEarned) { plusOne('🎉'); confetti(); vibrate([80, 60, 200]); }
+        else if (c.stamps > prev.stamps) { plusOne('+1'); vibrate(60); }
+      }
       $('cName').textContent = c.name;
       $('cCode').textContent = c.code;
       $('cCount').textContent = c.stamps + ' / ' + c.stampsForReward;
       $('cVisits').textContent = c.visits;
-      renderStamps($('cStamps'), c.stamps, c.stampsForReward);
+      if (!prev) delete $('cStamps').dataset.filled; // nuovo cliente: niente animazione iniziale
+      renderStamps($('cStamps'), c.stamps, c.stampsForReward, { animate });
       $('cReward').classList.toggle('hidden', c.rewards < 1);
       $('cRewardsN').textContent = c.rewards;
       $('redeemBtn').classList.toggle('hidden', c.rewards < 1);
@@ -134,7 +143,7 @@
       buttons.forEach((b) => (b.disabled = true));
       try {
         const c = await api(path, { method: 'POST', pin, body: { token: current.token, requestId: crypto.randomUUID() } });
-        render(c);
+        render(c, { animate: true });
         toast(c.rewardEarned ? '🎉 Premio sbloccato per ' + c.name + '!' : okMsg);
       } catch (err) {
         toast(err.message);
