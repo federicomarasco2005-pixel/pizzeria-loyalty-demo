@@ -1,0 +1,43 @@
+# Blueprint Render: web service gratuito + Postgres gratuito (i dati sopravvivono ai riavvii).
+# Nota: il Postgres gratuito di Render scade dopo 30 giorni — sufficiente per demo e primo test.
+services:
+  - type: web
+    name: pizzeria-loyalty-demo
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/config
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pizzeria-loyalty-db
+          property: connectionString
+      - key: PIZZERIA_NAME
+        value: Pizzeria Da Mario
+      - key: PROGRAM_NAME
+        value: Tessera Amici della Pizza
+      - key: REWARD_TEXT
+        value: Una pizza margherita omaggio
+      - key: STAMPS_FOR_REWARD
+        value: "6"
+      - key: BRAND_COLOR
+        value: "#b3261e"
+      - key: GOOGLE_CLASS_SUFFIX
+        value: pizzeria_demo_v1
+      # Logo servito da GitHub: sempre raggiungibile da Google anche quando il servizio free è in pausa
+      - key: LOGO_URL
+        value: https://raw.githubusercontent.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/main/public/logo.png
+      - key: GOOGLE_ISSUER_ID
+        value: "3388000000023194584"
+      # Da inserire a mano su Render (segreti, non vanno nel repository):
+      - key: GOOGLE_SA_JSON
+        sync: false
+      - key: STAFF_PIN
+        sync: false
+
+databases:
+  - name: pizzeria-loyalty-db
+    plan: free
+    region: frankfurt
