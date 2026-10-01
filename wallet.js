@@ -90,6 +90,11 @@ function objectBody(customer, state) {
     loyaltyPoints: { label: 'Timbri', balance: { string: `${state.stamps} / ${n}` } },
     secondaryLoyaltyPoints: { label: 'Premi disponibili', balance: { int: state.rewards } },
     barcode: { type: 'QR_CODE', value: customer.token, alternateText: customer.code },
+    // I "pallini" dei timbri: un'immagine diversa per ogni stato (URL diverso = Google la ricarica).
+    heroImage: {
+      sourceUri: { uri: `${cfg.stampsImageBase}/stamps-${n}-${Math.min(state.stamps, n)}.png` },
+      contentDescription: { defaultValue: { language: 'it-IT', value: `${state.stamps} timbri su ${n}` } },
+    },
     textModulesData: [
       {
         id: 'stato',
@@ -110,10 +115,12 @@ function objectBody(customer, state) {
   };
 }
 
-async function upsertObject(customer, state) {
+// notifyOnUpdate: Google avvisa il telefono quando cambia il saldo (max 3 notifiche al giorno per pass).
+async function upsertObject(customer, state, { notifyOnUpdate = false } = {}) {
   const body = objectBody(customer, state);
   try {
-    await request('PATCH', `${BASE}/loyaltyObject/${body.id}`, body);
+    await request('PATCH', `${BASE}/loyaltyObject/${body.id}`,
+      notifyOnUpdate ? { ...body, notifyPreference: 'notifyOnUpdate' } : body);
   } catch (err) {
     if (status(err) !== 404) throw new Error(`aggiornamento pass fallito: ${describe(err)}`);
     await request('POST', `${BASE}/loyaltyObject`, body);

@@ -23,6 +23,8 @@ const cfg = {
   keyFile: path.resolve(__dirname, process.env.GOOGLE_KEY_FILE || './service-account.json'),
   classSuffix: process.env.GOOGLE_CLASS_SUFFIX || 'pizzeria_demo_v1',
   logoUrl: process.env.LOGO_URL || `${PUBLIC_URL}/logo.png`,
+  // Cartella pubblica con le immagini stamps-<totale>-<n>.png (generate da tools/gen-stamps.ps1)
+  stampsImageBase: (process.env.STAMPS_IMAGE_BASE || `${PUBLIC_URL}/stamps`).replace(/\/$/, ''),
 };
 
 const app = express();
@@ -75,7 +77,33 @@ app.get('/api/card/:token', wrap(async (req, res) => {
   });
 }));
 
-app.get('/card/:token', (req, res) => res.sendFile(path.join(__dirname, 'public', 'card.html')));
+// Aggiornamenti in tempo reale per la tessera web (Server-Sent Events).
+const streams = new Map(); // token -> Set di risposte aperte
+
+app.get('/api/card/:token/stream', (req, res) => {
+  const { token } = req.params;
+  if (!db.findByToken(token)) return res.status(404).end();
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  res.write('retry: 3000\n\n');
+  if (!streams.has(token)) streams.set(token, new Set());
+  streams.get(token).add(res);
+  const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+  req.on('close', () => {
+    clearInterval(ping);
+    streams.get(token).delete(res);
+  });
+});
+
+function broadcast(customer, type) {
+  const clients = streams.get(customer.token);
+  if (!clients || !clients.size) return;
+  const s = db.stateOf(customer.id, cfg.stampsForReward);
+  const payload = `data: ${JSON.stringify({ type, stamps: s.stamps, rewards: s.rewards })}\n\n`;
+  clients.forEach((res) => res.write(payload));
+}
+
+app.get('/card/:token',(req, res) => res.sendFile(path.join(__dirname, 'public', 'card.html')));
 
 app.get('/api/poster-qr', wrap(async (req, res) => {
   res.json({ url: PUBLIC_URL, qr: await QRCode.toDataURL(PUBLIC_URL, { margin: 1, width: 800 }) });
@@ -133,11 +161,13 @@ app.post('/api/staff/stamp', requirePin, wrap(async (req, res) => {
   db.addEvent({ type: 'stamp', customerId: customer.id, requestId: req.body.requestId, by: 'staff' });
   const after = db.stateOf(customer.id, cfg.stampsForReward);
   const rewardEarned = after.earned > before.earned;
+  broadcast(customer, rewardEarned ? 'reward' : 'stamp');
 
+  // Premio: messaggio dedicato. Timbro normale: notifica di aggiornamento del saldo.
   await syncWallet(customer, rewardEarned && {
     header: 'Premio sbloccato! 🍕',
     body: `${cfg.rewardText}: mostra la tessera alla prossima visita.`,
-  });
+  }, { notifyOnUpdate: !rewardEarned });
   res.json({ ...customerView(customer), rewardEarned });
 }));
 
@@ -149,6 +179,7 @@ app.post('/api/staff/redeem', requirePin, wrap(async (req, res) => {
     return res.status(400).json({ error: 'Nessun premio disponibile.' });
   }
   db.addEvent({ type: 'redeem', customerId: customer.id, requestId: req.body.requestId, by: 'staff' });
+  broadcast(customer, 'redeem');
   await syncWallet(customer);
   res.json(customerView(customer));
 }));
@@ -160,6 +191,7 @@ app.post('/api/staff/undo', requirePin, wrap(async (req, res) => {
   const { lastOp } = db.stateOf(customer.id, cfg.stampsForReward);
   if (!lastOp) return res.status(400).json({ error: 'Nessuna operazione da annullare.' });
   db.addEvent({ type: 'void', customerId: customer.id, ref: lastOp.id, by: 'staff' });
+  broadcast(customer, 'undo');
   await syncWallet(customer);
   res.json(customerView(customer));
 }));
@@ -209,11 +241,11 @@ async function ensureClassOnce() {
   classReady = true;
 }
 
-async function syncWallet(customer, message) {
+async function syncWallet(customer, message, options) {
   if (!wallet.enabled()) return;
   try {
     await ensureClassOnce();
-    await wallet.upsertObject(customer, db.stateOf(customer.id, cfg.stampsForReward));
+    await wallet.upsertObject(customer, db.stateOf(customer.id, cfg.stampsForReward), options);
     if (message) await wallet.notify(customer, message.header, message.body);
   } catch (err) {
     // Il ledger è la fonte autorevole: un errore Wallet non blocca l'operazione in cassa.

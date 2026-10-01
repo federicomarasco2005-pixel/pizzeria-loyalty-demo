@@ -29,6 +29,9 @@ services:
       # Logo servito da GitHub: sempre raggiungibile da Google anche quando il servizio free è in pausa
       - key: LOGO_URL
         value: https://raw.githubusercontent.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/main/public/logo.png
+      # Immagini dei pallini per la tessera Wallet (generate da tools/gen-stamps.ps1)
+      - key: STAMPS_IMAGE_BASE
+        value: https://raw.githubusercontent.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/main/public/stamps
       - key: GOOGLE_ISSUER_ID
         value: "3388000000023194584"
       # Da inserire a mano su Render (segreti, non vanno nel repository):
