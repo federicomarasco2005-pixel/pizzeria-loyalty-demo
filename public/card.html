@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>La mia tessera</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="wrap stack">
+    <div id="notfound" class="panel hidden"><h2>Tessera non trovata</h2><a class="btn" href="/">Iscriviti</a></div>
+
+    <div id="card" class="hidden stack">
+      <h1 id="hello"></h1>
+
+      <a id="save" class="btn dark big hidden" target="_blank" rel="noopener">
+        <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3" fill="#4285F4"/><rect x="2" y="8" width="20" height="3" fill="#34A853"/><rect x="2" y="11" width="20" height="3" fill="#FBBC04"/><rect x="2" y="14" width="20" height="5" rx="2" fill="#EA4335"/></svg>
+        Aggiungi a Google Wallet
+      </a>
+      <p id="nowallet" class="muted small hidden">Google Wallet non configurato su questo server: usa la tessera qui sotto (salva questa pagina tra i preferiti).</p>
+
+      <section class="passcard stack">
+        <div class="top">
+          <img src="/logo.png" alt="">
+          <div><strong data-cfg="pizzeriaName"></strong><div class="small" data-cfg="programName"></div></div>
+        </div>
+        <div id="reward" class="hidden"><span class="badge">🎁 <span id="rewardsN"></span> premio da ritirare</span></div>
+        <div>
+          <div class="small">Timbri: <strong id="count"></strong></div>
+          <div class="stamps" id="stamps"></div>
+          <div class="small" id="missing"></div>
+        </div>
+        <div class="qr">
+          <img id="qr" alt="QR della tessera">
+          <div class="small" style="margin-top:6px">Mostra questo codice in cassa · <strong id="code"></strong></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const token = decodeURIComponent(location.pathname.split('/').pop());
+    let last = null;
+    let cfg;
+
+    async function load() {
+      try {
+        const c = await api('/api/card/' + encodeURIComponent(token));
+        const sig = c.stamps + '/' + c.rewards;
+        if (last && sig !== last) toast(c.rewards > 0 && last.split('/')[1] < c.rewards ? '🎉 Premio sbloccato!' : 'Tessera aggiornata');
+        last = sig;
+        $('card').classList.remove('hidden');
+        $('hello').textContent = 'Ciao ' + c.name + '!';
+        $('count').textContent = c.stamps + ' / ' + c.stampsForReward;
+        renderStamps($('stamps'), c.stamps, c.stampsForReward);
+        const miss = c.stampsForReward - c.stamps;
+        $('missing').textContent = (miss === 1 ? 'Ti manca 1 timbro' : 'Ti mancano ' + miss + ' timbri') + ' per: ' + cfg.rewardText.toLowerCase();
+        $('reward').classList.toggle('hidden', c.rewards < 1);
+        $('rewardsN').textContent = c.rewards;
+        $('code').textContent = c.code;
+        if ($('qr').src !== c.qr) $('qr').src = c.qr;
+        if (c.saveUrl) { $('save').href = c.saveUrl; $('save').classList.remove('hidden'); }
+        else $('nowallet').classList.remove('hidden');
+      } catch (err) {
+        if (err.status === 404) $('notfound').classList.remove('hidden');
+      }
+    }
+
+    applyBrand().then((c) => { cfg = c; load(); setInterval(load, 4000); });
+  </script>
+</body>
+</html>

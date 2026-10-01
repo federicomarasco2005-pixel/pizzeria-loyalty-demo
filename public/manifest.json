@@ -1,0 +1,9 @@
+{
+  "name": "Cassa fedeltà",
+  "short_name": "Cassa",
+  "start_url": "/staff.html",
+  "display": "standalone",
+  "background_color": "#fbf6ee",
+  "theme_color": "#b3261e",
+  "icons": [{ "src": "/logo.png", "sizes": "660x660", "type": "image/png" }]
+}

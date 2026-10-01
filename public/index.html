@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tessera fedeltà</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="hero">
+    <img src="/logo.png" alt="">
+    <h1 data-cfg="pizzeriaName"></h1>
+    <p data-cfg="programName"></p>
+  </header>
+
+  <main class="wrap">
+    <section class="panel overlap">
+      <h2>Ogni <span data-cfg="stampsForReward"></span> visite, un regalo</h2>
+      <p class="muted" style="margin-top:-6px">
+        Premio: <strong data-cfg="rewardText"></strong>.<br>
+        Nessuna app da scaricare: la tessera va direttamente nel tuo Google Wallet.
+      </p>
+
+      <form id="f" novalidate>
+        <label for="name">Nome</label>
+        <input id="name" type="text" autocomplete="given-name" required maxlength="60">
+
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" inputmode="email" required>
+
+        <label class="check">
+          <input id="terms" type="checkbox">
+          <span>Ho letto il regolamento e l'informativa privacy e aderisco al programma fedeltà. <em>(obbligatorio)</em></span>
+        </label>
+        <label class="check">
+          <input id="mkt" type="checkbox">
+          <span>Voglio ricevere offerte e novità via email. <em>(facoltativo, revocabile in ogni momento)</em></span>
+        </label>
+
+        <button class="btn" id="go" type="submit">Crea la mia tessera</button>
+        <p class="error" id="err"></p>
+      </form>
+    </section>
+    <p class="muted small" style="text-align:center">Demo — i dati inseriti servono solo a mostrare il funzionamento.</p>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    applyBrand();
+    const $ = (id) => document.getElementById(id);
+    $('f').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('err').textContent = '';
+      $('go').disabled = true;
+      try {
+        const { token } = await api('/api/signup', {
+          method: 'POST',
+          body: { name: $('name').value, email: $('email').value, acceptTerms: $('terms').checked, consentMarketing: $('mkt').checked },
+        });
+        location.href = '/card/' + encodeURIComponent(token);
+      } catch (err) {
+        $('err').textContent = err.message;
+        $('go').disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

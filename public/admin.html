@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard fedeltà</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="wrap wide stack">
+    <div class="row" style="align-items:baseline;flex-wrap:wrap">
+      <div><h1>Dashboard</h1><span class="muted" data-cfg="pizzeriaName"></span></div>
+      <div style="text-align:right" class="small">
+        <a href="/staff.html">Cassa</a> · <a href="/poster.html" target="_blank">Stampa QR tavolo</a> ·
+        <a href="#" id="reset">Azzera dati demo</a>
+      </div>
+    </div>
+
+    <section id="login" class="panel hidden" style="max-width:420px">
+      <label for="pin">PIN</label>
+      <input id="pin" type="password" inputmode="numeric">
+      <button class="btn" id="loginBtn" style="margin-top:12px">Entra</button>
+      <p class="error" id="err"></p>
+    </section>
+
+    <div id="dash" class="stack hidden">
+      <p id="walletOff" class="panel small hidden">⚠️ Google Wallet non configurato: la demo funziona con la tessera web.</p>
+      <div class="kpis" id="kpis"></div>
+      <div class="grid2">
+        <section class="panel">
+          <h2>Clienti</h2>
+          <div class="scroll"><table>
+            <thead><tr><th>Nome</th><th>Codice</th><th>Timbri</th><th>Premi</th><th>Visite</th><th>Ultima visita</th></tr></thead>
+            <tbody id="customers"></tbody>
+          </table></div>
+        </section>
+        <section class="panel">
+          <h2>Ultime operazioni</h2>
+          <table><tbody id="events"></tbody></table>
+        </section>
+      </div>
+      <p class="muted small">Si aggiorna automaticamente ogni 5 secondi.</p>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let pin = getPin();
+    applyBrand();
+
+    const LABELS = { signup: '🆕 Iscrizione', stamp: '🍕 Timbro', redeem: '🎁 Premio consegnato', void: '↩️ Annullo' };
+
+    function cell(tr, text) { const td = document.createElement('td'); td.textContent = text; tr.appendChild(td); }
+
+    async function load() {
+      let s;
+      try {
+        s = await api('/api/admin/stats', { pin });
+      } catch (err) {
+        if (err.status === 401) { $('login').classList.remove('hidden'); $('dash').classList.add('hidden'); }
+        return;
+      }
+      $('login').classList.add('hidden');
+      $('dash').classList.remove('hidden');
+      $('walletOff').classList.toggle('hidden', s.walletEnabled);
+
+      const k = s.kpi;
+      const pct = (a, b) => (b ? Math.round((a / b) * 100) + '%' : '—');
+      const tiles = [
+        [k.members, 'Iscritti'],
+        [k.newLast7, 'Nuovi ultimi 7 giorni'],
+        [k.returning, 'Clienti tornati (2+ visite)'],
+        [pct(k.returning, k.members), 'Tasso di ritorno'],
+        [k.stamps, 'Timbri assegnati'],
+        [k.rewardsEarned, 'Premi sbloccati'],
+        [k.rewardsRedeemed, 'Premi consegnati'],
+        [k.nearReward, 'A 1 timbro dal premio'],
+        [k.inactive30, 'Inattivi da 30+ giorni'],
+        [pct(k.marketingConsent, k.members), 'Consenso marketing'],
+      ];
+      $('kpis').innerHTML = '';
+      tiles.forEach(([v, l]) => {
+        const d = document.createElement('div');
+        d.className = 'kpi';
+        d.innerHTML = '<b></b><span></span>';
+        d.querySelector('b').textContent = v;
+        d.querySelector('span').textContent = l;
+        $('kpis').appendChild(d);
+      });
+
+      $('customers').innerHTML = '';
+      s.customers.forEach((c) => {
+        const tr = document.createElement('tr');
+        [c.name, c.code, c.stamps + '/' + c.stampsForReward, c.rewards, c.visits, fmtDate(c.lastVisitAt)].forEach((v) => cell(tr, v));
+        $('customers').appendChild(tr);
+      });
+
+      $('events').innerHTML = '';
+      s.events.forEach((e) => {
+        const tr = document.createElement('tr');
+        if (e.voided) tr.style.textDecoration = 'line-through';
+        cell(tr, LABELS[e.type] || e.type);
+        cell(tr, e.name);
+        const t = document.createElement('td'); t.className = 'muted small'; t.textContent = fmtDate(e.at); tr.appendChild(t);
+        $('events').appendChild(tr);
+      });
+    }
+
+    $('loginBtn').onclick = () => { pin = $('pin').value; setPin(pin); $('err').textContent = ''; load().then(() => { if (!$('login').classList.contains('hidden')) $('err').textContent = 'PIN errato.'; }); };
+    $('reset').onclick = async (e) => {
+      e.preventDefault();
+      if (!confirm('Cancellare tutti i clienti e le operazioni della demo?')) return;
+      await api('/api/admin/reset', { method: 'POST', pin }).catch((err) => toast(err.message));
+      load();
+    };
+
+    load();
+    setInterval(load, 5000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#b3261e">
+  <link rel="manifest" href="/manifest.json">
+  <title>Cassa — Staff</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    #reader { border-radius: 16px; overflow: hidden; background: #000; min-height: 260px; }
+    #reader video { width: 100% !important; }
+    .who { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+    .result { cursor: pointer; padding: 12px; border-bottom: 1px solid var(--line); }
+    .result:hover { background: var(--cream); }
+  </style>
+</head>
+<body>
+  <main class="wrap stack">
+    <div class="who"><h1>Cassa</h1><span class="muted small" data-cfg="pizzeriaName"></span></div>
+
+    <!-- Login -->
+    <section id="login" class="panel hidden">
+      <label for="pin">PIN staff</label>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off">
+      <button class="btn" id="loginBtn" style="margin-top:12px">Entra</button>
+      <p class="error" id="loginErr"></p>
+    </section>
+
+    <!-- Scanner -->
+    <section id="scan" class="panel stack hidden">
+      <div id="reader"></div>
+      <p class="muted small" id="camMsg">Inquadra il QR della tessera del cliente.</p>
+      <input id="q" type="search" placeholder="…oppure cerca per nome, email o codice">
+      <div id="results"></div>
+    </section>
+
+    <!-- Cliente -->
+    <section id="cust" class="panel stack hidden">
+      <div class="who"><h2 id="cName"></h2><span class="muted small" id="cCode"></span></div>
+      <div id="cReward" class="hidden"><span class="badge">🎁 <span id="cRewardsN"></span> premio disponibile</span></div>
+      <div class="small">Timbri: <strong id="cCount"></strong> · Visite totali: <strong id="cVisits"></strong></div>
+      <div class="stamps" id="cStamps"></div>
+      <button class="btn big" id="stampBtn">+1 timbro</button>
+      <button class="btn ok big hidden" id="redeemBtn">Consegna premio</button>
+      <div class="row">
+        <button class="btn ghost" id="undoBtn">Annulla ultima</button>
+        <button class="btn ghost" id="nextBtn">Nuovo cliente</button>
+      </div>
+    </section>
+
+    <p class="small" style="text-align:center"><a href="/admin.html">Dashboard</a> · <a href="#" id="logout">Esci</a></p>
+  </main>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="/common.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let pin = getPin();
+    let current = null;
+    let scanner = null;
+    let busy = false;
+
+    applyBrand();
+
+    function show(section) {
+      ['login', 'scan', 'cust'].forEach((s) => $(s).classList.toggle('hidden', s !== section));
+    }
+
+    async function tryLogin(p) {
+      try {
+        await api('/api/staff/login', { method: 'POST', pin: p });
+        pin = p; setPin(p);
+        startScan();
+      } catch (err) {
+        setPin(''); show('login');
+        if (p) $('loginErr').textContent = err.message;
+      }
+    }
+    $('loginBtn').onclick = () => tryLogin($('pin').value);
+    $('pin').onkeydown = (e) => { if (e.key === 'Enter') tryLogin($('pin').value); };
+    $('logout').onclick = (e) => { e.preventDefault(); setPin(''); location.reload(); };
+
+    async function startScan() {
+      show('scan');
+      $('q').value = ''; $('results').innerHTML = '';
+      if (!window.Html5Qrcode) { $('camMsg').textContent = 'Scanner non disponibile: usa la ricerca.'; return; }
+      try {
+        scanner = scanner || new Html5Qrcode('reader');
+        await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 230 }, onScan, () => {});
+      } catch (err) {
+        $('camMsg').textContent = 'Fotocamera non disponibile (serve HTTPS e il permesso): usa la ricerca.';
+      }
+    }
+
+    async function stopScan() {
+      if (scanner && scanner.isScanning) await scanner.stop().catch(() => {});
+    }
+
+    async function onScan(text) {
+      if (busy) return;
+      busy = true;
+      if (navigator.vibrate) navigator.vibrate(60);
+      await stopScan();
+      await openCustomer(text.trim());
+      busy = false;
+    }
+
+    async function openCustomer(token) {
+      try {
+        render(await api('/api/staff/customer/' + encodeURIComponent(token), { pin }));
+        show('cust');
+      } catch (err) {
+        toast(err.message);
+        startScan();
+      }
+    }
+
+    function render(c) {
+      current = c;
+      $('cName').textContent = c.name;
+      $('cCode').textContent = c.code;
+      $('cCount').textContent = c.stamps + ' / ' + c.stampsForReward;
+      $('cVisits').textContent = c.visits;
+      renderStamps($('cStamps'), c.stamps, c.stampsForReward);
+      $('cReward').classList.toggle('hidden', c.rewards < 1);
+      $('cRewardsN').textContent = c.rewards;
+      $('redeemBtn').classList.toggle('hidden', c.rewards < 1);
+      $('undoBtn').disabled = !c.canUndo;
+    }
+
+    async function act(path, okMsg) {
+      const buttons = document.querySelectorAll('#cust button');
+      buttons.forEach((b) => (b.disabled = true));
+      try {
+        const c = await api(path, { method: 'POST', pin, body: { token: current.token, requestId: crypto.randomUUID() } });
+        render(c);
+        toast(c.rewardEarned ? '🎉 Premio sbloccato per ' + c.name + '!' : okMsg);
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        buttons.forEach((b) => (b.disabled = false));
+        $('undoBtn').disabled = !current.canUndo;
+      }
+    }
+    $('stampBtn').onclick = () => act('/api/staff/stamp', 'Timbro aggiunto ✔');
+    $('redeemBtn').onclick = () => act('/api/staff/redeem', 'Premio consegnato ✔');
+    $('undoBtn').onclick = () => act('/api/staff/undo', 'Operazione annullata');
+    $('nextBtn').onclick = () => startScan();
+
+    let searchT;
+    $('q').oninput = () => {
+      clearTimeout(searchT);
+      searchT = setTimeout(async () => {
+        const list = await api('/api/staff/search?q=' + encodeURIComponent($('q').value), { pin }).catch(() => []);
+        $('results').innerHTML = '';
+        list.forEach((c) => {
+          const d = document.createElement('div');
+          d.className = 'result';
+          d.textContent = c.name + ' · ' + c.email + ' · ' + c.code;
+          d.onclick = async () => { await stopScan(); openCustomer(c.token); };
+          $('results').appendChild(d);
+        });
+      }, 250);
+    };
+
+    if (pin) tryLogin(pin); else show('login');
+  </script>
+</body>
+</html>
