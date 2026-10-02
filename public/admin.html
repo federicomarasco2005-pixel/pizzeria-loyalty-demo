@@ -184,9 +184,9 @@
         </section>
 
         <section class="panel stack" style="max-width:720px">
-          <h2>📲 Timbro con adesivo NFC</h2>
-          <p class="muted" style="margin:0">Il cliente avvicina il telefono all'adesivo sul bancone e riceve il timbro da solo, con l'animazione.
-            Funziona con Android e iPhone (dall'iPhone XS in poi), senza app. In Cassa compare un avviso con il pulsante "Annulla".</p>
+          <h2>📲 Timbro NFC</h2>
+          <p class="muted" style="margin:0">Il cliente ti mostra il telefono con la tessera aperta, tu ci appoggi il <strong>timbro NFC</strong>:
+            il punto arriva da solo, senza domande, e sul suo telefono parte l'animazione. In Cassa compare un avviso con il pulsante "Annulla".</p>
           <label class="check"><input id="nfcEnabled" type="checkbox"> <span><strong>Timbro con NFC attivo</strong></span></label>
           <div>
             <label for="nfcCooldown">Un timbro NFC per cliente ogni</label>
@@ -195,27 +195,30 @@
               <option value="6">6 ore</option><option value="12">12 ore</option><option value="24">24 ore</option>
               <option value="0">Nessun limite (solo per le prove)</option>
             </select>
-            <p class="muted small" style="margin:4px 0 0">Evita che lo stesso cliente si dia più timbri nella stessa visita o da casa con un indirizzo copiato.</p>
+            <p class="muted small" style="margin:4px 0 0">Protezione: anche se qualcuno copiasse l'indirizzo del chip con un'app, non potrebbe darsi più di un punto per visita.</p>
           </div>
           <div>
-            <label>Indirizzo da scrivere sull'adesivo</label>
+            <label>Indirizzo da scrivere nel chip del timbro</label>
             <div class="row" style="align-items:center">
               <input id="nfcUrl" type="text" readonly style="flex:3;font-family:monospace;font-size:.85rem">
               <button class="chip" id="nfcCopy">📋 Copia</button>
             </div>
           </div>
           <div class="row" style="flex-wrap:wrap">
-            <button class="btn" id="nfcWrite"><span class="ico">✍️</span> Scrivi sull'adesivo</button>
+            <button class="btn" id="nfcWrite"><span class="ico">✍️</span> Scrivi sul timbro NFC</button>
             <button class="btn ghost" id="nfcRegen"><span class="ico">🔄</span> Rigenera codice</button>
           </div>
           <p class="small muted" id="nfcWriteHelp" style="margin:0"></p>
           <div class="info">
-            <strong>Come preparare l'adesivo (2 minuti):</strong><br>
-            1. Compra adesivi NFC <strong>NTAG213 o NTAG215</strong> (circa 1 € l'uno, online o in elettronica).<br>
-            2. <strong>Android con Chrome:</strong> apri questa pagina sul telefono, tocca "Scrivi sull'adesivo" e avvicinalo.<br>
-            &nbsp;&nbsp;&nbsp;<strong>iPhone o altro:</strong> installa l'app gratuita <em>NFC Tools</em> → Scrivi → Aggiungi record → URL → incolla l'indirizzo → Scrivi.<br>
-            3. Attacca l'adesivo vicino alla cassa con il cartello "Avvicina il telefono qui" (lo trovi in <a href="/poster.html" target="_blank">Stampa QR tavolo</a>).<br>
-            4. Se l'indirizzo gira dove non deve: <strong>Rigenera codice</strong> e riscrivi l'adesivo. I vecchi smettono subito di funzionare.
+            <strong>Come programmare il timbro (una volta sola, 2 minuti):</strong><br>
+            1. <strong>Android con Chrome:</strong> apri questa pagina sul telefono, tocca "Scrivi sul timbro NFC" e appoggia il timbro sul retro del telefono.<br>
+            &nbsp;&nbsp;&nbsp;<strong>iPhone o altro:</strong> app gratuita <em>NFC Tools</em> → Scrivi → Aggiungi record → URL → incolla l'indirizzo → Scrivi → appoggia il timbro.<br>
+            2. Prova: apri la tua tessera e appoggia il timbro al telefono. Deve aprirsi la tessera con il nuovo punto.<br>
+            3. Se il chip è protetto da scrittura o contiene già altro, va prima cancellato con NFC Tools (Altro → Cancella).<br>
+            4. Se l'indirizzo gira dove non deve: <strong>Rigenera codice</strong> e riscrivi il timbro. Il vecchio indirizzo smette subito di funzionare.<br><br>
+            <strong>Per il cliente:</strong> nessuna domanda. Il telefono viene riconosciuto in automatico se ha già aperto la tessera
+            (succede all'iscrizione, o toccando "🍕 Apri la tessera animata" nel Wallet). Solo su un telefono mai collegato
+            viene chiesto una volta di aprire la tessera dal Wallet.
           </div>
           <p class="error" id="nfcErr"></p>
         </section>
@@ -476,22 +479,22 @@
       catch { $('nfcUrl').select(); toast('Seleziona e copia l\'indirizzo'); }
     };
     $('nfcRegen').onclick = async () => {
-      if (!confirm('Generare un nuovo codice? Gli adesivi già scritti smetteranno di funzionare e andranno riscritti.')) return;
+      if (!confirm('Generare un nuovo codice? Il timbro andrà riscritto: il vecchio indirizzo smetterà di funzionare.')) return;
       await saveNfc({ regenerate: true });
-      toast('🔄 Nuovo codice: ora riscrivi l\'adesivo', 4000);
+      toast('🔄 Nuovo codice: ora riscrivi il timbro NFC', 4000);
     };
     // Web NFC: disponibile solo in Chrome su Android, su pagina HTTPS
     const canWriteNfc = 'NDEFReader' in window;
     $('nfcWriteHelp').textContent = canWriteNfc
-      ? 'Tocca "Scrivi sull\'adesivo" e avvicina l\'adesivo al retro del telefono.'
+      ? 'Tocca "Scrivi sul timbro NFC" e appoggia il timbro al retro del telefono.'
       : 'La scrittura diretta funziona solo da Chrome su Android: da qui copia l\'indirizzo e usa l\'app NFC Tools.';
     $('nfcWrite').disabled = !canWriteNfc;
     $('nfcWrite').onclick = async () => {
       try {
         const writer = new NDEFReader();
-        toast('📲 Avvicina ora l\'adesivo al telefono…', 6000);
+        toast('📲 Appoggia ora il timbro al retro del telefono…', 6000);
         await writer.write({ records: [{ recordType: 'url', data: $('nfcUrl').value }] });
-        toast('✅ Adesivo scritto! Provalo avvicinando un telefono.', 4000);
+        toast('✅ Timbro programmato! Provalo su una tessera.', 4000);
         vibrate(120);
       } catch (err) {
         $('nfcErr').textContent = 'Scrittura non riuscita: ' + err.message;
