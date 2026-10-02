@@ -1,5 +1,6 @@
 require('dotenv').config();
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const QRCode = require('qrcode');
 const db = require('./db');
@@ -165,7 +166,14 @@ app.post('/api/staff/stamp', requirePin, wrap(async (req, res) => {
   if (cfg.cooldownSec && before.lastVisitAt && Date.now() - Date.parse(before.lastVisitAt) < cfg.cooldownSec * 1000) {
     return res.status(429).json({ error: `Timbro già assegnato da meno di ${cfg.cooldownSec} secondi.` });
   }
-  db.addEvent({ type: 'stamp', customerId: customer.id, requestId: req.body.requestId, by: 'staff' });
+  const { rewardEarned } = await addStamp(customer, { requestId: req.body.requestId, by: 'staff' });
+  res.json({ ...customerView(customer), rewardEarned });
+}));
+
+// Assegna un timbro (usato dalla Cassa e dall'adesivo NFC): ledger, tessera web live, Wallet.
+async function addStamp(customer, { requestId, by }) {
+  const before = db.stateOf(customer.id, cfg.stampsForReward);
+  const event = db.addEvent({ type: 'stamp', customerId: customer.id, requestId, by });
   const after = db.stateOf(customer.id, cfg.stampsForReward);
   const rewardEarned = after.earned > before.earned;
   broadcast(customer, rewardEarned ? 'reward' : 'stamp');
@@ -176,8 +184,99 @@ app.post('/api/staff/stamp', requirePin, wrap(async (req, res) => {
     header: 'Premio sbloccato! 🍕',
     body: `${cfg.rewardText}: mostra la tessera alla prossima visita.`,
   }, { notifyOnUpdate: !rewardEarned && db.canPush(customer.id) });
-  res.json({ ...customerView(customer), rewardEarned });
+  return { before, after, rewardEarned, event };
+}
+
+// ---------- Timbro con adesivo NFC ----------
+// L'adesivo sul bancone contiene l'indirizzo /tap/<segreto>. Il telefono del cliente lo apre,
+// la pagina riconosce la tessera salvata su quel telefono e chiede il timbro.
+// Protezioni: segreto rigenerabile, un timbro NFC per visita (pausa configurabile), avviso live in Cassa.
+
+function nfcSecret() {
+  let { nfcSecret: s } = db.getSettings();
+  if (!s) {
+    s = crypto.randomBytes(9).toString('base64url');
+    db.updateSettings({ nfcSecret: s });
+  }
+  return s;
+}
+const nfcUrl = () => `${PUBLIC_URL}/tap/${nfcSecret()}`;
+const nfcCooldownHours = () => {
+  const h = Number(db.getSettings().nfcCooldownHours);
+  return Number.isFinite(h) && h >= 0 ? h : 3;
+};
+
+app.get('/tap/:secret', (req, res) => res.sendFile(path.join(__dirname, 'public', 'tap.html')));
+
+app.post('/api/tap', wrap(async (req, res) => {
+  const settings = db.getSettings();
+  if (settings.nfcEnabled === false) return res.status(403).json({ error: 'Il timbro con NFC è disattivato: chiedi in cassa.' });
+  if (String(req.body.secret || '') !== nfcSecret()) {
+    return res.status(403).json({ error: 'Questo adesivo NFC non è più valido: chiedi il timbro in cassa.' });
+  }
+
+  // Tessera salvata su questo telefono, oppure prima volta: codice tessera + email
+  let customer = req.body.token ? db.findByToken(String(req.body.token)) : null;
+  if (!customer && req.body.code && req.body.email) {
+    const code = String(req.body.code).trim().toUpperCase().replace(/^(PZ-?)?/, 'PZ-');
+    customer = db.findByCodeAndEmail(code, String(req.body.email).trim().toLowerCase());
+    if (!customer) return res.status(404).json({ error: 'Codice o email non corretti.', needLogin: true });
+  }
+  if (!customer) return res.status(404).json({ needLogin: true });
+
+  if (req.body.requestId && db.findByRequestId(req.body.requestId)) {
+    return res.json({ token: customer.token, duplicate: true });
+  }
+  const last = db.lastStampBy(customer.id, 'nfc');
+  const waitMs = last ? Date.parse(last.at) + nfcCooldownHours() * 3600e3 - Date.now() : 0;
+  if (waitMs > 0) {
+    const next = new Date(Date.now() + waitMs).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' });
+    return res.status(429).json({
+      token: customer.token,
+      error: `Hai già ricevuto il timbro per questa visita. Il prossimo timbro con NFC sarà possibile dalle ${next}.`,
+    });
+  }
+
+  const { before, after, rewardEarned } = await addStamp(customer, { requestId: req.body.requestId, by: 'nfc' });
+  staffBroadcast({ type: 'nfc', name: customer.name, code: customer.code, token: customer.token, stamps: after.stamps, rewardEarned });
+  res.json({ token: customer.token, before: { stamps: before.stamps, rewards: before.rewards }, rewardEarned });
 }));
+
+// Avvisi live per la Cassa (EventSource non può mandare header: il PIN arriva in query)
+const staffStreams = new Set();
+app.get('/api/staff/stream', (req, res) => {
+  if (req.query.pin !== cfg.staffPin) return res.status(401).end();
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  res.write('retry: 3000\n\n');
+  staffStreams.add(res);
+  const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+  req.on('close', () => { clearInterval(ping); staffStreams.delete(res); });
+});
+function staffBroadcast(event) {
+  const payload = `data: ${JSON.stringify(event)}\n\n`;
+  staffStreams.forEach((res) => res.write(payload));
+}
+
+app.get('/api/admin/nfc', requirePin, (req, res) => {
+  const s = db.getSettings();
+  res.json({ url: nfcUrl(), enabled: s.nfcEnabled !== false, cooldownHours: nfcCooldownHours() });
+});
+
+app.post('/api/admin/nfc', requirePin, (req, res) => {
+  const patch = {};
+  if (typeof req.body.enabled === 'boolean') patch.nfcEnabled = req.body.enabled;
+  if (req.body.cooldownHours !== undefined) {
+    const h = Number(req.body.cooldownHours);
+    if (!Number.isFinite(h) || h < 0 || h > 48) return res.status(400).json({ error: 'Pausa non valida (0–48 ore).' });
+    patch.nfcCooldownHours = h;
+  }
+  // Nuovo segreto: gli adesivi scritti prima smettono di funzionare
+  if (req.body.regenerate) patch.nfcSecret = crypto.randomBytes(9).toString('base64url');
+  db.updateSettings(patch);
+  const s = db.getSettings();
+  res.json({ url: nfcUrl(), enabled: s.nfcEnabled !== false, cooldownHours: nfcCooldownHours() });
+});
 
 app.post('/api/staff/redeem', requirePin, wrap(async (req, res) => {
   const customer = loadCustomer(req, res);
@@ -230,7 +329,7 @@ app.get('/api/admin/stats', requirePin, (req, res) => {
     },
     customers: views.sort((a, b) => (b.lastVisitAt || '').localeCompare(a.lastVisitAt || '')),
     events: db.events.slice(-25).reverse().map((e) => ({
-      type: e.type, at: e.at, name: nameOf[e.customerId] || '?', voided: voided.has(e.id),
+      type: e.type, by: e.by, at: e.at, name: nameOf[e.customerId] || '?', voided: voided.has(e.id),
     })),
   });
 });

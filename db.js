@@ -84,6 +84,15 @@ function createCustomer({ name, email, consentMarketing }) {
 }
 
 const findByEmail = (email) => db.customers.find((c) => c.email === email);
+const findByCodeAndEmail = (code, email) =>
+  db.customers.find((c) => c.code === code && c.email === email);
+
+// Ultimo timbro (non annullato) assegnato da una certa fonte, es. 'nfc'
+function lastStampBy(customerId, by) {
+  const evs = db.events.filter((e) => e.customerId === customerId);
+  const voided = new Set(evs.filter((e) => e.type === 'void').map((e) => e.ref));
+  return evs.filter((e) => e.type === 'stamp' && e.by === by && !voided.has(e.id)).pop() || null;
+}
 const findByToken = (token) => db.customers.find((c) => c.token === token);
 
 function search(q) {
@@ -197,7 +206,7 @@ module.exports = {
   get customers() { return db.customers; },
   get events() { return db.events; },
   get campaigns() { return db.campaigns; },
-  init, createCustomer, findByEmail, findByToken, search, addEvent, findByRequestId, stateOf, reset,
+  init, createCustomer, findByEmail, findByCodeAndEmail, lastStampBy, findByToken, search, addEvent, findByRequestId, stateOf, reset,
   getSettings, updateSettings,
   PUSH_LIMIT, pushesLast24h, canPush, logNotification,
   createCampaign, findCampaign, updateCampaign, dueCampaigns, messagesFor,
