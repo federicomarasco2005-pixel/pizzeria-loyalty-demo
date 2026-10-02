@@ -1,7 +1,7 @@
 # Genera le immagini dei timbri.
 # Uso: powershell -File tools/gen-stamps.ps1 -Total 6
 # Produce in public/stamps/:
-#   grid-<Total>-<n>.png  griglia 1032x812 (formato hero image Google Wallet), sfondo trasparente,
+#   grid-<Total>-<n>.png  striscia 1032x336 (immagine principale Google Wallet), sfondo trasparente,
 #                         n pizze colorate (timbri ottenuti) + pizze scure (timbri mancanti)
 #   pizza.png / pizza-empty.png  icone singole per la tessera web
 #   .frames/  fotogrammi per le GIF animate (vedi tools/make-gifs.js)
@@ -48,11 +48,12 @@ function New-Canvas($w, $h) {
   return @($bmp, $g)
 }
 
-# Griglia: 2 righe (3 righe oltre 10 timbri), celle grandi, margine verticale ~60px come da linee guida
-$W = 1032; $H = 812
-$rows = if ($Total -gt 10) { 3 } else { [Math]::Min(2, $Total) }
+# Striscia 3:1 (1032x336): è la forma con cui il Wallet mostra l'immagine sulle carte fedeltà,
+# così nessuna pizza viene tagliata. Una riga fino a 8 timbri, due righe oltre.
+$W = 1032; $H = 336
+$rows = if ($Total -gt 8) { 2 } else { 1 }
 $cols = [Math]::Ceiling($Total / $rows)
-$padX = 50; $padY = 70; $gap = 34
+$padX = 34; $padY = $(if ($rows -eq 1) { 70 } else { 22 }); $gap = 20
 $d = [Math]::Floor([Math]::Min(($W - 2 * $padX - $gap * ($cols - 1)) / $cols, ($H - 2 * $padY - $gap * ($rows - 1)) / $rows))
 $gridW = $cols * $d + ($cols - 1) * $gap; $gridH = $rows * $d + ($rows - 1) * $gap
 $x0 = ($W - $gridW) / 2; $y0 = ($H - $gridH) / 2
@@ -106,11 +107,24 @@ function Save-Frame($bmp, $name, $idx) {
 
 $manifest = @{}
 
-# 1) Timbro appena ottenuto (n = 1..Total): l'ultima pizza entra girando, anello dorato e scintille
+# "+1" dorato con bordo scuro, centrato in (cx, cy)
+$plusFont = New-Object System.Drawing.FontFamily 'Arial Black'
+function Draw-PlusOne($g, $cx, $cy, [double]$size, [int]$alpha) {
+  $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $sf = New-Object System.Drawing.StringFormat; $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
+  $path.AddString('+1', $plusFont, 0, [float]$size, (New-Object System.Drawing.PointF ([float]$cx, [float]$cy)), $sf)
+  $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb($alpha, 90, 12, 8)), ([float]($size * 0.16))
+  $pen.LineJoin = 'Round'
+  $g.DrawPath($pen, $path)
+  $g.FillPath((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb($alpha, $gold))), $path)
+}
+
+# 1) Timbro appena ottenuto (n = 1..Total): l'ultima pizza entra girando, anello dorato,
+#    scintille e un "+1" che sale e svanisce
 for ($n = 1; $n -le $Total; $n++) {
-  $name = "anim-$Total-$n"; $delays = @(); $steps = 14
-  for ($f = 0; $f -le $steps; $f++) {
-    $t = $f / $steps
+  $name = "anim-$Total-$n"; $delays = @(); $frames = 22; $popFrames = 12
+  for ($f = 0; $f -lt $frames; $f++) {
+    $t = [Math]::Min(1, $f / $popFrames)
     $bmp = New-Object System.Drawing.Bitmap $W, $H
     $g = [System.Drawing.Graphics]::FromImage($bmp); $g.SmoothingMode = 'AntiAlias'; $g.Clear($bg)
     for ($i = 0; $i -lt $Total; $i++) {
@@ -120,7 +134,7 @@ for ($n = 1; $n -le $Total; $n++) {
     # easeOutBack per la scala, rotazione che si smorza
     $u = $t - 1; $scale = 1 + 2.70158 * [Math]::Pow($u, 3) + 1.70158 * [Math]::Pow($u, 2)
     if ($t -gt 0) { Draw-PizzaAt $g $k $full ([Math]::Max(0.05, $scale)) (-200 * [Math]::Pow(1 - $t, 2)) }
-    if ($t -ge 0.35) {
+    if ($t -ge 0.35 -and $f -le $popFrames) {
       $q = ($t - 0.35) / 0.65; $alpha = [int](255 * (1 - $q))
       $r = $d * (0.52 + 0.4 * $q)
       $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb($alpha, $gold)), ([float]($d * 0.06 * (1 - $q) + 2))
@@ -131,8 +145,17 @@ for ($n = 1; $n -le $Total; $n++) {
           [float]($cx + [Math]::Cos($a) * $dist - $sr), [float]($cy + [Math]::Sin($a) * $dist - $sr), [float](2 * $sr), [float](2 * $sr))
       }
     }
+    # "+1": compare con un piccolo rimbalzo sopra la pizza, sale e svanisce
+    $pf = $f - 5
+    if ($pf -ge 0 -and $f -lt $frames - 1) {
+      $pq = $pf / ($frames - 7)
+      $pop = if ($pq -lt 0.2) { 0.6 + 2.5 * $pq } elseif ($pq -lt 0.35) { 1.1 - ($pq - 0.2) * 0.66 } else { 1.0 }
+      $alpha = if ($pq -lt 0.7) { 255 } else { [int](255 * (1 - ($pq - 0.7) / 0.3)) }
+      $py = $cy - $d * 0.3 - $pq * $d * 0.42
+      Draw-PlusOne $g ($cx + $d * 0.32) $py ($d * 0.5 * $pop) ([Math]::Max(0, $alpha))
+    }
     Save-Frame $bmp $name $f; $g.Dispose(); $bmp.Dispose()
-    $delays += $(if ($f -eq 0) { 400 } elseif ($f -eq $steps) { 2600 } else { 50 })
+    $delays += $(if ($f -eq 0) { 400 } elseif ($f -eq $frames - 1) { 2400 } else { 50 })
   }
   $manifest[$name] = $delays
 }
