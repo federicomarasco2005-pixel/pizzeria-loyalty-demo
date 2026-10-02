@@ -1,0 +1,16 @@
+# Tiene sveglio il server gratuito su Render e fa partire gli invii programmati.
+# GitHub esegue i job pianificati con qualche minuto di ritardo: gli invii programmati
+# partono quindi entro ~10-15 minuti dall'orario scelto.
+name: Sveglia server e invii programmati
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chiama /api/cron
+        run: curl -fsS --max-time 120 https://pizzeria-loyalty-demo.onrender.com/api/cron || true
