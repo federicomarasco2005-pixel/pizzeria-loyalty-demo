@@ -157,7 +157,8 @@ function objectBody(customer, state, extras = {}) {
         header: 'Come funziona',
         body: cfg.walletQr
           ? `Mostra il QR a ogni visita: ricevi 1 timbro. Ogni ${n} timbri: ${cfg.rewardText.toLowerCase()}.`
-          : `A ogni visita di' in cassa il tuo codice ${customer.code} (o mostra il QR dal link qui sotto): ricevi 1 timbro. Ogni ${n} timbri: ${cfg.rewardText.toLowerCase()}.`,
+          : `A ogni visita apri questa tessera e avvicina il telefono in cassa: con il timbro NFC ricevi subito il punto. ` +
+            `In alternativa di' il codice ${customer.code}. Ogni ${n} timbri: ${cfg.rewardText.toLowerCase()}.`,
       },
     ],
     linksModuleData: { uris: links },

@@ -187,9 +187,9 @@ async function addStamp(customer, { requestId, by }) {
   return { before, after, rewardEarned, event };
 }
 
-// ---------- Timbro con adesivo NFC ----------
-// L'adesivo sul bancone contiene l'indirizzo /tap/<segreto>. Il telefono del cliente lo apre,
-// la pagina riconosce la tessera salvata su quel telefono e chiede il timbro.
+// ---------- Timbro NFC del gestore ----------
+// Il chip NFC del timbro (o un adesivo) contiene l'indirizzo /tap/<segreto>. Il gestore lo avvicina al telefono
+// del cliente, che lo apre: la pagina riconosce la tessera memorizzata su quel telefono e aggiunge il punto.
 // Protezioni: segreto rigenerabile, un timbro NFC per visita (pausa configurabile), avviso live in Cassa.
 
 function nfcSecret() {
@@ -212,7 +212,7 @@ app.post('/api/tap', wrap(async (req, res) => {
   const settings = db.getSettings();
   if (settings.nfcEnabled === false) return res.status(403).json({ error: 'Il timbro con NFC è disattivato: chiedi in cassa.' });
   if (String(req.body.secret || '') !== nfcSecret()) {
-    return res.status(403).json({ error: 'Questo adesivo NFC non è più valido: chiedi il timbro in cassa.' });
+    return res.status(403).json({ error: 'Questo timbro NFC non è più valido: chiedi il punto in cassa.' });
   }
 
   // Tessera salvata su questo telefono, oppure prima volta: codice tessera + email
@@ -233,7 +233,7 @@ app.post('/api/tap', wrap(async (req, res) => {
     const next = new Date(Date.now() + waitMs).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' });
     return res.status(429).json({
       token: customer.token,
-      error: `Hai già ricevuto il timbro per questa visita. Il prossimo timbro con NFC sarà possibile dalle ${next}.`,
+      error: `Hai già ricevuto il punto per questa visita. Il prossimo sarà possibile dalle ${next}.`,
     });
   }
 
@@ -271,7 +271,7 @@ app.post('/api/admin/nfc', requirePin, (req, res) => {
     if (!Number.isFinite(h) || h < 0 || h > 48) return res.status(400).json({ error: 'Pausa non valida (0–48 ore).' });
     patch.nfcCooldownHours = h;
   }
-  // Nuovo segreto: gli adesivi scritti prima smettono di funzionare
+  // Nuovo segreto: i chip scritti prima smettono di funzionare
   if (req.body.regenerate) patch.nfcSecret = crypto.randomBytes(9).toString('base64url');
   db.updateSettings(patch);
   const s = db.getSettings();
