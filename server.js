@@ -74,6 +74,8 @@ app.get('/api/card/:token', wrap(async (req, res) => {
     stampsForReward: cfg.stampsForReward,
     qr: await QRCode.toDataURL(customer.token, { margin: 1, width: 360 }),
     saveUrl: wallet.enabled() ? wallet.saveUrl(customer) : null,
+    reviewUrl: db.getSettings().reviewUrl || null,
+    messages: db.messagesFor(customer.id).slice(0, 5),
   });
 }));
 
@@ -95,11 +97,11 @@ app.get('/api/card/:token/stream', (req, res) => {
   });
 });
 
-function broadcast(customer, type) {
+function broadcast(customer, type, extra = {}) {
   const clients = streams.get(customer.token);
   if (!clients || !clients.size) return;
   const s = db.stateOf(customer.id, cfg.stampsForReward);
-  const payload = `data: ${JSON.stringify({ type, stamps: s.stamps, rewards: s.rewards })}\n\n`;
+  const payload = `data: ${JSON.stringify({ type, stamps: s.stamps, rewards: s.rewards, ...extra })}\n\n`;
   clients.forEach((res) => res.write(payload));
 }
 
@@ -163,11 +165,12 @@ app.post('/api/staff/stamp', requirePin, wrap(async (req, res) => {
   const rewardEarned = after.earned > before.earned;
   broadcast(customer, rewardEarned ? 'reward' : 'stamp');
 
-  // Premio: messaggio dedicato. Timbro normale: notifica di aggiornamento del saldo.
+  // Premio: messaggio dedicato. Timbro normale: notifica di aggiornamento del saldo
+  // (solo se il cliente non ha già ricevuto 3 notifiche nelle ultime 24 ore).
   await syncWallet(customer, rewardEarned && {
     header: 'Premio sbloccato! 🍕',
     body: `${cfg.rewardText}: mostra la tessera alla prossima visita.`,
-  }, { notifyOnUpdate: !rewardEarned });
+  }, { notifyOnUpdate: !rewardEarned && db.canPush(customer.id) });
   res.json({ ...customerView(customer), rewardEarned });
 }));
 
@@ -232,6 +235,142 @@ app.post('/api/admin/reset', requirePin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Impostazioni del locale ----------
+
+app.get('/api/admin/settings', requirePin, (req, res) => res.json(db.getSettings()));
+
+app.post('/api/admin/settings', requirePin, (req, res) => {
+  const reviewUrl = String(req.body.reviewUrl || '').trim();
+  if (reviewUrl && !/^https:\/\/\S+$/.test(reviewUrl)) {
+    return res.status(400).json({ error: 'Il link della recensione deve iniziare con https://' });
+  }
+  const settings = db.updateSettings({ reviewUrl });
+  // Aggiorna in background le tessere già emesse (il link compare nei dettagli del pass).
+  (async () => { for (const c of db.customers) await syncWallet(c); })();
+  res.json(settings);
+});
+
+// ---------- Notifiche del gestore ----------
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SEGMENTS = {
+  all: { label: 'Tutti gli iscritti', test: () => true },
+  near: { label: 'A 1 timbro dal premio', test: (s) => s.stamps === cfg.stampsForReward - 1 },
+  reward: { label: 'Con un premio da ritirare', test: (s) => s.rewards > 0 },
+  inactive: {
+    label: 'Non tornano da 30+ giorni',
+    test: (s, c) => Date.now() - Date.parse(s.lastVisitAt || c.createdAt) > 30 * DAY_MS,
+  },
+  never: { label: 'Iscritti ma mai tornati', test: (s) => s.visits === 0 },
+  new: { label: 'Iscritti negli ultimi 7 giorni', test: (s, c) => Date.now() - Date.parse(c.createdAt) < 7 * DAY_MS },
+  manual: { label: 'Scelti a mano', test: () => true },
+};
+
+// Calcola i destinatari al momento dell'invio (così un invio programmato usa dati aggiornati).
+// I messaggi promozionali vanno solo a chi ha dato il consenso marketing.
+function resolveAudience({ segment, ids = [], promo }) {
+  const seg = SEGMENTS[segment] || SEGMENTS.all;
+  const pool = segment === 'manual' ? db.customers.filter((c) => ids.includes(c.id)) : db.customers;
+  const inSegment = pool.filter((c) => seg.test(db.stateOf(c.id, cfg.stampsForReward), c));
+  const recipients = promo ? inSegment.filter((c) => c.consentMarketing) : inSegment;
+  return {
+    recipients,
+    excludedNoConsent: inSegment.length - recipients.length,
+    pushable: recipients.filter((c) => db.canPush(c.id)).length,
+  };
+}
+
+app.get('/api/admin/segments', requirePin, (req, res) => {
+  res.json({
+    pushLimit: db.PUSH_LIMIT,
+    segments: Object.entries(SEGMENTS).map(([key, s]) => ({
+      key, label: s.label, count: key === 'manual' ? null : resolveAudience({ segment: key }).recipients.length,
+    })),
+    customers: db.customers.map((c) => ({
+      id: c.id, name: c.name, code: c.code, consentMarketing: c.consentMarketing, pushesLast24h: db.pushesLast24h(c.id),
+    })),
+  });
+});
+
+app.post('/api/admin/audience', requirePin, (req, res) => {
+  const a = resolveAudience(req.body);
+  res.json({ count: a.recipients.length, pushable: a.pushable, textOnly: a.recipients.length - a.pushable, excludedNoConsent: a.excludedNoConsent });
+});
+
+app.get('/api/admin/campaigns', requirePin, (req, res) => {
+  res.json([...db.campaigns].reverse().slice(0, 30).map((c) => ({ ...c, segmentLabel: (SEGMENTS[c.segment] || {}).label })));
+});
+
+app.post('/api/admin/campaigns', requirePin, wrap(async (req, res) => {
+  const title = String(req.body.title || '').trim();
+  const body = String(req.body.body || '').trim();
+  if (!title || title.length > 60) return res.status(400).json({ error: 'Titolo obbligatorio, massimo 60 caratteri.' });
+  if (!body || body.length > 300) return res.status(400).json({ error: 'Testo obbligatorio, massimo 300 caratteri.' });
+  if (!SEGMENTS[req.body.segment]) return res.status(400).json({ error: 'Scegli i destinatari.' });
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.map(String) : [];
+  if (req.body.segment === 'manual' && !ids.length) return res.status(400).json({ error: 'Seleziona almeno un cliente.' });
+
+  let sendAt = new Date();
+  if (req.body.sendAt) {
+    sendAt = new Date(req.body.sendAt);
+    if (isNaN(sendAt)) return res.status(400).json({ error: 'Data di invio non valida.' });
+  }
+  const campaign = db.createCampaign({
+    title, body, segment: req.body.segment, ids, promo: req.body.promo !== false,
+    sendAt: sendAt.toISOString(), recipients: [],
+  });
+  if (sendAt <= new Date()) await sendCampaign(campaign);
+  res.json(db.findCampaign(campaign.id));
+}));
+
+app.post('/api/admin/campaigns/:id/cancel', requirePin, (req, res) => {
+  const c = db.findCampaign(req.params.id);
+  if (!c || c.status !== 'scheduled') return res.status(400).json({ error: 'Invio non annullabile.' });
+  res.json(db.updateCampaign(c.id, { status: 'cancelled' }));
+});
+
+let sending = false;
+async function sendCampaign(campaign) {
+  db.updateCampaign(campaign.id, { status: 'sending' });
+  const { recipients, excludedNoConsent } = resolveAudience(campaign);
+  const results = { total: recipients.length, push: 0, textOnly: 0, failed: 0, excludedNoConsent };
+  for (const customer of recipients) {
+    if (wallet.enabled()) {
+      const r = await wallet.notify(customer, campaign.title, campaign.body, {
+        push: db.canPush(customer.id), messageId: `c_${campaign.id}`,
+      });
+      if (!r.ok) results.failed++;
+      else if (r.push) { results.push++; db.logNotification(customer.id, 'campaign', true); }
+      else results.textOnly++;
+    }
+    // La tessera web aperta mostra subito il messaggio.
+    broadcast(customer, 'message', { title: campaign.title, body: campaign.body });
+  }
+  db.updateCampaign(campaign.id, {
+    status: 'sent', sentAt: new Date().toISOString(), recipients: recipients.map((c) => c.id), results,
+  });
+  console.log(`[notifiche] "${campaign.title}" inviata a ${results.total} (push ${results.push}, solo testo ${results.textOnly}, errori ${results.failed})`);
+}
+
+// Invia le campagne programmate scadute. Chiamato ogni 30 secondi e da /api/cron
+// (un ping esterno tiene sveglio il server gratuito, che altrimenti va in pausa).
+async function processDueCampaigns() {
+  if (sending) return;
+  sending = true;
+  try {
+    for (const c of db.dueCampaigns()) await sendCampaign(c);
+  } catch (err) {
+    console.error(`[notifiche] ${err.message}`);
+  } finally {
+    sending = false;
+  }
+}
+
+app.get('/api/cron', wrap(async (req, res) => {
+  await processDueCampaigns();
+  res.json({ ok: true, scheduled: db.campaigns.filter((c) => c.status === 'scheduled').length });
+}));
+
 // ---------- Wallet sync ----------
 
 let classReady = false;
@@ -241,12 +380,18 @@ async function ensureClassOnce() {
   classReady = true;
 }
 
-async function syncWallet(customer, message, options) {
+async function syncWallet(customer, message, options = {}) {
   if (!wallet.enabled()) return;
   try {
     await ensureClassOnce();
-    await wallet.upsertObject(customer, db.stateOf(customer.id, cfg.stampsForReward), options);
-    if (message) await wallet.notify(customer, message.header, message.body);
+    await wallet.upsertObject(customer, db.stateOf(customer.id, cfg.stampsForReward), {
+      ...options, reviewUrl: db.getSettings().reviewUrl,
+    });
+    if (options.notifyOnUpdate) db.logNotification(customer.id, 'stamp', true);
+    if (message) {
+      const r = await wallet.notify(customer, message.header, message.body, { push: db.canPush(customer.id) });
+      if (r.push) db.logNotification(customer.id, 'reward', true);
+    }
   } catch (err) {
     // Il ledger è la fonte autorevole: un errore Wallet non blocca l'operazione in cassa.
     console.error(`[wallet] ${err.message}`);
@@ -267,6 +412,8 @@ app.use((err, req, res, next) => {
       console.error(`[wallet] ${err.message}`);
     }
   }
+  setInterval(processDueCampaigns, 30000);
+  processDueCampaigns();
   app.listen(PORT, () => {
     console.log(`\n${cfg.pizzeriaName} — demo loyalty`);
     console.log(`  Locale:        http://localhost:${PORT}`);

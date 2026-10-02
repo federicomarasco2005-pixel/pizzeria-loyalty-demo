@@ -78,9 +78,12 @@ async function ensureClass() {
   console.log(`[wallet] classe aggiornata: ${classId()}`);
 }
 
-function objectBody(customer, state) {
+// extras.reviewUrl: link "Lascia una recensione su Google" (impostato dal gestore in Dashboard)
+function objectBody(customer, state, extras = {}) {
   const n = cfg.stampsForReward;
   const missing = n - state.stamps;
+  const links = [{ id: 'web', uri: `${cfg.publicUrl}/card/${customer.token}`, description: '🍕 Apri la tessera animata' }];
+  if (extras.reviewUrl) links.unshift({ id: 'review', uri: extras.reviewUrl, description: '⭐ Lascia una recensione su Google' });
   return {
     id: objectId(customer),
     classId: classId(),
@@ -90,9 +93,10 @@ function objectBody(customer, state) {
     loyaltyPoints: { label: 'Timbri', balance: { string: `${state.stamps} / ${n}` } },
     secondaryLoyaltyPoints: { label: 'Premi disponibili', balance: { int: state.rewards } },
     barcode: { type: 'QR_CODE', value: customer.token, alternateText: customer.code },
-    // I "pallini" dei timbri: un'immagine diversa per ogni stato (URL diverso = Google la ricarica).
+    // Griglia dei timbri (immagine principale della tessera): un file per ogni stato,
+    // URL diverso = Google la ricarica. Formato 1032x812 come da linee guida Google Wallet.
     heroImage: {
-      sourceUri: { uri: `${cfg.stampsImageBase}/stamps-${n}-${Math.min(state.stamps, n)}.png` },
+      sourceUri: { uri: `${cfg.stampsImageBase}/grid-${n}-${Math.min(state.stamps, n)}.png` },
       contentDescription: { defaultValue: { language: 'it-IT', value: `${state.stamps} timbri su ${n}` } },
     },
     textModulesData: [
@@ -109,15 +113,13 @@ function objectBody(customer, state) {
         body: `Mostra il QR a ogni visita: ricevi 1 timbro. Ogni ${n} timbri: ${cfg.rewardText.toLowerCase()}.`,
       },
     ],
-    linksModuleData: {
-      uris: [{ id: 'web', uri: `${cfg.publicUrl}/card/${customer.token}`, description: 'Apri la tessera online' }],
-    },
+    linksModuleData: { uris: links },
   };
 }
 
 // notifyOnUpdate: Google avvisa il telefono quando cambia il saldo (max 3 notifiche al giorno per pass).
-async function upsertObject(customer, state, { notifyOnUpdate = false } = {}) {
-  const body = objectBody(customer, state);
+async function upsertObject(customer, state, { notifyOnUpdate = false, ...extras } = {}) {
+  const body = objectBody(customer, state, extras);
   try {
     await request('PATCH', `${BASE}/loyaltyObject/${body.id}`,
       notifyOnUpdate ? { ...body, notifyPreference: 'notifyOnUpdate' } : body);
@@ -127,11 +129,30 @@ async function upsertObject(customer, state, { notifyOnUpdate = false } = {}) {
   }
 }
 
-// Messaggio sul pass con notifica sul telefono (Google limita le notifiche per pass/giorno).
-async function notify(customer, header, body) {
-  await request('POST', `${BASE}/loyaltyObject/${objectId(customer)}/addMessage`, {
-    message: { id: `m_${Date.now()}`, header, body, messageType: 'TEXT_AND_NOTIFY' },
-  }).catch((err) => console.warn(`[wallet] notifica non inviata: ${describe(err)}`));
+// Messaggio nei dettagli del pass. push=true: anche notifica sul telefono (TEXT_AND_NOTIFY).
+// Google consente al massimo 3 notifiche push per pass ogni 24 ore: se la quota è finita
+// il messaggio viene comunque aggiunto alla tessera, senza notifica.
+// Restituisce { ok, push } con quello che è stato effettivamente inviato.
+async function notify(customer, header, body, { push = true, messageId } = {}) {
+  const url = `${BASE}/loyaltyObject/${objectId(customer)}/addMessage`;
+  const message = (type) => ({ message: { id: messageId || `m_${Date.now()}`, header, body, messageType: type } });
+  try {
+    await request('POST', url, message(push ? 'TEXT_AND_NOTIFY' : 'TEXT'));
+    return { ok: true, push };
+  } catch (err) {
+    const quota = status(err) === 429 || /quota/i.test(describe(err));
+    if (push && quota) {
+      try {
+        await request('POST', url, message('TEXT'));
+        return { ok: true, push: false };
+      } catch (err2) {
+        console.warn(`[wallet] messaggio non inviato: ${describe(err2)}`);
+        return { ok: false, push: false };
+      }
+    }
+    console.warn(`[wallet] messaggio non inviato: ${describe(err)}`);
+    return { ok: false, push: false, notSaved: status(err) === 404 };
+  }
 }
 
 function saveUrl(customer) {

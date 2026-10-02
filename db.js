@@ -6,7 +6,12 @@ const path = require('path');
 const crypto = require('crypto');
 
 const FILE = path.join(__dirname, 'data', 'db.json');
-const empty = () => ({ customers: [], events: [] });
+const empty = () => ({ customers: [], events: [], campaigns: [], notifications: [], settings: {} });
+
+// Archivi creati con versioni precedenti: aggiunge le sezioni mancanti.
+function normalize(data) {
+  return { ...empty(), ...data, settings: { ...(data && data.settings) } };
+}
 
 let db = empty();
 let pool = null;
@@ -21,11 +26,11 @@ async function init() {
     });
     await pool.query('CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v JSONB NOT NULL)');
     const { rows } = await pool.query("SELECT v FROM kv WHERE k = 'db'");
-    if (rows[0]) db = rows[0].v;
+    if (rows[0]) db = normalize(rows[0].v);
     console.log(`[db] Postgres: ${db.customers.length} clienti caricati`);
   } else {
     try {
-      db = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+      db = normalize(JSON.parse(fs.readFileSync(FILE, 'utf8')));
     } catch {
       db = empty();
     }
@@ -124,13 +129,76 @@ function stateOf(customerId, stampsForReward) {
   return s;
 }
 
+// Azzera clienti e operazioni della demo, mantenendo le impostazioni del locale.
 function reset() {
-  db = empty();
+  db = { ...empty(), settings: db.settings };
   persist();
 }
+
+// ---------- Impostazioni del locale ----------
+
+const getSettings = () => db.settings;
+
+function updateSettings(patch) {
+  db.settings = { ...db.settings, ...patch };
+  persist();
+  return db.settings;
+}
+
+// ---------- Notifiche (limite Google: 3 push per pass ogni 24 ore) ----------
+
+const PUSH_LIMIT = 3;
+const DAY = 24 * 60 * 60 * 1000;
+
+function pushesLast24h(customerId, now = Date.now()) {
+  return db.notifications.filter((n) => n.customerId === customerId && n.push && now - Date.parse(n.at) < DAY).length;
+}
+
+const canPush = (customerId) => pushesLast24h(customerId) < PUSH_LIMIT;
+
+function logNotification(customerId, kind, push) {
+  db.notifications.push({ customerId, kind, push, at: new Date().toISOString() });
+  // tiene solo gli ultimi 7 giorni: servono solo per il conteggio
+  const cutoff = Date.now() - 7 * DAY;
+  db.notifications = db.notifications.filter((n) => Date.parse(n.at) > cutoff);
+  persist();
+}
+
+// ---------- Campagne del gestore ----------
+
+function createCampaign(data) {
+  const c = { id: id(6), createdAt: new Date().toISOString(), status: 'scheduled', results: null, ...data };
+  db.campaigns.push(c);
+  persist();
+  return c;
+}
+
+const findCampaign = (cid) => db.campaigns.find((c) => c.id === cid);
+
+function updateCampaign(cid, patch) {
+  const c = findCampaign(cid);
+  if (!c) return null;
+  Object.assign(c, patch);
+  persist();
+  return c;
+}
+
+const dueCampaigns = (now = Date.now()) =>
+  db.campaigns.filter((c) => c.status === 'scheduled' && Date.parse(c.sendAt) <= now);
+
+// Messaggi già inviati a un cliente (mostrati anche nella tessera web).
+const messagesFor = (customerId) =>
+  db.campaigns
+    .filter((c) => c.status === 'sent' && c.recipients.includes(customerId))
+    .map((c) => ({ id: c.id, title: c.title, body: c.body, at: c.sentAt }))
+    .sort((a, b) => b.at.localeCompare(a.at));
 
 module.exports = {
   get customers() { return db.customers; },
   get events() { return db.events; },
+  get campaigns() { return db.campaigns; },
   init, createCustomer, findByEmail, findByToken, search, addEvent, findByRequestId, stateOf, reset,
+  getSettings, updateSettings,
+  PUSH_LIMIT, pushesLast24h, canPush, logNotification,
+  createCampaign, findCampaign, updateCampaign, dueCampaigns, messagesFor,
 };
