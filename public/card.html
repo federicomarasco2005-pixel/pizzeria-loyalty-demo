@@ -130,9 +130,25 @@
           $('qr').src = c.qr;
           if (c.saveUrl) { $('save').href = c.saveUrl; $('save').classList.remove('hidden'); }
           else $('nowallet').classList.remove('hidden');
+          setCardToken(token); // ricorda la tessera su questo telefono (timbro con NFC)
+          const params = new URLSearchParams(location.search);
+          // Arrivati dall'adesivo NFC (?from=timbri-premi): si parte dallo stato precedente
+          // e si anima il timbro appena aggiunto
+          const from = (params.get('from') || '').match(/^(\d+)-(\d+)$/);
+          if (from) {
+            const prev = { stamps: +from[1], rewards: +from[2], stampsForReward: c.stampsForReward };
+            paint(prev, { animate: false });
+            state = prev;
+            history.replaceState(null, '', location.pathname);
+            setTimeout(() => celebrate(prev, next), 450);
+            state = next;
+            if (c.reviewUrl) { $('review').href = c.reviewUrl; $('review').classList.remove('hidden'); }
+            renderMessages(c.messages || []);
+            return;
+          }
           paint(next, { animate: false });
           // Arrivati dal link "Mostra il QR per la cassa" del Wallet: QR già aperto
-          if (new URLSearchParams(location.search).has('qr')) $('qrBtn').click();
+          if (params.has('qr')) $('qrBtn').click();
         } else if (next.stamps !== state.stamps || next.rewards !== state.rewards) {
           celebrate(state, next);
         }

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timbro NFC</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .tap { text-align: center; padding-top: 32px; }
+    .tap .big { font-size: 4.5rem; animation: wiggle 1.2s ease-in-out infinite; display: inline-block; }
+    .spinner { width: 44px; height: 44px; border-radius: 50%; border: 5px solid var(--line); border-top-color: var(--brand); margin: 18px auto; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <img src="/logo.png" alt="">
+    <h1 data-cfg="pizzeriaName"></h1>
+    <p>Timbro con NFC</p>
+  </header>
+
+  <main class="wrap">
+    <section class="panel overlap tap stack">
+      <!-- In corso -->
+      <div id="working">
+        <div class="big">📲</div>
+        <h2>Sto aggiungendo il timbro…</h2>
+        <div class="spinner"></div>
+      </div>
+
+      <!-- Prima volta su questo telefono -->
+      <form id="login" class="hidden" style="text-align:left" novalidate>
+        <h2 style="text-align:center">Collega la tua tessera</h2>
+        <p class="muted" style="margin-top:-4px">Solo la prima volta su questo telefono. Il codice è sulla tessera nel Wallet (es. PZ-AB12C).</p>
+        <label for="code">Codice tessera</label>
+        <input id="code" type="text" autocapitalize="characters" autocomplete="off" placeholder="PZ-AB12C">
+        <label for="email">Email usata all'iscrizione</label>
+        <input id="email" type="email" inputmode="email" autocomplete="email">
+        <button class="btn big" style="margin-top:16px" type="submit"><span class="ico">🍕</span> Aggiungi il timbro</button>
+        <p class="center small"><a href="/">Non hai ancora la tessera? Iscriviti</a></p>
+      </form>
+
+      <!-- Errore / già timbrato -->
+      <div id="msg" class="hidden">
+        <div class="big">⏳</div>
+        <p id="msgText" style="font-size:1.05rem"></p>
+        <a id="cardLink" class="btn hidden" href="#"><span class="ico">🍕</span> Apri la mia tessera</a>
+      </div>
+      <p class="error" id="err"></p>
+    </section>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const secret = decodeURIComponent(location.pathname.split('/').pop());
+    const requestId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
+    applyBrand();
+
+    function show(id) { ['working', 'login', 'msg'].forEach((x) => $(x).classList.toggle('hidden', x !== id)); }
+
+    async function tap(extra = {}) {
+      show('working');
+      $('err').textContent = '';
+      try {
+        const r = await api('/api/tap', { method: 'POST', body: { secret, requestId, token: getCardToken(), ...extra } });
+        setCardToken(r.token);
+        // Apre la tessera partendo dallo stato precedente: così parte l'animazione del nuovo timbro
+        const from = r.before ? '?from=' + r.before.stamps + '-' + r.before.rewards : '';
+        location.replace('/card/' + encodeURIComponent(r.token) + from);
+      } catch (err) {
+        const data = err.data || {};
+        if (data.token) setCardToken(data.token);
+        if (err.status === 404 && data.needLogin) {
+          show('login');
+          if (data.error) $('err').textContent = data.error;
+          return;
+        }
+        show('msg');
+        $('msgText').textContent = err.message;
+        const token = data.token || getCardToken();
+        if (token) { $('cardLink').href = '/card/' + encodeURIComponent(token); $('cardLink').classList.remove('hidden'); }
+      }
+    }
+
+    $('login').addEventListener('submit', (e) => {
+      e.preventDefault();
+      tap({ code: $('code').value, email: $('email').value, token: null });
+    });
+
+    tap();
+  </script>
+</body>
+</html>

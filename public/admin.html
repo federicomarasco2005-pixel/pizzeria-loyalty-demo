@@ -182,6 +182,43 @@
           <button class="btn" id="saveSettings"><span class="ico">💾</span> Salva e aggiorna le tessere</button>
           <p class="error" id="sErr"></p>
         </section>
+
+        <section class="panel stack" style="max-width:720px">
+          <h2>📲 Timbro con adesivo NFC</h2>
+          <p class="muted" style="margin:0">Il cliente avvicina il telefono all'adesivo sul bancone e riceve il timbro da solo, con l'animazione.
+            Funziona con Android e iPhone (dall'iPhone XS in poi), senza app. In Cassa compare un avviso con il pulsante "Annulla".</p>
+          <label class="check"><input id="nfcEnabled" type="checkbox"> <span><strong>Timbro con NFC attivo</strong></span></label>
+          <div>
+            <label for="nfcCooldown">Un timbro NFC per cliente ogni</label>
+            <select id="nfcCooldown">
+              <option value="1">1 ora</option><option value="2">2 ore</option><option value="3">3 ore (consigliato)</option>
+              <option value="6">6 ore</option><option value="12">12 ore</option><option value="24">24 ore</option>
+              <option value="0">Nessun limite (solo per le prove)</option>
+            </select>
+            <p class="muted small" style="margin:4px 0 0">Evita che lo stesso cliente si dia più timbri nella stessa visita o da casa con un indirizzo copiato.</p>
+          </div>
+          <div>
+            <label>Indirizzo da scrivere sull'adesivo</label>
+            <div class="row" style="align-items:center">
+              <input id="nfcUrl" type="text" readonly style="flex:3;font-family:monospace;font-size:.85rem">
+              <button class="chip" id="nfcCopy">📋 Copia</button>
+            </div>
+          </div>
+          <div class="row" style="flex-wrap:wrap">
+            <button class="btn" id="nfcWrite"><span class="ico">✍️</span> Scrivi sull'adesivo</button>
+            <button class="btn ghost" id="nfcRegen"><span class="ico">🔄</span> Rigenera codice</button>
+          </div>
+          <p class="small muted" id="nfcWriteHelp" style="margin:0"></p>
+          <div class="info">
+            <strong>Come preparare l'adesivo (2 minuti):</strong><br>
+            1. Compra adesivi NFC <strong>NTAG213 o NTAG215</strong> (circa 1 € l'uno, online o in elettronica).<br>
+            2. <strong>Android con Chrome:</strong> apri questa pagina sul telefono, tocca "Scrivi sull'adesivo" e avvicinalo.<br>
+            &nbsp;&nbsp;&nbsp;<strong>iPhone o altro:</strong> installa l'app gratuita <em>NFC Tools</em> → Scrivi → Aggiungi record → URL → incolla l'indirizzo → Scrivi.<br>
+            3. Attacca l'adesivo vicino alla cassa con il cartello "Avvicina il telefono qui" (lo trovi in <a href="/poster.html" target="_blank">Stampa QR tavolo</a>).<br>
+            4. Se l'indirizzo gira dove non deve: <strong>Rigenera codice</strong> e riscrivi l'adesivo. I vecchi smettono subito di funzionare.
+          </div>
+          <p class="error" id="nfcErr"></p>
+        </section>
       </div>
     </div>
   </main>
@@ -201,7 +238,7 @@
         document.querySelectorAll('[data-tab]').forEach((x) => x.setAttribute('aria-selected', x === b));
         ['overview', 'notify', 'settings'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab));
         if (tab === 'notify') loadNotify();
-        if (tab === 'settings') loadSettings();
+        if (tab === 'settings') { loadSettings(); loadNfc(); }
       };
     });
 
@@ -251,7 +288,7 @@
       s.events.forEach((e) => {
         const tr = document.createElement('tr');
         if (e.voided) tr.style.textDecoration = 'line-through';
-        cell(tr, LABELS[e.type] || e.type);
+        cell(tr, (LABELS[e.type] || e.type) + (e.by === 'nfc' ? ' (NFC 📲)' : ''));
         cell(tr, e.name);
         cell(tr, fmtDate(e.at)).className = 'muted small';
         $('events').appendChild(tr);
@@ -412,6 +449,52 @@
         toast('✔ Salvato. Le tessere si aggiornano in pochi secondi.', 3500);
       } catch (err) {
         $('sErr').textContent = err.message;
+      }
+    };
+
+    // ---------- Adesivo NFC ----------
+    function paintNfc(n) {
+      $('nfcEnabled').checked = n.enabled;
+      $('nfcCooldown').value = String(n.cooldownHours);
+      $('nfcUrl').value = n.url;
+    }
+    async function loadNfc() { paintNfc(await api('/api/admin/nfc', { pin })); }
+    async function saveNfc(extra = {}) {
+      $('nfcErr').textContent = '';
+      try {
+        paintNfc(await api('/api/admin/nfc', {
+          method: 'POST', pin,
+          body: { enabled: $('nfcEnabled').checked, cooldownHours: Number($('nfcCooldown').value), ...extra },
+        }));
+        toast('✔ Impostazioni NFC salvate');
+      } catch (err) { $('nfcErr').textContent = err.message; }
+    }
+    $('nfcEnabled').onchange = () => saveNfc();
+    $('nfcCooldown').onchange = () => saveNfc();
+    $('nfcCopy').onclick = async () => {
+      try { await navigator.clipboard.writeText($('nfcUrl').value); toast('📋 Indirizzo copiato'); }
+      catch { $('nfcUrl').select(); toast('Seleziona e copia l\'indirizzo'); }
+    };
+    $('nfcRegen').onclick = async () => {
+      if (!confirm('Generare un nuovo codice? Gli adesivi già scritti smetteranno di funzionare e andranno riscritti.')) return;
+      await saveNfc({ regenerate: true });
+      toast('🔄 Nuovo codice: ora riscrivi l\'adesivo', 4000);
+    };
+    // Web NFC: disponibile solo in Chrome su Android, su pagina HTTPS
+    const canWriteNfc = 'NDEFReader' in window;
+    $('nfcWriteHelp').textContent = canWriteNfc
+      ? 'Tocca "Scrivi sull\'adesivo" e avvicina l\'adesivo al retro del telefono.'
+      : 'La scrittura diretta funziona solo da Chrome su Android: da qui copia l\'indirizzo e usa l\'app NFC Tools.';
+    $('nfcWrite').disabled = !canWriteNfc;
+    $('nfcWrite').onclick = async () => {
+      try {
+        const writer = new NDEFReader();
+        toast('📲 Avvicina ora l\'adesivo al telefono…', 6000);
+        await writer.write({ records: [{ recordType: 'url', data: $('nfcUrl').value }] });
+        toast('✅ Adesivo scritto! Provalo avvicinando un telefono.', 4000);
+        vibrate(120);
+      } catch (err) {
+        $('nfcErr').textContent = 'Scrittura non riuscita: ' + err.message;
       }
     };
 

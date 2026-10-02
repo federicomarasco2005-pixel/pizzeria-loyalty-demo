@@ -4,7 +4,7 @@ async function api(path, { method = 'GET', body, pin } = {}) {
   if (pin) headers['x-staff-pin'] = pin;
   const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(data.error || 'Errore di rete'), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(data.error || 'Errore di rete'), { status: res.status, data });
   return data;
 }
 
@@ -96,6 +96,10 @@ function toast(msg, ms = 2200) {
 }
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+
+// Tessera del cliente ricordata su questo telefono (serve al timbro con NFC)
+function getCardToken() { try { return localStorage.getItem('cardToken') || ''; } catch { return ''; } }
+function setCardToken(t) { try { if (t) localStorage.setItem('cardToken', t); } catch {} }
 
 function getPin() { try { return localStorage.getItem('staffPin') || ''; } catch { return ''; } }
 function setPin(p) { try { p ? localStorage.setItem('staffPin', p) : localStorage.removeItem('staffPin'); } catch {} }

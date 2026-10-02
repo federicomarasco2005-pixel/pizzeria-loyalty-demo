@@ -49,6 +49,12 @@
       </div>
     </section>
 
+    <!-- Timbri arrivati dall'adesivo NFC: avviso live con possibilità di annullare -->
+    <section id="nfcFeed" class="panel stack hidden">
+      <h2>📲 Timbri con NFC</h2>
+      <div id="nfcList"></div>
+    </section>
+
     <nav class="nav">
       <a class="chip" href="/admin.html">📊 Dashboard</a>
       <button class="chip danger" id="logout">🚪 Esci</button>
@@ -74,6 +80,7 @@
       try {
         await api('/api/staff/login', { method: 'POST', pin: p });
         pin = p; setPin(p);
+        connectStaffStream();
         startScan();
       } catch (err) {
         setPin(''); show('login');
@@ -176,6 +183,49 @@
         });
       }, 250);
     };
+
+    // ---------- Avvisi live: timbri con adesivo NFC ----------
+    let staffStream = null;
+    function connectStaffStream() {
+      if (staffStream || !window.EventSource) return;
+      staffStream = new EventSource('/api/staff/stream?pin=' + encodeURIComponent(pin));
+      staffStream.onmessage = (e) => {
+        let ev; try { ev = JSON.parse(e.data); } catch { return; }
+        if (ev.type !== 'nfc') return;
+        vibrate([60, 40, 60]);
+        toast('📲 ' + ev.name + ': timbro con NFC' + (ev.rewardEarned ? ' — 🎉 premio sbloccato!' : ''), 4000);
+        addNfcItem(ev);
+      };
+    }
+
+    function addNfcItem(ev) {
+      $('nfcFeed').classList.remove('hidden');
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.style.alignItems = 'center';
+      const info = document.createElement('div');
+      info.style.flex = '2';
+      const name = document.createElement('strong'); name.textContent = ev.name + ' · ' + ev.code;
+      const meta = document.createElement('div'); meta.className = 'small muted';
+      meta.textContent = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) +
+        ' · timbri ' + ev.stamps + (ev.rewardEarned ? ' · premio sbloccato' : '');
+      info.append(name, meta);
+      const undo = document.createElement('button');
+      undo.className = 'chip danger';
+      undo.textContent = '↩️ Annulla';
+      undo.onclick = async () => {
+        if (!confirm('Annullare il timbro NFC di ' + ev.name + '?')) return;
+        try {
+          await api('/api/staff/undo', { method: 'POST', pin, body: { token: ev.token } });
+          meta.textContent += ' · annullato';
+          name.style.textDecoration = 'line-through';
+          undo.remove();
+        } catch (err) { toast(err.message); }
+      };
+      row.append(info, undo);
+      $('nfcList').prepend(row);
+      while ($('nfcList').children.length > 5) $('nfcList').lastChild.remove();
+    }
 
     if (pin) tryLogin(pin); else show('login');
   </script>
