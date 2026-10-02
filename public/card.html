@@ -49,7 +49,8 @@
       <button class="btn dark" id="qrBtn"><span class="ico">▦</span> Mostra il QR in cassa</button>
       <section id="qrPanel" class="panel center hidden">
         <img id="qr" alt="QR della tessera" style="width:220px;height:220px">
-        <div class="small muted">Codice tessera: <strong id="code"></strong></div>
+        <div class="muted">oppure di' il codice in cassa</div>
+        <div style="font-size:1.6rem;font-weight:800;letter-spacing:.08em" id="code"></div>
       </section>
 
       <a id="review" class="btn ghost hidden" target="_blank" rel="noopener">
@@ -130,6 +131,8 @@
           if (c.saveUrl) { $('save').href = c.saveUrl; $('save').classList.remove('hidden'); }
           else $('nowallet').classList.remove('hidden');
           paint(next, { animate: false });
+          // Arrivati dal link "Mostra il QR per la cassa" del Wallet: QR già aperto
+          if (new URLSearchParams(location.search).has('qr')) $('qrBtn').click();
         } else if (next.stamps !== state.stamps || next.rewards !== state.rewards) {
           celebrate(state, next);
         }

@@ -31,7 +31,7 @@
     <section id="scan" class="panel stack hidden">
       <div id="reader"></div>
       <p class="muted small" id="camMsg">Inquadra il QR della tessera del cliente.</p>
-      <input id="q" type="search" placeholder="…oppure cerca per nome, email o codice">
+      <input id="q" type="search" autocapitalize="characters" placeholder="Codice cliente (es. PZ-AB12C), nome o email">
       <div id="results"></div>
     </section>
 
@@ -163,6 +163,10 @@
       searchT = setTimeout(async () => {
         const list = await api('/api/staff/search?q=' + encodeURIComponent($('q').value), { pin }).catch(() => []);
         $('results').innerHTML = '';
+        // Codice cliente digitato per intero (con o senza "PZ-"): apre subito la tessera
+        const typed = $('q').value.trim().toUpperCase().replace(/^PZ-?/, '');
+        const exact = list.find((c) => c.code.replace(/^PZ-/, '') === typed);
+        if (exact && typed.length >= 5) { await stopScan(); openCustomer(exact.token); return; }
         list.forEach((c) => {
           const d = document.createElement('div');
           d.className = 'result';

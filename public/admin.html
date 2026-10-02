@@ -166,10 +166,20 @@
             2. Nel <strong>Profilo dell'attività</strong> tocca <strong>"Chiedi recensioni"</strong> (o "Ricevi più recensioni").<br>
             3. Copia il link (di solito inizia con <code>https://g.page/r/</code>) e incollalo qui.
           </div>
-          <div class="row">
-            <button class="btn" id="saveSettings"><span class="ico">💾</span> Salva</button>
-            <a class="btn ghost" id="testReview" target="_blank" rel="noopener"><span class="ico">↗️</span> Prova il link</a>
+          <a class="btn ghost" id="testReview" target="_blank" rel="noopener"><span class="ico">↗️</span> Prova il link della recensione</a>
+
+          <h2 style="margin-top:12px">📍 Contatti nella tessera</h2>
+          <p class="muted" style="margin:0">Compaiono nei dettagli della tessera Google Wallet come pulsanti "Come raggiungerci" e "Chiama / prenota".</p>
+          <div>
+            <label for="mapsUrl">Link Google Maps del locale</label>
+            <input id="mapsUrl" type="url" placeholder="https://maps.app.goo.gl/...">
+            <p class="muted small" style="margin:4px 0 0">Su Google Maps apri la scheda del locale → Condividi → Copia link.</p>
           </div>
+          <div>
+            <label for="phone">Telefono per prenotazioni</label>
+            <input id="phone" type="text" inputmode="tel" placeholder="+39 02 1234567">
+          </div>
+          <button class="btn" id="saveSettings"><span class="ico">💾</span> Salva e aggiorna le tessere</button>
           <p class="error" id="sErr"></p>
         </section>
       </div>
@@ -385,6 +395,8 @@
     async function loadSettings() {
       const s = await api('/api/admin/settings', { pin });
       $('reviewUrl').value = s.reviewUrl || '';
+      $('mapsUrl').value = s.mapsUrl || '';
+      $('phone').value = s.phone || '';
       syncTestLink();
     }
     function syncTestLink() {
@@ -396,7 +408,7 @@
     $('saveSettings').onclick = async () => {
       $('sErr').textContent = '';
       try {
-        await api('/api/admin/settings', { method: 'POST', pin, body: { reviewUrl: $('reviewUrl').value } });
+        await api('/api/admin/settings', { method: 'POST', pin, body: { reviewUrl: $('reviewUrl').value, mapsUrl: $('mapsUrl').value, phone: $('phone').value } });
         toast('✔ Salvato. Le tessere si aggiornano in pochi secondi.', 3500);
       } catch (err) {
         $('sErr').textContent = err.message;
