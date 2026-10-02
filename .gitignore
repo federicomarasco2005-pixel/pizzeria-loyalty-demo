@@ -3,3 +3,4 @@ data/
 .env
 service-account.json
 *.json.tmp
+tools/.frames/

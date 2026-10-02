@@ -78,6 +78,18 @@ async function ensureClass() {
   console.log(`[wallet] classe aggiornata: ${classId()}`);
 }
 
+// Se Google rifiuta le GIF (non documentate ufficialmente) si torna alle immagini fisse.
+let gifSupported = true;
+
+function heroUri(state, n, animated) {
+  const stamps = Math.min(state.stamps, n);
+  if (animated && gifSupported) {
+    if (state.rewards > 0 && stamps === 0) return `${cfg.stampsImageBase}/anim-${n}-reward.gif`;
+    if (stamps > 0) return `${cfg.stampsImageBase}/anim-${n}-${stamps}.gif`;
+  }
+  return `${cfg.stampsImageBase}/grid-${n}-${stamps}.png`;
+}
+
 // extras.reviewUrl: link "Lascia una recensione su Google" (impostato dal gestore in Dashboard)
 function objectBody(customer, state, extras = {}) {
   const n = cfg.stampsForReward;
@@ -95,8 +107,9 @@ function objectBody(customer, state, extras = {}) {
     barcode: { type: 'QR_CODE', value: customer.token, alternateText: customer.code },
     // Griglia dei timbri (immagine principale della tessera): un file per ogni stato,
     // URL diverso = Google la ricarica. Formato 1032x812 come da linee guida Google Wallet.
+    // Animata (GIF): l'ultima pizza ottenuta entra girando; con un premio pronto le pizze "saltano".
     heroImage: {
-      sourceUri: { uri: `${cfg.stampsImageBase}/grid-${n}-${Math.min(state.stamps, n)}.png` },
+      sourceUri: { uri: heroUri(state, n, extras.animated !== false) },
       contentDescription: { defaultValue: { language: 'it-IT', value: `${state.stamps} timbri su ${n}` } },
     },
     textModulesData: [
@@ -119,13 +132,27 @@ function objectBody(customer, state, extras = {}) {
 
 // notifyOnUpdate: Google avvisa il telefono quando cambia il saldo (max 3 notifiche al giorno per pass).
 async function upsertObject(customer, state, { notifyOnUpdate = false, ...extras } = {}) {
+  const send = async (body) => {
+    try {
+      await request('PATCH', `${BASE}/loyaltyObject/${body.id}`,
+        notifyOnUpdate ? { ...body, notifyPreference: 'notifyOnUpdate' } : body);
+    } catch (err) {
+      if (status(err) !== 404) throw err;
+      await request('POST', `${BASE}/loyaltyObject`, body);
+    }
+  };
   const body = objectBody(customer, state, extras);
   try {
-    await request('PATCH', `${BASE}/loyaltyObject/${body.id}`,
-      notifyOnUpdate ? { ...body, notifyPreference: 'notifyOnUpdate' } : body);
+    await send(body);
   } catch (err) {
-    if (status(err) !== 404) throw new Error(`aggiornamento pass fallito: ${describe(err)}`);
-    await request('POST', `${BASE}/loyaltyObject`, body);
+    const isGif = /\.gif$/.test(body.heroImage.sourceUri.uri);
+    if (!(isGif && status(err) === 400)) throw new Error(`aggiornamento pass fallito: ${describe(err)}`);
+    // Google ha rifiutato la GIF: d'ora in poi immagini fisse.
+    gifSupported = false;
+    console.warn(`[wallet] GIF animata rifiutata (${describe(err)}): uso le immagini fisse`);
+    await send(objectBody(customer, state, extras)).catch((e) => {
+      throw new Error(`aggiornamento pass fallito: ${describe(e)}`);
+    });
   }
 }
 

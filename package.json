@@ -17,5 +17,9 @@
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.23.1",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "gifenc": "^1.0.3",
+    "pngjs": "^7.0.0"
   }
 }
