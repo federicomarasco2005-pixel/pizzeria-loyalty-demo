@@ -13,6 +13,7 @@ const cfg = {
   pizzeriaName: process.env.PIZZERIA_NAME || 'Pizzeria Da Mario',
   programName: process.env.PROGRAM_NAME || 'Tessera Amici della Pizza',
   rewardText: process.env.REWARD_TEXT || 'Una pizza margherita omaggio',
+  rewardShort: process.env.REWARD_SHORT || 'Margherita gratis', // versione breve per il fronte della tessera Wallet
   stampsForReward: Math.max(1, Number(process.env.STAMPS_FOR_REWARD) || 6),
   brandColor: process.env.BRAND_COLOR || '#b3261e',
   staffPin: process.env.STAFF_PIN || '1234',
@@ -25,6 +26,10 @@ const cfg = {
   logoUrl: process.env.LOGO_URL || `${PUBLIC_URL}/logo.png`,
   // Cartella pubblica con le immagini stamps-<totale>-<n>.png (generate da tools/gen-stamps.ps1)
   stampsImageBase: (process.env.STAMPS_IMAGE_BASE || `${PUBLIC_URL}/stamps`).replace(/\/$/, ''),
+  // Logo largo per l'intestazione del Wallet (tools/gen-wide-logo.ps1); WIDE_LOGO_URL=off per non usarlo
+  wideLogoUrl: process.env.WIDE_LOGO_URL === 'off' ? '' : (process.env.WIDE_LOGO_URL || `${PUBLIC_URL}/wide-logo.png`),
+  // QR dentro la tessera Wallet: di default spento per lasciare spazio alle pizze (WALLET_QR=on per riattivarlo)
+  walletQr: process.env.WALLET_QR === 'on',
 };
 
 const app = express();
@@ -241,11 +246,14 @@ app.get('/api/admin/settings', requirePin, (req, res) => res.json(db.getSettings
 
 app.post('/api/admin/settings', requirePin, (req, res) => {
   const reviewUrl = String(req.body.reviewUrl || '').trim();
-  if (reviewUrl && !/^https:\/\/\S+$/.test(reviewUrl)) {
-    return res.status(400).json({ error: 'Il link della recensione deve iniziare con https://' });
+  const mapsUrl = String(req.body.mapsUrl || '').trim();
+  const phone = String(req.body.phone || '').trim().slice(0, 30);
+  for (const [url, what] of [[reviewUrl, 'della recensione'], [mapsUrl, 'di Google Maps']]) {
+    if (url && !/^https:\/\/\S+$/.test(url)) return res.status(400).json({ error: `Il link ${what} deve iniziare con https://` });
   }
-  const settings = db.updateSettings({ reviewUrl });
-  // Aggiorna in background le tessere già emesse (il link compare nei dettagli del pass).
+  if (phone && !/^\+?[\d\s./-]{6,}$/.test(phone)) return res.status(400).json({ error: 'Numero di telefono non valido.' });
+  const settings = db.updateSettings({ reviewUrl, mapsUrl, phone });
+  // Aggiorna in background le tessere già emesse (i link compaiono nei dettagli del pass).
   (async () => { for (const c of db.customers) await syncWallet(c); })();
   res.json(settings);
 });
@@ -385,7 +393,7 @@ async function syncWallet(customer, message, options = {}) {
   try {
     await ensureClassOnce();
     await wallet.upsertObject(customer, db.stateOf(customer.id, cfg.stampsForReward), {
-      ...options, reviewUrl: db.getSettings().reviewUrl,
+      ...options, ...db.getSettings(),
     });
     if (options.notifyOnUpdate) db.logNotification(customer.id, 'stamp', true);
     if (message) {

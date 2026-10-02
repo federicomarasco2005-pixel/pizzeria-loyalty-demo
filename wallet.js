@@ -57,9 +57,29 @@ function classBody() {
       sourceUri: { uri: cfg.logoUrl },
       contentDescription: { defaultValue: { language: 'it-IT', value: `Logo ${cfg.pizzeriaName}` } },
     },
+    // Logo largo: su Android sostituisce l'intestazione (logo rotondo + nome)
+    ...(cfg.wideLogoUrl && {
+      wideProgramLogo: {
+        sourceUri: { uri: cfg.wideLogoUrl },
+        contentDescription: { defaultValue: { language: 'it-IT', value: cfg.pizzeriaName } },
+      },
+    }),
     hexBackgroundColor: cfg.brandColor,
     countryCode: 'IT',
     reviewStatus: 'UNDER_REVIEW',
+    // Fronte della tessera: una sola riga "Timbri · Premio · Codice".
+    // Con una sola riga Google mette l'immagine delle pizze subito sopra.
+    classTemplateInfo: {
+      cardTemplateOverride: {
+        cardRowTemplateInfos: [{
+          threeItems: {
+            startItem: { firstValue: { fields: [{ fieldPath: "object.textModulesData['timbri']" }] } },
+            middleItem: { firstValue: { fields: [{ fieldPath: "object.textModulesData['premio']" }] } },
+            endItem: { firstValue: { fields: [{ fieldPath: "object.textModulesData['codice']" }] } },
+          },
+        }],
+      },
+    },
   };
 }
 
@@ -90,12 +110,17 @@ function heroUri(state, n, animated) {
   return `${cfg.stampsImageBase}/grid-${n}-${stamps}.png`;
 }
 
-// extras.reviewUrl: link "Lascia una recensione su Google" (impostato dal gestore in Dashboard)
+// extras (impostati dal gestore in Dashboard): reviewUrl, mapsUrl, phone
 function objectBody(customer, state, extras = {}) {
   const n = cfg.stampsForReward;
   const missing = n - state.stamps;
-  const links = [{ id: 'web', uri: `${cfg.publicUrl}/card/${customer.token}`, description: '🍕 Apri la tessera animata' }];
-  if (extras.reviewUrl) links.unshift({ id: 'review', uri: extras.reviewUrl, description: '⭐ Lascia una recensione su Google' });
+  const cardUrl = `${cfg.publicUrl}/card/${customer.token}`;
+  const links = [];
+  if (!cfg.walletQr) links.push({ id: 'qr', uri: `${cardUrl}?qr=1`, description: '🔳 Mostra il QR per la cassa' });
+  links.push({ id: 'web', uri: cardUrl, description: '🍕 Apri la tessera animata' });
+  if (extras.reviewUrl) links.push({ id: 'review', uri: extras.reviewUrl, description: '⭐ Lascia una recensione su Google' });
+  if (extras.mapsUrl) links.push({ id: 'maps', uri: extras.mapsUrl, description: '📍 Come raggiungerci' });
+  if (extras.phone) links.push({ id: 'tel', uri: `tel:${extras.phone.replace(/[^\d+]/g, '')}`, description: `📞 Chiama / prenota (${extras.phone})` });
   return {
     id: objectId(customer),
     classId: classId(),
@@ -104,15 +129,22 @@ function objectBody(customer, state, extras = {}) {
     accountName: customer.name,
     loyaltyPoints: { label: 'Timbri', balance: { string: `${state.stamps} / ${n}` } },
     secondaryLoyaltyPoints: { label: 'Premi disponibili', balance: { int: state.rewards } },
-    barcode: { type: 'QR_CODE', value: customer.token, alternateText: customer.code },
-    // Griglia dei timbri (immagine principale della tessera): un file per ogni stato,
-    // URL diverso = Google la ricarica. Formato 1032x812 come da linee guida Google Wallet.
-    // Animata (GIF): l'ultima pizza ottenuta entra girando; con un premio pronto le pizze "saltano".
+    // QR nel Wallet facoltativo (WALLET_QR=on): Google non permette di spostarlo né rimpicciolirlo,
+    // quindi di default si toglie per lasciare spazio alle pizze. In cassa si usa il codice cliente
+    // (mostrato sul fronte) oppure il QR della tessera web, raggiungibile dal link nei dettagli.
+    ...(cfg.walletQr && { barcode: { type: 'QR_CODE', value: customer.token, alternateText: customer.code } }),
+    // Striscia dei timbri (immagine principale della tessera): un file per ogni stato,
+    // URL diverso = Google la ricarica. Formato 3:1, come la mostra il Wallet sulle carte fedeltà.
+    // Animata (GIF): l'ultima pizza ottenuta entra girando con il "+1"; con un premio pronto le pizze "saltano".
     heroImage: {
       sourceUri: { uri: heroUri(state, n, extras.animated !== false) },
       contentDescription: { defaultValue: { language: 'it-IT', value: `${state.stamps} timbri su ${n}` } },
     },
     textModulesData: [
+      // i primi tre compaiono sul fronte della tessera (vedi classTemplateInfo)
+      { id: 'timbri', header: 'Timbri', body: `${state.stamps} / ${n}` },
+      { id: 'premio', header: 'Premio', body: state.rewards > 0 ? `🎁 ${state.rewards} da ritirare` : cfg.rewardShort },
+      { id: 'codice', header: 'Codice', body: customer.code },
       {
         id: 'stato',
         header: state.rewards > 0 ? 'Hai un premio da ritirare!' : 'Prossimo premio',
@@ -123,7 +155,9 @@ function objectBody(customer, state, extras = {}) {
       {
         id: 'regole',
         header: 'Come funziona',
-        body: `Mostra il QR a ogni visita: ricevi 1 timbro. Ogni ${n} timbri: ${cfg.rewardText.toLowerCase()}.`,
+        body: cfg.walletQr
+          ? `Mostra il QR a ogni visita: ricevi 1 timbro. Ogni ${n} timbri: ${cfg.rewardText.toLowerCase()}.`
+          : `A ogni visita di' in cassa il tuo codice ${customer.code} (o mostra il QR dal link qui sotto): ricevi 1 timbro. Ogni ${n} timbri: ${cfg.rewardText.toLowerCase()}.`,
       },
     ],
     linksModuleData: { uris: links },
@@ -132,14 +166,23 @@ function objectBody(customer, state, extras = {}) {
 
 // notifyOnUpdate: Google avvisa il telefono quando cambia il saldo (max 3 notifiche al giorno per pass).
 async function upsertObject(customer, state, { notifyOnUpdate = false, ...extras } = {}) {
+  // Sostituzione completa (PUT) così i campi tolti, come il QR, spariscono davvero dai pass già emessi.
+  // I messaggi già inviati dal locale vengono riletti e conservati.
   const send = async (body) => {
+    const url = `${BASE}/loyaltyObject/${body.id}`;
+    let existing;
     try {
-      await request('PATCH', `${BASE}/loyaltyObject/${body.id}`,
-        notifyOnUpdate ? { ...body, notifyPreference: 'notifyOnUpdate' } : body);
+      existing = await request('GET', url);
     } catch (err) {
       if (status(err) !== 404) throw err;
       await request('POST', `${BASE}/loyaltyObject`, body);
+      return;
     }
+    await request('PUT', url, {
+      ...body,
+      ...(existing.messages && { messages: existing.messages }),
+      ...(notifyOnUpdate && { notifyPreference: 'notifyOnUpdate' }),
+    });
   };
   const body = objectBody(customer, state, extras);
   try {
