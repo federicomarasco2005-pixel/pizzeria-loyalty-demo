@@ -101,13 +101,22 @@ async function ensureClass() {
 // Se Google rifiuta le GIF (non documentate ufficialmente) si torna alle immagini fisse.
 let gifSupported = true;
 
+// Versione delle immagini: cambiandola Google scarica di nuovo i file (li conserva per indirizzo).
+const IMG_VERSION = 'v3';
+
+// animated=true solo subito dopo un timbro: la GIF si vede una volta, poi il server
+// rimette l'immagine fissa (vedi settleWallet in server.js).
 function heroUri(state, n, animated) {
   const stamps = Math.min(state.stamps, n);
-  if (animated && gifSupported) {
-    if (state.rewards > 0 && stamps === 0) return `${cfg.stampsImageBase}/anim-${n}-reward.gif`;
-    if (stamps > 0) return `${cfg.stampsImageBase}/anim-${n}-${stamps}.gif`;
+  const rewardReady = state.rewards > 0 && stamps === 0;
+  let file;
+  if (animated && gifSupported && (rewardReady || stamps > 0)) {
+    file = rewardReady ? `anim-${n}-reward.gif` : `anim-${n}-${stamps}.gif`;
+  } else {
+    // premio pronto: tutte le pizze colorate; altrimenti i timbri attuali
+    file = `grid-${n}-${rewardReady ? n : stamps}.png`;
   }
-  return `${cfg.stampsImageBase}/grid-${n}-${stamps}.png`;
+  return `${cfg.stampsImageBase}/${file}?${IMG_VERSION}`;
 }
 
 // extras (impostati dal gestore in Dashboard): reviewUrl, mapsUrl, phone
@@ -137,7 +146,7 @@ function objectBody(customer, state, extras = {}) {
     // URL diverso = Google la ricarica. Formato 3:1, come la mostra il Wallet sulle carte fedeltà.
     // Animata (GIF): l'ultima pizza ottenuta entra girando con il "+1"; con un premio pronto le pizze "saltano".
     heroImage: {
-      sourceUri: { uri: heroUri(state, n, extras.animated !== false) },
+      sourceUri: { uri: heroUri(state, n, extras.animated === true) },
       contentDescription: { defaultValue: { language: 'it-IT', value: `${state.stamps} timbri su ${n}` } },
     },
     textModulesData: [
@@ -189,7 +198,7 @@ async function upsertObject(customer, state, { notifyOnUpdate = false, ...extras
   try {
     await send(body);
   } catch (err) {
-    const isGif = /\.gif$/.test(body.heroImage.sourceUri.uri);
+    const isGif = /\.gif(\?|$)/.test(body.heroImage.sourceUri.uri);
     if (!(isGif && status(err) === 400)) throw new Error(`aggiornamento pass fallito: ${describe(err)}`);
     // Google ha rifiutato la GIF: d'ora in poi immagini fisse.
     gifSupported = false;
@@ -226,6 +235,16 @@ async function notify(customer, header, body, { push = true, messageId } = {}) {
   }
 }
 
+// La tessera è già stata salvata in un Google Wallet? (campo hasUsers del pass)
+async function isSaved(customer) {
+  try {
+    const obj = await request('GET', `${BASE}/loyaltyObject/${objectId(customer)}`);
+    return !!obj.hasUsers;
+  } catch {
+    return false;
+  }
+}
+
 function saveUrl(customer) {
   const token = jwt.sign(
     {
@@ -241,4 +260,4 @@ function saveUrl(customer) {
   return `https://pay.google.com/gp/v/save/${token}`;
 }
 
-module.exports = { init, enabled, ensureClass, upsertObject, notify, saveUrl };
+module.exports = { init, enabled, ensureClass, upsertObject, notify, saveUrl, isSaved };

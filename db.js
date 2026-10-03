@@ -83,6 +83,14 @@ function createCustomer({ name, email, consentMarketing }) {
   return customer;
 }
 
+function updateCustomer(customerId, patch) {
+  const c = db.customers.find((x) => x.id === customerId);
+  if (!c) return null;
+  Object.assign(c, patch);
+  persist();
+  return c;
+}
+
 const findByEmail = (email) => db.customers.find((c) => c.email === email);
 const findByCodeAndEmail = (code, email) =>
   db.customers.find((c) => c.code === code && c.email === email);
@@ -206,7 +214,7 @@ module.exports = {
   get customers() { return db.customers; },
   get events() { return db.events; },
   get campaigns() { return db.campaigns; },
-  init, createCustomer, findByEmail, findByCodeAndEmail, lastStampBy, findByToken, search, addEvent, findByRequestId, stateOf, reset,
+  init, createCustomer, updateCustomer, findByEmail, findByCodeAndEmail, lastStampBy, findByToken, search, addEvent, findByRequestId, stateOf, reset,
   getSettings, updateSettings,
   PUSH_LIMIT, pushesLast24h, canPush, logNotification,
   createCampaign, findCampaign, updateCampaign, dueCampaigns, messagesFor,

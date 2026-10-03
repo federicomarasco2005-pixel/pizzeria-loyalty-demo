@@ -80,6 +80,7 @@ app.get('/api/card/:token', wrap(async (req, res) => {
     stampsForReward: cfg.stampsForReward,
     qr: await QRCode.toDataURL(customer.token, { margin: 1, width: 360 }),
     saveUrl: wallet.enabled() ? wallet.saveUrl(customer) : null,
+    walletSaved: await walletSaved(customer),
     reviewUrl: db.getSettings().reviewUrl || null,
     messages: db.messagesFor(customer.id).slice(0, 5),
   });
@@ -109,6 +110,22 @@ function broadcast(customer, type, extra = {}) {
   const s = db.stateOf(customer.id, cfg.stampsForReward);
   const payload = `data: ${JSON.stringify({ type, stamps: s.stamps, rewards: s.rewards, ...extra })}\n\n`;
   clients.forEach((res) => res.write(payload));
+}
+
+// La tessera è già nel Google Wallet del cliente? Una volta confermato da Google resta salvato;
+// prima di allora si richiede al massimo ogni 20 secondi (la pagina web interroga il server spesso).
+const savedChecks = new Map(); // customerId -> timestamp ultimo controllo
+async function walletSaved(customer) {
+  if (customer.walletSaved) return true;
+  if (!wallet.enabled()) return false;
+  const last = savedChecks.get(customer.id) || 0;
+  if (Date.now() - last < 20000) return false;
+  savedChecks.set(customer.id, Date.now());
+  if (await wallet.isSaved(customer)) {
+    db.updateCustomer(customer.id, { walletSaved: true });
+    return true;
+  }
+  return false;
 }
 
 app.get('/card/:token',(req, res) => res.sendFile(path.join(__dirname, 'public', 'card.html')));
@@ -180,11 +197,25 @@ async function addStamp(customer, { requestId, by }) {
 
   // Premio: messaggio dedicato. Timbro normale: notifica di aggiornamento del saldo
   // (solo se il cliente non ha già ricevuto 3 notifiche nelle ultime 24 ore).
+  // Nel Wallet la GIF animata si vede solo ora; dopo qualche minuto torna l'immagine fissa.
   await syncWallet(customer, rewardEarned && {
     header: 'Premio sbloccato! 🍕',
     body: `${cfg.rewardText}: mostra la tessera alla prossima visita.`,
-  }, { notifyOnUpdate: !rewardEarned && db.canPush(customer.id) });
+  }, { notifyOnUpdate: !rewardEarned && db.canPush(customer.id), animated: true });
+  settleWallet(customer);
   return { before, after, rewardEarned, event };
+}
+
+// Dopo l'animazione la tessera Wallet torna all'immagine fissa (pizze ferme),
+// così riaprendola più tardi l'animazione non riparte.
+const settleTimers = new Map();
+const SETTLE_MS = (Number(process.env.WALLET_ANIM_MINUTES) || 3) * 60 * 1000;
+function settleWallet(customer) {
+  clearTimeout(settleTimers.get(customer.id));
+  settleTimers.set(customer.id, setTimeout(() => {
+    settleTimers.delete(customer.id);
+    syncWallet(customer, null, { animated: false });
+  }, SETTLE_MS));
 }
 
 // ---------- Timbro NFC del gestore ----------
