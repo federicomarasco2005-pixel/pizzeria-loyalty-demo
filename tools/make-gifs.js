@@ -1,5 +1,6 @@
 // Unisce i fotogrammi generati da tools/gen-stamps.ps1 in GIF animate per la tessera Google Wallet.
 // Uso: node tools/make-gifs.js   ->  public/stamps/anim-<totale>-<n>.gif e anim-<totale>-reward.gif
+// Le GIF si riproducono una volta sola e si fermano sull'ultimo fotogramma.
 const fs = require('fs');
 const path = require('path');
 const { PNG } = require('pngjs');
@@ -28,7 +29,7 @@ for (const [name, delays] of Object.entries(manifest)) {
     gif.writeFrame(out, width, height, {
       palette: i === 0 ? palette : undefined,
       delay: delays[i],
-      repeat: 0, // ripeti all'infinito
+      repeat: -1, // riproduci una volta sola: l'ultimo fotogramma (pizze ferme) resta visibile
       transparent: i > 0,
       transparentIndex: TRANSPARENT,
       dispose: 1,
