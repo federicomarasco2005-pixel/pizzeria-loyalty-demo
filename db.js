@@ -203,12 +203,22 @@ function updateCampaign(cid, patch) {
 const dueCampaigns = (now = Date.now()) =>
   db.campaigns.filter((c) => c.status === 'scheduled' && Date.parse(c.sendAt) <= now);
 
-// Messaggi già inviati a un cliente (mostrati anche nella tessera web).
-const messagesFor = (customerId) =>
+// Scadenza di un messaggio inviato (i messaggi di versioni precedenti valgono 3 giorni).
+const expiryOf = (c) => c.expiresAt || new Date(Date.parse(c.sentAt) + 3 * DAY).toISOString();
+const isActive = (c, now = Date.now()) => c.status === 'sent' && !c.removed && Date.parse(expiryOf(c)) > now;
+
+// Messaggi ancora validi per un cliente, dal più recente. Nella tessera Wallet ne resta solo
+// l'ultimo (limit 1) per non affollare i dettagli; la tessera web ne mostra qualcuno in più.
+const messagesFor = (customerId, limit = 3) =>
   db.campaigns
-    .filter((c) => c.status === 'sent' && c.recipients.includes(customerId))
-    .map((c) => ({ id: c.id, title: c.title, body: c.body, at: c.sentAt }))
-    .sort((a, b) => b.at.localeCompare(a.at));
+    .filter((c) => isActive(c) && c.recipients.includes(customerId))
+    .map((c) => ({ id: `c_${c.id}`, title: c.title, body: c.body, at: c.sentAt, expiresAt: expiryOf(c) }))
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, limit);
+
+// Messaggi scaduti o eliminati ancora da togliere dalle tessere
+const campaignsToClean = () =>
+  db.campaigns.filter((c) => c.status === 'sent' && !c.cleaned && !isActive(c));
 
 module.exports = {
   get customers() { return db.customers; },
@@ -217,5 +227,5 @@ module.exports = {
   init, createCustomer, updateCustomer, findByEmail, findByCodeAndEmail, lastStampBy, findByToken, search, addEvent, findByRequestId, stateOf, reset,
   getSettings, updateSettings,
   PUSH_LIMIT, pushesLast24h, canPush, logNotification,
-  createCampaign, findCampaign, updateCampaign, dueCampaigns, messagesFor,
+  createCampaign, findCampaign, updateCampaign, dueCampaigns, messagesFor, campaignsToClean, expiryOf, isActive,
 };

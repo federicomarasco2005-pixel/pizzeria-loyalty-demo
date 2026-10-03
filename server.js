@@ -194,22 +194,37 @@ async function addStamp(customer, { requestId, by }) {
   const after = db.stateOf(customer.id, cfg.stampsForReward);
   const rewardEarned = after.earned > before.earned;
   broadcast(customer, rewardEarned ? 'reward' : 'stamp');
-
-  // Premio: messaggio dedicato. Timbro normale: notifica di aggiornamento del saldo
-  // (solo se il cliente non ha già ricevuto 3 notifiche nelle ultime 24 ore).
-  // Nel Wallet la GIF animata si vede solo ora; dopo qualche minuto torna l'immagine fissa.
-  await syncWallet(customer, rewardEarned && {
-    header: 'Premio sbloccato! 🍕',
-    body: `${cfg.rewardText}: mostra la tessera alla prossima visita.`,
-  }, { notifyOnUpdate: !rewardEarned && db.canPush(customer.id), animated: true });
-  settleWallet(customer);
+  // Il Wallet si aggiorna in parallelo: la Cassa e la tessera web non aspettano Google.
+  walletAfterStamp(customer, after, rewardEarned).catch((err) => console.error(`[wallet] ${err.message}`));
   return { before, after, rewardEarned, event };
 }
 
-// Dopo l'animazione la tessera Wallet torna all'immagine fissa (pizze ferme),
-// così riaprendola più tardi l'animazione non riparte.
+// Aggiorna il pass (GIF animata) e manda subito la notifica come messaggio Google
+// ("+1 timbro"), che si legge meglio del generico "saldo aggiornato" e scade da solo.
+// Se il cliente ha già ricevuto 3 notifiche nelle ultime 24 ore (limite Google) non si manda nulla:
+// il pass si aggiorna comunque.
+async function walletAfterStamp(customer, after, rewardEarned) {
+  if (!wallet.enabled()) return;
+  await syncWallet(customer, null, { animated: true });
+  if (db.canPush(customer.id)) {
+    const n = cfg.stampsForReward;
+    const missing = n - after.stamps;
+    const msg = rewardEarned
+      ? { header: 'Premio sbloccato! 🎉', body: `${cfg.rewardText}: mostra la tessera alla prossima visita.` }
+      : { header: `🍕 +1 timbro! Sei a ${after.stamps}/${n}`,
+          body: missing === 1 ? `Ti manca 1 timbro per: ${cfg.rewardText.toLowerCase()}.` : `Ti mancano ${missing} timbri per: ${cfg.rewardText.toLowerCase()}.` };
+    const r = await wallet.notify(customer, msg.header, msg.body, {
+      push: true, expiresAt: Date.now() + SETTLE_MS,
+    });
+    if (r.push) db.logNotification(customer.id, rewardEarned ? 'reward' : 'stamp', true);
+  }
+  settleWallet(customer);
+}
+
+// Dopo l'animazione la tessera Wallet torna all'immagine fissa (pizze ferme) e l'avviso
+// "+1 timbro" sparisce dai dettagli, così riaprendola più tardi non riparte nulla.
 const settleTimers = new Map();
-const SETTLE_MS = (Number(process.env.WALLET_ANIM_MINUTES) || 3) * 60 * 1000;
+const SETTLE_MS = (Number(process.env.WALLET_ANIM_MINUTES) || 2) * 60 * 1000;
 function settleWallet(customer) {
   clearTimeout(settleTimers.get(customer.id));
   settleTimers.set(customer.id, setTimeout(() => {
@@ -436,7 +451,11 @@ app.post('/api/admin/audience', requirePin, (req, res) => {
 });
 
 app.get('/api/admin/campaigns', requirePin, (req, res) => {
-  res.json([...db.campaigns].reverse().slice(0, 30).map((c) => ({ ...c, segmentLabel: (SEGMENTS[c.segment] || {}).label })));
+  res.json([...db.campaigns].reverse().slice(0, 30).map((c) => ({
+    ...c,
+    segmentLabel: (SEGMENTS[c.segment] || {}).label,
+    ...(c.status === 'sent' && { active: db.isActive(c), expiresAt: db.expiryOf(c) }),
+  })));
 });
 
 app.post('/api/admin/campaigns', requirePin, wrap(async (req, res) => {
@@ -453,9 +472,10 @@ app.post('/api/admin/campaigns', requirePin, wrap(async (req, res) => {
     sendAt = new Date(req.body.sendAt);
     if (isNaN(sendAt)) return res.status(400).json({ error: 'Data di invio non valida.' });
   }
+  const keepDays = [1, 3, 7, 14].includes(Number(req.body.keepDays)) ? Number(req.body.keepDays) : 3;
   const campaign = db.createCampaign({
     title, body, segment: req.body.segment, ids, promo: req.body.promo !== false,
-    sendAt: sendAt.toISOString(), recipients: [],
+    sendAt: sendAt.toISOString(), recipients: [], keepDays,
   });
   if (sendAt <= new Date()) await sendCampaign(campaign);
   res.json(db.findCampaign(campaign.id));
@@ -467,15 +487,37 @@ app.post('/api/admin/campaigns/:id/cancel', requirePin, (req, res) => {
   res.json(db.updateCampaign(c.id, { status: 'cancelled' }));
 });
 
+// Toglie un messaggio già inviato da tutte le tessere (Wallet e web)
+app.post('/api/admin/campaigns/:id/remove', requirePin, (req, res) => {
+  const c = db.findCampaign(req.params.id);
+  if (!c || c.status !== 'sent') return res.status(400).json({ error: 'Messaggio non trovato.' });
+  db.updateCampaign(c.id, { removed: true });
+  cleanCampaign(c);
+  res.json({ ok: true });
+});
+
+// Ritocca le tessere dei destinatari: il messaggio scaduto/eliminato sparisce dai dettagli
+async function cleanCampaign(campaign) {
+  db.updateCampaign(campaign.id, { cleaned: true });
+  for (const id of campaign.recipients) {
+    const customer = db.customers.find((c) => c.id === id);
+    if (!customer) continue;
+    broadcast(customer, 'message-removed');
+    await syncWallet(customer);
+  }
+}
+
 let sending = false;
 async function sendCampaign(campaign) {
-  db.updateCampaign(campaign.id, { status: 'sending' });
+  // Il messaggio resta nella tessera per keepDays giorni, poi sparisce da solo.
+  const expiresAt = new Date(Date.now() + (campaign.keepDays || 3) * DAY_MS).toISOString();
+  db.updateCampaign(campaign.id, { status: 'sending', expiresAt });
   const { recipients, excludedNoConsent } = resolveAudience(campaign);
   const results = { total: recipients.length, push: 0, textOnly: 0, failed: 0, excludedNoConsent };
   for (const customer of recipients) {
     if (wallet.enabled()) {
       const r = await wallet.notify(customer, campaign.title, campaign.body, {
-        push: db.canPush(customer.id), messageId: `c_${campaign.id}`,
+        push: db.canPush(customer.id), messageId: `c_${campaign.id}`, expiresAt,
       });
       if (!r.ok) results.failed++;
       else if (r.push) { results.push++; db.logNotification(customer.id, 'campaign', true); }
@@ -487,6 +529,8 @@ async function sendCampaign(campaign) {
   db.updateCampaign(campaign.id, {
     status: 'sent', sentAt: new Date().toISOString(), recipients: recipients.map((c) => c.id), results,
   });
+  // Nella tessera resta solo l'ultimo messaggio: i precedenti vengono tolti subito
+  if (wallet.enabled()) (async () => { for (const c of recipients) await syncWallet(c); })();
   console.log(`[notifiche] "${campaign.title}" inviata a ${results.total} (push ${results.push}, solo testo ${results.textOnly}, errori ${results.failed})`);
 }
 
@@ -497,6 +541,8 @@ async function processDueCampaigns() {
   sending = true;
   try {
     for (const c of db.dueCampaigns()) await sendCampaign(c);
+    // messaggi scaduti: si tolgono dalle tessere (Google li nasconde già alla scadenza)
+    for (const c of db.campaignsToClean()) await cleanCampaign(c);
   } catch (err) {
     console.error(`[notifiche] ${err.message}`);
   } finally {
@@ -524,6 +570,7 @@ async function syncWallet(customer, message, options = {}) {
     await ensureClassOnce();
     await wallet.upsertObject(customer, db.stateOf(customer.id, cfg.stampsForReward), {
       ...options, ...db.getSettings(),
+      messages: db.messagesFor(customer.id, 1).map((m) => ({ id: m.id, header: m.title, body: m.body, expiresAt: m.expiresAt })),
     });
     if (options.notifyOnUpdate) db.logNotification(customer.id, 'stamp', true);
     if (message) {

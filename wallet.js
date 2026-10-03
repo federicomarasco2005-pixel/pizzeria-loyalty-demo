@@ -102,7 +102,7 @@ async function ensureClass() {
 let gifSupported = true;
 
 // Versione delle immagini: cambiandola Google scarica di nuovo i file (li conserva per indirizzo).
-const IMG_VERSION = 'v3';
+const IMG_VERSION = 'v4';
 
 // animated=true solo subito dopo un timbro: la GIF si vede una volta, poi il server
 // rimette l'immagine fissa (vedi settleWallet in server.js).
@@ -175,24 +175,27 @@ function objectBody(customer, state, extras = {}) {
 }
 
 // notifyOnUpdate: Google avvisa il telefono quando cambia il saldo (max 3 notifiche al giorno per pass).
-async function upsertObject(customer, state, { notifyOnUpdate = false, ...extras } = {}) {
-  // Sostituzione completa (PUT) così i campi tolti, come il QR, spariscono davvero dai pass già emessi.
-  // I messaggi già inviati dal locale vengono riletti e conservati.
+// Messaggio Google Wallet con scadenza: dopo expiresAt Google smette di mostrarlo.
+function walletMessage({ id, header, body, expiresAt }, type = 'TEXT') {
+  return {
+    id, header, body, messageType: type,
+    ...(expiresAt && { displayInterval: { end: { date: new Date(expiresAt).toISOString() } } }),
+  };
+}
+
+// extras.messages: i soli messaggi che devono restare nella tessera (decisi dal server).
+// Sostituzione completa (PUT): tutto ciò che non è nell'elenco sparisce dal pass, compresi i
+// messaggi scaduti o eliminati e gli avvisi "timbro aggiunto". Nessuna lettura preliminare: più veloce.
+async function upsertObject(customer, state, { notifyOnUpdate = false, messages = [], ...extras } = {}) {
   const send = async (body) => {
-    const url = `${BASE}/loyaltyObject/${body.id}`;
-    let existing;
+    const full = { ...body, messages: messages.map((m) => walletMessage(m)) };
     try {
-      existing = await request('GET', url);
+      await request('PUT', `${BASE}/loyaltyObject/${body.id}`,
+        notifyOnUpdate ? { ...full, notifyPreference: 'notifyOnUpdate' } : full);
     } catch (err) {
       if (status(err) !== 404) throw err;
-      await request('POST', `${BASE}/loyaltyObject`, body);
-      return;
+      await request('POST', `${BASE}/loyaltyObject`, full);
     }
-    await request('PUT', url, {
-      ...body,
-      ...(existing.messages && { messages: existing.messages }),
-      ...(notifyOnUpdate && { notifyPreference: 'notifyOnUpdate' }),
-    });
   };
   const body = objectBody(customer, state, extras);
   try {
@@ -213,9 +216,12 @@ async function upsertObject(customer, state, { notifyOnUpdate = false, ...extras
 // Google consente al massimo 3 notifiche push per pass ogni 24 ore: se la quota è finita
 // il messaggio viene comunque aggiunto alla tessera, senza notifica.
 // Restituisce { ok, push } con quello che è stato effettivamente inviato.
-async function notify(customer, header, body, { push = true, messageId } = {}) {
+// expiresAt: da quel momento Google non mostra più il messaggio nei dettagli della tessera.
+async function notify(customer, header, body, { push = true, messageId, expiresAt } = {}) {
   const url = `${BASE}/loyaltyObject/${objectId(customer)}/addMessage`;
-  const message = (type) => ({ message: { id: messageId || `m_${Date.now()}`, header, body, messageType: type } });
+  const message = (type) => ({
+    message: walletMessage({ id: messageId || `m_${Date.now()}`, header, body, expiresAt }, type),
+  });
   try {
     await request('POST', url, message(push ? 'TEXT_AND_NOTIFY' : 'TEXT'));
     return { ok: true, push };
