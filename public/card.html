@@ -43,6 +43,7 @@
       <a id="save" class="gwallet hidden" target="_blank" rel="noopener" aria-label="Aggiungi a Google Wallet">
         <img src="/wallet-button-it.svg" alt="Aggiungi a Google Wallet">
       </a>
+      <p id="inwallet" class="muted small center hidden" style="margin:0">✓ Tessera già nel tuo Google Wallet</p>
       <p id="nowallet" class="muted small hidden">Google Wallet non configurato su questo server: salva questa pagina tra i preferiti.</p>
 
       <!-- QR in secondo piano: si apre solo in cassa -->
@@ -119,6 +120,15 @@
       });
     }
 
+    // Pulsante "Aggiungi a Google Wallet" solo finché la tessera non è stata salvata.
+    // Una volta salvata resta nascosto (anche se l'esito arriva in un aggiornamento successivo).
+    let inWallet = false;
+    function paintWallet(c) {
+      inWallet = inWallet || !!c.walletSaved;
+      $('save').classList.toggle('hidden', !c.saveUrl || inWallet);
+      $('inwallet').classList.toggle('hidden', !inWallet);
+    }
+
     async function load() {
       try {
         const c = await api('/api/card/' + encodeURIComponent(token));
@@ -128,8 +138,9 @@
           $('hello').textContent = c.name;
           $('code').textContent = c.code;
           $('qr').src = c.qr;
-          if (c.saveUrl) { $('save').href = c.saveUrl; $('save').classList.remove('hidden'); }
+          if (c.saveUrl) $('save').href = c.saveUrl;
           else $('nowallet').classList.remove('hidden');
+          paintWallet(c);
           setCardToken(token); // ricorda la tessera su questo telefono (timbro con NFC)
           const params = new URLSearchParams(location.search);
           // Arrivati dall'adesivo NFC (?from=timbri-premi): si parte dallo stato precedente
@@ -156,6 +167,7 @@
         if (c.reviewUrl) { $('review').href = c.reviewUrl; $('review').classList.remove('hidden'); }
         else $('review').classList.add('hidden');
         renderMessages(c.messages || []);
+        paintWallet(c);
       } catch (err) {
         if (err.status === 404) $('notfound').classList.remove('hidden');
       }
