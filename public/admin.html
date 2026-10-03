@@ -106,6 +106,17 @@
             </label>
 
             <div>
+              <label for="nKeep">Quanto resta nella tessera</label>
+              <select id="nKeep">
+                <option value="1">1 giorno</option>
+                <option value="3" selected>3 giorni</option>
+                <option value="7">7 giorni</option>
+                <option value="14">14 giorni</option>
+              </select>
+              <p class="muted small" style="margin:4px 0 0">Poi sparisce da solo. Nella tessera resta sempre solo l'ultimo messaggio, così i dettagli restano ordinati.</p>
+            </div>
+
+            <div>
               <label>Quando</label>
               <label class="seg"><input type="radio" name="when" value="now" checked> Subito</label>
               <label class="seg"><input type="radio" name="when" value="later"> Programma data e ora</label>
@@ -136,6 +147,8 @@
               <strong>Regole di Google Wallet</strong><br>
               • Ogni tessera può ricevere <strong>al massimo 3 notifiche ogni 24 ore</strong>. Contano anche gli avvisi automatici "timbro aggiunto" e "premio sbloccato".<br>
               • Oltre il limite il messaggio <strong>arriva lo stesso nella tessera</strong>, ma senza notifica sul telefono: il sistema lo gestisce in automatico.<br>
+              • Nella tessera resta solo l'ultimo messaggio, fino alla scadenza scelta. Puoi toglierlo prima con "Elimina dalle tessere".<br>
+              • La velocità di consegna delle notifiche la decide Google: di solito pochi secondi, a volte qualche minuto.<br>
               • Formato: titolo + testo. Le notifiche compaiono su Android; chi usa la tessera web le vede appena la apre.<br>
               • Google può ridurre le notifiche se le considera spam: meglio 1–2 messaggi a settimana, utili e mirati.
             </section>
@@ -376,7 +389,7 @@
       $('nErr').textContent = '';
       const body = {
         title: $('nTitle').value, body: $('nBody').value, segment: selectedSegment(), ids: selectedIds(),
-        promo: $('nPromo').checked, sendAt: isLater() ? new Date($('nAt').value).toISOString() : null,
+        promo: $('nPromo').checked, keepDays: Number($('nKeep').value), sendAt: isLater() ? new Date($('nAt').value).toISOString() : null,
       };
       if (isLater() && !$('nAt').value) { $('nErr').textContent = 'Scegli data e ora.'; return; }
       const when = isLater() ? 'il ' + fmtDate(body.sendAt) : 'adesso';
@@ -417,7 +430,17 @@
         cell(tr, (c.segmentLabel || c.segment) + (c.promo ? ' · solo con consenso' : ''));
         const st = cell(tr, '');
         const span = document.createElement('span'); span.className = 'status ' + c.status; span.textContent = STATUS[c.status] || c.status;
+        if (c.status === 'sent' && !c.active) {
+          span.className = 'status cancelled';
+          span.textContent = c.removed ? 'Eliminato' : 'Scaduto';
+        }
         st.appendChild(span);
+        if (c.status === 'sent' && c.active) {
+          const until = document.createElement('div');
+          until.className = 'small muted';
+          until.textContent = 'nella tessera fino al ' + fmtDate(c.expiresAt);
+          st.appendChild(until);
+        }
         const r = c.results;
         cell(tr, r ? r.total + ' clienti · 📲 ' + r.push + ' push · 📄 ' + r.textOnly + ' solo tessera' + (r.failed ? ' · ⚠️ ' + r.failed + ' errori' : '') : '—').className = 'small';
         const act = cell(tr, '');
@@ -426,6 +449,17 @@
           x.className = 'chip danger'; x.textContent = 'Annulla';
           x.onclick = async () => { await api('/api/admin/campaigns/' + c.id + '/cancel', { method: 'POST', pin }); loadCampaigns(); };
           act.appendChild(x);
+        }
+        if (c.status === 'sent' && c.active) {
+          const del = document.createElement('button');
+          del.className = 'chip danger'; del.textContent = '🗑️ Elimina dalle tessere';
+          del.onclick = async () => {
+            if (!confirm('Togliere "' + c.title + '" da tutte le tessere?')) return;
+            await api('/api/admin/campaigns/' + c.id + '/remove', { method: 'POST', pin });
+            toast('🗑️ Messaggio tolto dalle tessere');
+            loadCampaigns();
+          };
+          act.appendChild(del);
         }
         $('campaigns').appendChild(tr);
       });
