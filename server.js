@@ -34,11 +34,35 @@ const cfg = {
 };
 
 const app = express();
+app.set('trust proxy', 1); // Render è dietro proxy: serve per sapere se la richiesta è HTTPS
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
+
+// ---------- Riconoscere il telefono del cliente ----------
+// Oltre alla memoria della pagina (localStorage) salviamo la tessera in un cookie del server:
+// su iPhone Safari può cancellare la memoria delle pagine dopo 7 giorni senza visite,
+// mentre i cookie impostati dal server durano molto di più. Serve al timbro NFC.
+function getCookie(req, name) {
+  const m = (req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+function setCardCookie(req, res, token) {
+  const secure = req.secure ? '; Secure' : '';
+  res.append('Set-Cookie', `card=${encodeURIComponent(token)}; Max-Age=34560000; Path=/; HttpOnly; SameSite=Lax${secure}`);
+}
+
+// Dati di iscrizione validati (usato dall'iscrizione normale e da quella al timbro NFC)
+function readSignup(body) {
+  const name = String(body.name || '').trim().slice(0, 60);
+  const email = String(body.email || '').trim().toLowerCase().slice(0, 120);
+  if (!name) return { error: 'Inserisci il tuo nome.' };
+  if (!EMAIL_RE.test(email)) return { error: 'Email non valida.' };
+  if (!body.acceptTerms) return { error: 'Devi accettare il regolamento per iscriverti.' };
+  return { name, email, consentMarketing: !!body.consentMarketing };
+}
 
 // ---------- Cliente ----------
 
@@ -54,17 +78,15 @@ app.get('/api/config', (req, res) => {
 });
 
 app.post('/api/signup', wrap(async (req, res) => {
-  const name = String(req.body.name || '').trim().slice(0, 60);
-  const email = String(req.body.email || '').trim().toLowerCase().slice(0, 120);
-  if (!name) return res.status(400).json({ error: 'Inserisci il tuo nome.' });
-  if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Email non valida.' });
-  if (!req.body.acceptTerms) return res.status(400).json({ error: 'Devi accettare il regolamento per iscriverti.' });
+  const data = readSignup(req.body);
+  if (data.error) return res.status(400).json({ error: data.error });
 
   // Demo: se l'email esiste già restituiamo la tessera esistente invece di crearne una nuova.
-  let customer = db.findByEmail(email);
-  if (!customer) customer = db.createCustomer({ name, email, consentMarketing: !!req.body.consentMarketing });
+  let customer = db.findByEmail(data.email);
+  if (!customer) customer = db.createCustomer(data);
 
   await syncWallet(customer);
+  setCardCookie(req, res, customer.token);
   res.json({ token: customer.token });
 }));
 
@@ -72,6 +94,7 @@ app.get('/api/card/:token', wrap(async (req, res) => {
   const customer = db.findByToken(req.params.token);
   if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
   const state = db.stateOf(customer.id, cfg.stampsForReward);
+  setCardCookie(req, res, customer.token); // aprire la tessera "collega" questo telefono
   res.json({
     name: customer.name,
     code: customer.code,
@@ -129,6 +152,29 @@ async function walletSaved(customer) {
 }
 
 app.get('/card/:token',(req, res) => res.sendFile(path.join(__dirname, 'public', 'card.html')));
+
+// La tessera web si può installare sul telefono come un'app (icona sulla schermata Home),
+// senza store: questo "manifest" dice al telefono nome, icona e indirizzo della tessera.
+app.get('/card/:token/manifest.webmanifest', (req, res) => {
+  if (!db.findByToken(req.params.token)) return res.status(404).end();
+  res.type('application/manifest+json').json({
+    name: `Tessera ${cfg.pizzeriaName}`,
+    short_name: 'Tessera 🍕',
+    description: `${cfg.programName}: i tuoi timbri sempre a portata di mano`,
+    id: `/card/${req.params.token}`,
+    start_url: `/card/${req.params.token}`,
+    scope: '/',
+    display: 'standalone',
+    orientation: 'portrait',
+    background_color: cfg.brandColor,
+    theme_color: cfg.brandColor,
+    icons: [
+      { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
+  });
+});
 
 app.get('/api/poster-qr', wrap(async (req, res) => {
   res.json({ url: PUBLIC_URL, qr: await QRCode.toDataURL(PUBLIC_URL, { margin: 1, width: 800 }) });
@@ -261,14 +307,32 @@ app.post('/api/tap', wrap(async (req, res) => {
     return res.status(403).json({ error: 'Questo timbro NFC non è più valido: chiedi il punto in cassa.' });
   }
 
-  // Tessera salvata su questo telefono, oppure prima volta: codice tessera + email
-  let customer = req.body.token ? db.findByToken(String(req.body.token)) : null;
-  if (!customer && req.body.code && req.body.email) {
+  // Lo stesso timbro NFC vale per tutti i clienti: è il telefono a dire chi è.
+  // 1) tessera ricordata su questo telefono (memoria della pagina o cookie del server)
+  const token = req.body.token || getCookie(req, 'card');
+  let customer = token ? db.findByToken(String(token)) : null;
+  let isNew = false;
+
+  if (!customer && req.body.signup) {
+    // 2) cliente nuovo: si iscrive sul momento e riceve subito il primo timbro
+    const data = readSignup(req.body.signup);
+    if (data.error) return res.status(400).json({ error: data.error, needLogin: true });
+    if (db.findByEmail(data.email)) {
+      return res.status(409).json({
+        emailExists: true, needLogin: true,
+        error: 'Con questa email c\'è già una tessera: inserisci il codice tessera per collegarla a questo telefono.',
+      });
+    }
+    customer = db.createCustomer(data);
+    isNew = true;
+  } else if (!customer && req.body.code && req.body.email) {
+    // 3) ha già la tessera ma questo telefono non la conosce: codice tessera + email
     const code = String(req.body.code).trim().toUpperCase().replace(/^(PZ-?)?/, 'PZ-');
     customer = db.findByCodeAndEmail(code, String(req.body.email).trim().toLowerCase());
     if (!customer) return res.status(404).json({ error: 'Codice o email non corretti.', needLogin: true });
   }
   if (!customer) return res.status(404).json({ needLogin: true });
+  setCardCookie(req, res, customer.token);
 
   if (req.body.requestId && db.findByRequestId(req.body.requestId)) {
     return res.json({ token: customer.token, duplicate: true });
@@ -284,8 +348,8 @@ app.post('/api/tap', wrap(async (req, res) => {
   }
 
   const { before, after, rewardEarned } = await addStamp(customer, { requestId: req.body.requestId, by: 'nfc' });
-  staffBroadcast({ type: 'nfc', name: customer.name, code: customer.code, token: customer.token, stamps: after.stamps, rewardEarned });
-  res.json({ token: customer.token, before: { stamps: before.stamps, rewards: before.rewards }, rewardEarned });
+  staffBroadcast({ type: 'nfc', name: customer.name, code: customer.code, token: customer.token, stamps: after.stamps, rewardEarned, isNew });
+  res.json({ token: customer.token, before: { stamps: before.stamps, rewards: before.rewards }, rewardEarned, isNew });
 }));
 
 // Avvisi live per la Cassa (EventSource non può mandare header: il PIN arriva in query)
