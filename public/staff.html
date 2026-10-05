@@ -193,7 +193,8 @@
         let ev; try { ev = JSON.parse(e.data); } catch { return; }
         if (ev.type !== 'nfc') return;
         vibrate([60, 40, 60]);
-        toast('📲 ' + ev.name + ': timbro con NFC' + (ev.rewardEarned ? ' — 🎉 premio sbloccato!' : ''), 4000);
+        toast((ev.isNew ? '🆕 Nuovo cliente ' + ev.name + ': iscritto e primo timbro con NFC' : '📲 ' + ev.name + ': timbro con NFC') +
+          (ev.rewardEarned ? ' — 🎉 premio sbloccato!' : ''), 4000);
         addNfcItem(ev);
       };
     }
@@ -208,7 +209,7 @@
       const name = document.createElement('strong'); name.textContent = ev.name + ' · ' + ev.code;
       const meta = document.createElement('div'); meta.className = 'small muted';
       meta.textContent = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) +
-        ' · timbri ' + ev.stamps + (ev.rewardEarned ? ' · premio sbloccato' : '');
+        ' · timbri ' + ev.stamps + (ev.isNew ? ' · 🆕 nuovo iscritto' : '') + (ev.rewardEarned ? ' · premio sbloccato' : '');
       info.append(name, meta);
       const undo = document.createElement('button');
       undo.className = 'chip danger';

@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>La mia tessera</title>
   <link rel="stylesheet" href="/style.css">
+  <!-- Tessera installabile sul telefono (icona sulla schermata Home, si apre come un'app) -->
+  <meta name="theme-color" content="#b3261e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tessera">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="manifest" id="manifest">
+  <script>
+    // manifest della singola tessera: l'icona installata riapre proprio questa tessera
+    document.getElementById('manifest').href = location.pathname.replace(/\/$/, '') + '/manifest.webmanifest';
+  </script>
 </head>
 <body>
   <main class="wrap stack">
@@ -45,6 +57,29 @@
       </a>
       <p id="inwallet" class="muted small center hidden" style="margin:0">✓ Tessera già nel tuo Google Wallet</p>
       <p id="nowallet" class="muted small hidden">Google Wallet non configurato su questo server: salva questa pagina tra i preferiti.</p>
+
+      <!-- Salva la tessera sul telefono (soprattutto iPhone, dove Google Wallet non c'è) -->
+      <section id="install" class="install hidden">
+        <div class="install-row">
+          <img src="/icons/icon-192.png" alt="" class="install-ico">
+          <div>
+            <strong>Salva la tessera sul telefono</strong>
+            <div class="small muted" id="installSub">Un'icona sulla schermata Home: la apri con un tocco, come un'app. Niente da scaricare.</div>
+          </div>
+        </div>
+        <button class="btn" id="installBtn"><span class="ico">📲</span> Salva sul telefono</button>
+        <button class="install-later small" id="installLater">Più tardi</button>
+      </section>
+
+      <!-- Istruzioni passo passo (iPhone e telefoni senza installazione automatica) -->
+      <div id="installSheet" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+        <div class="sheet-panel stack">
+          <h2 id="sheetTitle">Salva la tessera in 3 tocchi</h2>
+          <ol class="steps" id="steps"></ol>
+          <button class="btn" id="sheetOk">Ho capito</button>
+        </div>
+        <div class="sheet-arrow hidden" id="sheetArrow">⬇️</div>
+      </div>
 
       <!-- QR in secondo piano: si apre solo in cassa -->
       <button class="btn dark" id="qrBtn"><span class="ico">▦</span> Mostra il QR in cassa</button>
@@ -125,9 +160,84 @@
     let inWallet = false;
     function paintWallet(c) {
       inWallet = inWallet || !!c.walletSaved;
-      $('save').classList.toggle('hidden', !c.saveUrl || inWallet);
-      $('inwallet').classList.toggle('hidden', !inWallet);
+      // Su iPhone Google Wallet non esiste: al suo posto si propone di salvare la tessera sul telefono
+      $('save').classList.toggle('hidden', !c.saveUrl || inWallet || device.ios);
+      $('inwallet').classList.toggle('hidden', !inWallet || device.ios);
+      updateInstall();
     }
+
+    // ---------- Salva la tessera sul telefono (app web installabile) ----------
+    const ua = navigator.userAgent;
+    const device = {
+      ios: /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+      // browser dentro altre app (Instagram, Facebook…): da lì non si può installare
+      inApp: /FBAN|FBAV|Instagram|Line\/|LinkedInApp|Snapchat|TikTok/i.test(ua),
+      iosOtherBrowser: /CriOS|FxiOS|EdgiOS/i.test(ua),
+      standalone: matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
+    };
+    let installPrompt = null; // Android/Chrome: finestra di installazione nativa
+    const welcome = new URLSearchParams(location.search).has('welcome');
+
+    function laterUntil() { try { return Number(localStorage.getItem('installLater') || 0); } catch { return 0; } }
+    function wantsInstall() {
+      if (device.standalone) return false;                 // già aperta come app
+      if (!welcome && Date.now() < laterUntil()) return false;
+      // su Android, se la tessera è già in Google Wallet non insistiamo
+      return device.ios || !!installPrompt || !inWallet;
+    }
+    function updateInstall() {
+      $('install').classList.toggle('hidden', !wantsInstall());
+      if (device.ios) $('installSub').textContent = 'Su iPhone: un\'icona sulla schermata Home che apre la tua tessera con un tocco, come un\'app. Niente da scaricare.';
+    }
+
+    const SHARE_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0a84ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>';
+    const ADD_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-4px"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+
+    function openSteps() {
+      let steps;
+      if (device.inApp) {
+        steps = [
+          'Tocca <strong>⋯</strong> (in alto o in basso) e scegli <strong>"Apri nel browser"</strong> / <strong>"Apri in Safari"</strong>.',
+          'Nella pagina che si apre tocca di nuovo <strong>"Salva sul telefono"</strong>.',
+        ];
+      } else if (device.ios) {
+        steps = [
+          'Tocca ' + SHARE_ICON + ' <strong>Condividi</strong> ' + (device.iosOtherBrowser ? '(in alto a destra, nella barra dell\'indirizzo)' : '(in basso al centro dello schermo)') + '.',
+          'Scorri e tocca ' + ADD_ICON + ' <strong>"Aggiungi alla schermata Home"</strong>.',
+          'Tocca <strong>"Aggiungi"</strong> in alto a destra. Fatto: trovi l\'icona 🍕 tra le tue app!',
+        ];
+      } else {
+        steps = [
+          'Tocca il menu <strong>⋮</strong> in alto a destra del browser.',
+          'Scegli <strong>"Installa app"</strong> oppure <strong>"Aggiungi a schermata Home"</strong>.',
+          'Conferma: trovi l\'icona 🍕 tra le tue app!',
+        ];
+      }
+      $('steps').innerHTML = steps.map((s) => '<li>' + s + '</li>').join('');
+      // su iPhone con Safari il pulsante Condividi è in basso: freccia che lo indica
+      $('sheetArrow').classList.toggle('hidden', !(device.ios && !device.iosOtherBrowser && !device.inApp));
+      $('installSheet').classList.remove('hidden');
+    }
+
+    $('installBtn').onclick = async () => {
+      if (installPrompt) {
+        installPrompt.prompt();
+        const choice = await installPrompt.userChoice.catch(() => null);
+        installPrompt = null;
+        if (choice && choice.outcome === 'accepted') $('install').classList.add('hidden');
+        return;
+      }
+      openSteps();
+    };
+    $('sheetOk').onclick = () => $('installSheet').classList.add('hidden');
+    $('installSheet').onclick = (e) => { if (e.target === $('installSheet')) $('installSheet').classList.add('hidden'); };
+    $('installLater').onclick = () => {
+      try { localStorage.setItem('installLater', String(Date.now() + 3 * 86400e3)); } catch {}
+      $('install').classList.add('hidden');
+    };
+    addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; updateInstall(); });
+    addEventListener('appinstalled', () => { $('install').classList.add('hidden'); toast('✅ Tessera salvata sul telefono!', 3500); });
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
     async function load() {
       try {
@@ -152,6 +262,17 @@
             state = prev;
             history.replaceState(null, '', location.pathname);
             setTimeout(() => celebrate(prev, next), 450);
+            if (welcome) {
+              // nuovo cliente iscritto al timbro: subito l'invito a salvare la tessera sul telefono
+              setTimeout(() => {
+                toast('🎉 Benvenuto! Ecco il tuo primo timbro', 3500);
+                updateInstall();
+                if (!$('install').classList.contains('hidden')) {
+                  $('install').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  $('installBtn').classList.add('pulse');
+                }
+              }, 2000);
+            }
             state = next;
             if (c.reviewUrl) { $('review').href = c.reviewUrl; $('review').classList.remove('hidden'); }
             renderMessages(c.messages || []);

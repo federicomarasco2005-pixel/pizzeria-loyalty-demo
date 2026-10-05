@@ -11,42 +11,77 @@
     .tap .big { font-size: 5rem; display: inline-block; animation: stampDown .5s cubic-bezier(.2, 1.6, .4, 1) both; }
     @keyframes stampDown { from { transform: translateY(-60px) scale(1.4); opacity: 0; } to { transform: none; opacity: 1; } }
     .tap h1 { color: #fff; }
-    .card-fallback { margin-top: 24px; text-align: left; color: var(--ink); }
+    .sheet { margin-top: 18px; color: var(--ink); }
+    .welcome { text-align: center; color: #fff; padding: 18px 8px 0; }
+    .welcome h1 { color: #fff; font-size: 1.5rem; }
+    .welcome .gift { font-size: 3.2rem; line-height: 1; }
+    .choice { display: flex; gap: 8px; }
+    .choice .chip { flex: 1; justify-content: center; }
+    .choice .chip[aria-selected="true"] { background: var(--brand); color: #fff; border-color: var(--brand); box-shadow: 0 3px 0 color-mix(in srgb, var(--brand) 60%, #000); }
   </style>
 </head>
 <body>
   <main class="wrap">
-    <!-- Caso normale: nessuna domanda, il timbro arriva e si apre la tessera animata -->
+    <!-- Caso normale: telefono già conosciuto → nessuna domanda -->
     <section id="working" class="tap">
       <div class="big">🍕</div>
       <h1>Timbro in arrivo…</h1>
     </section>
 
-    <!-- Solo se questo telefono non è mai stato collegato alla tessera -->
-    <section id="link" class="panel card-fallback hidden stack">
-      <h2>Collega la tessera a questo telefono</h2>
-      <p class="muted" style="margin-top:-4px">Serve una volta sola. Il modo più veloce:</p>
-      <ol style="margin:0;padding-left:20px;line-height:1.6">
-        <li>apri <strong>Google Wallet</strong> e tocca la tessera <strong data-cfg="pizzeriaName"></strong>;</li>
-        <li>in basso tocca <strong>"🍕 Apri la tessera animata"</strong>;</li>
-        <li>fatti riavvicinare il timbro.</li>
-      </ol>
-      <details>
-        <summary class="small" style="cursor:pointer">Oppure inserisci codice tessera ed email</summary>
-        <form id="login" novalidate>
-          <label for="code">Codice tessera (sulla tessera, es. PZ-AB12C)</label>
-          <input id="code" type="text" autocapitalize="characters" autocomplete="off" placeholder="PZ-AB12C">
-          <label for="email">Email usata all'iscrizione</label>
-          <input id="email" type="email" inputmode="email" autocomplete="email">
-          <button class="btn" style="margin-top:14px" type="submit"><span class="ico">🍕</span> Collega e ricevi il timbro</button>
+    <!-- Telefono non ancora registrato -->
+    <section id="unknown" class="hidden">
+      <div class="welcome">
+        <div class="gift">🎁</div>
+        <h1>Benvenuto da <span data-cfg="pizzeriaName"></span>!</h1>
+        <p style="margin:4px 0 0;opacity:.92">Ogni <span data-cfg="stampsForReward"></span> visite: <span data-cfg="rewardText"></span></p>
+      </div>
+
+      <div class="panel sheet stack">
+        <div class="choice" role="tablist">
+          <button class="chip" role="tab" data-choice="new" aria-selected="true">🆕 Sono nuovo</button>
+          <button class="chip" role="tab" data-choice="have" aria-selected="false">🎫 Ho già la tessera</button>
+        </div>
+
+        <!-- Nuovo cliente: iscrizione e primo timbro subito -->
+        <form id="signup" novalidate>
+          <p class="muted" style="margin:0">Crea la tessera in 20 secondi e <strong>ricevi subito il primo timbro</strong>. Niente app da scaricare.</p>
+          <label for="sName">Nome</label>
+          <input id="sName" type="text" autocomplete="given-name" maxlength="60">
+          <label for="sEmail">Email</label>
+          <input id="sEmail" type="email" inputmode="email" autocomplete="email">
+          <label class="check">
+            <input id="sTerms" type="checkbox">
+            <span>Ho letto il regolamento e l'informativa privacy e aderisco al programma fedeltà. <em>(obbligatorio)</em></span>
+          </label>
+          <label class="check">
+            <input id="sMkt" type="checkbox">
+            <span>Voglio ricevere offerte e novità. <em>(facoltativo)</em></span>
+          </label>
+          <button class="btn big" type="submit"><span class="ico">🍕</span> Crea la tessera e prendi il timbro</button>
         </form>
-      </details>
-      <p class="center small"><a href="/">Non hai ancora la tessera? Iscriviti</a></p>
-      <p class="error" id="err"></p>
+
+        <!-- Ha già la tessera ma su questo telefono non è collegata -->
+        <div id="have" class="hidden stack">
+          <p class="muted" style="margin:0">Collega la tua tessera a questo telefono (serve una volta sola).</p>
+          <div class="info" style="background:var(--cream);color:var(--ink)">
+            <strong>Il modo più veloce:</strong> apri <strong>Google Wallet</strong> → tessera <strong data-cfg="pizzeriaName"></strong> →
+            tocca <strong>"🍕 Apri la tessera animata"</strong>, poi fatti riavvicinare il timbro.
+          </div>
+          <form id="login" novalidate>
+            <p class="small muted" style="margin:0">Oppure inserisci i tuoi dati:</p>
+            <label for="code">Codice tessera (es. PZ-AB12C)</label>
+            <input id="code" type="text" autocapitalize="characters" autocomplete="off" placeholder="PZ-AB12C">
+            <label for="email">Email usata all'iscrizione</label>
+            <input id="email" type="email" inputmode="email" autocomplete="email">
+            <button class="btn" style="margin-top:14px" type="submit"><span class="ico">🍕</span> Collega e prendi il timbro</button>
+          </form>
+        </div>
+        <p class="error" id="err"></p>
+      </div>
     </section>
 
     <!-- Già timbrato in questa visita / timbro disattivato -->
-    <section id="msg" class="panel card-fallback hidden stack center">
+    <section id="msg" class="panel sheet hidden stack center">
       <div style="font-size:3.5rem">⏳</div>
       <p id="msgText" style="font-size:1.05rem;margin:0"></p>
       <a id="cardLink" class="btn hidden" href="#"><span class="ico">🍕</span> Apri la mia tessera</a>
@@ -60,23 +95,37 @@
     const requestId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
     applyBrand();
 
-    function show(id) { ['working', 'link', 'msg'].forEach((x) => $(x).classList.toggle('hidden', x !== id)); }
+    function show(id) { ['working', 'unknown', 'msg'].forEach((x) => $(x).classList.toggle('hidden', x !== id)); }
+    function choose(which) {
+      document.querySelectorAll('[data-choice]').forEach((b) => b.setAttribute('aria-selected', b.dataset.choice === which));
+      $('signup').classList.toggle('hidden', which !== 'new');
+      $('have').classList.toggle('hidden', which !== 'have');
+      $('err').textContent = '';
+    }
+    document.querySelectorAll('[data-choice]').forEach((b) => (b.onclick = () => choose(b.dataset.choice)));
 
     async function tap(extra = {}) {
-      show('working');
       $('err').textContent = '';
       try {
         const r = await api('/api/tap', { method: 'POST', body: { secret, requestId, token: getCardToken(), ...extra } });
         setCardToken(r.token);
         vibrate(80);
-        // Apre la tessera partendo dallo stato precedente: parte l'animazione del nuovo timbro
-        const from = r.before ? '?from=' + r.before.stamps + '-' + r.before.rewards : '';
-        location.replace('/card/' + encodeURIComponent(r.token) + from);
+        // Apre la tessera partendo dallo stato precedente: parte l'animazione del nuovo timbro.
+        // Ai nuovi clienti la tessera propone anche di salvarla sul telefono.
+        const params = new URLSearchParams();
+        if (r.before) params.set('from', r.before.stamps + '-' + r.before.rewards);
+        if (r.isNew) params.set('welcome', '1');
+        location.replace('/card/' + encodeURIComponent(r.token) + '?' + params);
       } catch (err) {
         const data = err.data || {};
         if (data.token) setCardToken(data.token);
-        if (err.status === 404 && data.needLogin) {
-          show('link');
+        if (data.needLogin) {
+          show('unknown');
+          if (data.emailExists) {
+            choose('have');
+            $('email').value = $('sEmail').value;
+            $('code').focus();
+          }
           if (data.error) $('err').textContent = data.error;
           return;
         }
@@ -87,9 +136,13 @@
       }
     }
 
+    $('signup').addEventListener('submit', (e) => {
+      e.preventDefault();
+      tap({ token: null, signup: { name: $('sName').value, email: $('sEmail').value, acceptTerms: $('sTerms').checked, consentMarketing: $('sMkt').checked } });
+    });
     $('login').addEventListener('submit', (e) => {
       e.preventDefault();
-      tap({ code: $('code').value, email: $('email').value, token: null });
+      tap({ token: null, code: $('code').value, email: $('email').value });
     });
 
     tap();
