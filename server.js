@@ -841,9 +841,19 @@ const manager = {
     keyFile: path.resolve(__dirname, process.env.GOOGLE_KEY_FILE || './service-account.json'),
     origin: PUBLIC_URL,
   });
-  for (const ctx of shops.all()) {
-    ensureClass(ctx).catch((err) => console.error(`[wallet] ${ctx.shop.slug}: ${err.message}`));
-  }
+  // Classi Google aggiornate solo quando il sito è raggiungibile: Google scarica subito logo e immagini
+  // dal nostro server, e su Render il traffico arriva qualche secondo dopo l'avvio.
+  // Se fallisce si riprova da sola al primo timbro (vedi ensureClass in syncWallet).
+  (async function updateClasses() {
+    for (let i = 0; i < 20; i++) {
+      const ok = await fetch(`${PUBLIC_URL}/api/config`).then((r) => r.ok, () => false);
+      if (ok) break;
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+    for (const ctx of shops.all()) {
+      await ensureClass(ctx).catch((err) => console.error(`[wallet] ${ctx.shop.slug}: ${err.message}`));
+    }
+  })();
   setInterval(processDueCampaigns, 30000);
   processDueCampaigns();
   app.listen(PORT, () => {
