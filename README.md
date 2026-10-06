@@ -72,7 +72,24 @@ Alternativa più stabile: deploy su Render/Railway con `PUBLIC_URL` fisso (atten
 
 ---
 
-## 4. Personalizzare per la pizzeria
+## 4. Più locali e bot Telegram
+
+Lo stesso server ospita più locali: ognuno ha il suo indirizzo (`/da-mario/`, `/bar-luna/`…) con iscrizione, tessera,
+cassa (`/staff`), dashboard (`/admin`), QR da tavolo (`/poster`), timbro NFC (`/tap/…`), PIN e classe Google Wallet propri.
+Il primo locale nasce dalle variabili qui sotto; i vecchi link (`/card/…`, `/tap/…`, `/staff.html`) portano a lui.
+
+**Nuovi locali dal telefono, con il bot Telegram:**
+1. Su Telegram apri **@BotFather** → `/newbot` → scegli nome e username → copia il token.
+2. Su Render: servizio → **Environment** → aggiungi `TELEGRAM_BOT_TOKEN` = token → salva (il servizio riparte).
+3. Apri il tuo bot e scrivi `/start`: **la prima persona che scrive diventa il proprietario**, gli altri vengono rifiutati
+   (in alternativa imposta `TELEGRAM_OWNER_ID`).
+4. `/nuova`: nome, tipo di timbro (pizza, caffè, burger, gelato, birra, stella o logo), timbri per il premio, premio,
+   colore, logo (foto), link recensioni, telefono → anteprima → **Crea**. Ricevi link, PIN e indirizzo da scrivere nel chip NFC.
+5. `/locali`: numeri di ogni locale, modifiche (premio, colore, logo…), nuovo PIN, elimina.
+
+Le immagini (timbri, GIF animate, icone, logo) sono generate dal server (`images.js`): niente script da lanciare.
+
+## 5. Personalizzare il primo locale
 
 In `.env`: `PIZZERIA_NAME`, `PROGRAM_NAME`, `REWARD_TEXT`, `STAMPS_FOR_REWARD`, `BRAND_COLOR`, `STAFF_PIN`.
 Logo: sostituisci `public/logo.png` (PNG quadrato, ideale 660×660) con quello del locale — prendilo dal loro sito/Instagram.
@@ -82,7 +99,7 @@ Prima della demo: Dashboard → **Azzera dati demo**.
 
 ---
 
-## 5. Copione demo (5 minuti)
+## 6. Copione demo (5 minuti)
 
 Servono: il tuo telefono Android (cliente), un secondo telefono o tablet (cassa), il poster QR stampato, PC con server + tunnel acceso.
 
@@ -101,11 +118,14 @@ Prova generale completa almeno una volta domenica, con il tunnel acceso e i due 
 
 **C'è:** iscrizione con consensi separati, pass Google Wallet aggiornabile, QR con token opaco (nessun dato personale nel codice), ledger append-only con annulli tracciati, protezione doppio tap, ricerca manuale come fallback, dashboard.
 
-**Non c'è ancora (prototipo):** Apple Wallet, integrazione con la cassa/POS, email automatiche, multi-locale, login vero per lo staff (solo PIN), informativa privacy reale, database di produzione, export/cancellazione dati self-service. Inoltre, in demo, chi reinserisce un'email già iscritta riceve la tessera esistente: in produzione servirà una verifica via email.
+**Non c'è ancora (prototipo):** Apple Wallet, integrazione con la cassa/POS, email automatiche, login vero per lo staff (solo PIN), informativa privacy reale, database di produzione, export/cancellazione dati self-service. Inoltre, in demo, chi reinserisce un'email già iscritta riceve la tessera esistente: in produzione servirà una verifica via email.
 
 ## File
 
-- `server.js` — API e pagine
-- `wallet.js` — Google Wallet (classe, oggetti, notifiche, link di salvataggio)
-- `db.js` — archivio JSON in `data/db.json` e calcolo saldo dal ledger
+- `server.js` — API e pagine (ogni locale sotto `/<slug>/`)
+- `shops.js` — registro dei locali (creazione, modifica, configurazione)
+- `bot.js` — bot Telegram
+- `images.js` — timbri, GIF, icone e logo generati per ogni locale
+- `wallet.js` — Google Wallet (una classe per locale, oggetti, notifiche, link di salvataggio)
+- `db.js` — archivio per locale (Postgres o file in `data/`) e calcolo saldo dal ledger
 - `public/` — pagine cliente, cassa, dashboard, poster

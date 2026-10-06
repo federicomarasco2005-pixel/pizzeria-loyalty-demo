@@ -1,5 +1,6 @@
 // Integrazione Google Wallet (loyalty pass) tramite REST API + link "Salva in Google Wallet" firmato JWT.
 // Se le credenziali non sono configurate il modulo resta disattivato e la demo usa solo la tessera web.
+// Un emittente (issuer) Google, una "classe" per ogni locale: le funzioni ricevono la configurazione del locale (c).
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { GoogleAuth } = require('google-auth-library');
@@ -10,6 +11,7 @@ let cfg = null;
 let creds = null;
 let auth = null;
 
+// config: { issuerId, keyJson, keyFile, origin } (comuni a tutti i locali)
 function init(config) {
   cfg = config;
   if (!cfg.issuerId) return disabled('GOOGLE_ISSUER_ID non impostato');
@@ -32,7 +34,7 @@ function disabled(reason) {
 }
 
 const enabled = () => !!auth;
-const classId = () => `${cfg.issuerId}.${cfg.classSuffix}`;
+const classId = (c) => `${cfg.issuerId}.${c.classSuffix}`;
 const objectId = (customer) => `${cfg.issuerId}.c_${customer.id}`;
 
 async function request(method, url, data) {
@@ -48,23 +50,23 @@ function describe(err) {
   return body ? JSON.stringify(body.error || body) : err.message;
 }
 
-function classBody() {
+function classBody(c) {
   return {
-    id: classId(),
-    issuerName: cfg.pizzeriaName,
-    programName: cfg.programName,
+    id: classId(c),
+    issuerName: c.pizzeriaName,
+    programName: c.programName,
     programLogo: {
-      sourceUri: { uri: cfg.logoUrl },
-      contentDescription: { defaultValue: { language: 'it-IT', value: `Logo ${cfg.pizzeriaName}` } },
+      sourceUri: { uri: c.logoUrl },
+      contentDescription: { defaultValue: { language: 'it-IT', value: `Logo ${c.pizzeriaName}` } },
     },
     // Logo largo: su Android sostituisce l'intestazione (logo rotondo + nome)
-    ...(cfg.wideLogoUrl && {
+    ...(c.wideLogoUrl && {
       wideProgramLogo: {
-        sourceUri: { uri: cfg.wideLogoUrl },
-        contentDescription: { defaultValue: { language: 'it-IT', value: cfg.pizzeriaName } },
+        sourceUri: { uri: c.wideLogoUrl },
+        contentDescription: { defaultValue: { language: 'it-IT', value: c.pizzeriaName } },
       },
     }),
-    hexBackgroundColor: cfg.brandColor,
+    hexBackgroundColor: c.brandColor,
     countryCode: 'IT',
     reviewStatus: 'UNDER_REVIEW',
     // Fronte della tessera: una sola riga "Timbri · Premio · Codice".
@@ -84,55 +86,52 @@ function classBody() {
 }
 
 // Crea la classe del programma se non esiste, altrimenti la aggiorna (nome, logo, colore).
-async function ensureClass() {
-  const url = `${BASE}/loyaltyClass/${classId()}`;
+async function ensureClass(c) {
+  const url = `${BASE}/loyaltyClass/${classId(c)}`;
   try {
     await request('GET', url);
   } catch (err) {
     if (status(err) !== 404) throw new Error(`lettura classe fallita: ${describe(err)}`);
-    await request('POST', `${BASE}/loyaltyClass`, classBody());
-    console.log(`[wallet] classe creata: ${classId()}`);
+    await request('POST', `${BASE}/loyaltyClass`, classBody(c));
+    console.log(`[wallet] classe creata: ${classId(c)}`);
     return;
   }
-  await request('PATCH', url, classBody());
-  console.log(`[wallet] classe aggiornata: ${classId()}`);
+  await request('PATCH', url, classBody(c));
+  console.log(`[wallet] classe aggiornata: ${classId(c)}`);
 }
 
 // Se Google rifiuta le GIF (non documentate ufficialmente) si torna alle immagini fisse.
 let gifSupported = true;
 
-// Versione delle immagini: cambiandola Google scarica di nuovo i file (li conserva per indirizzo).
-const IMG_VERSION = 'v4';
-
 // animated=true solo subito dopo un timbro: la GIF si vede una volta, poi il server
 // rimette l'immagine fissa (vedi settleWallet in server.js).
-function heroUri(state, n, animated) {
+// Le immagini hanno una versione (c.imgVersion): cambiandola Google scarica di nuovo i file (li conserva per indirizzo).
+function heroFile(c, state, animated) {
+  const n = c.stampsForReward;
   const stamps = Math.min(state.stamps, n);
   const rewardReady = state.rewards > 0 && stamps === 0;
-  let file;
   if (animated && gifSupported && (rewardReady || stamps > 0)) {
-    file = rewardReady ? `anim-${n}-reward.gif` : `anim-${n}-${stamps}.gif`;
-  } else {
-    // premio pronto: tutte le pizze colorate; altrimenti i timbri attuali
-    file = `grid-${n}-${rewardReady ? n : stamps}.png`;
+    return rewardReady ? `anim-${n}-reward.gif` : `anim-${n}-${stamps}.gif`;
   }
-  return `${cfg.stampsImageBase}/${file}?${IMG_VERSION}`;
+  // premio pronto: tutti i timbri colorati; altrimenti i timbri attuali
+  return `grid-${n}-${rewardReady ? n : stamps}.png`;
 }
+const heroUri = (c, state, animated) => `${c.stampsImageBase}/${heroFile(c, state, animated)}?v=${c.imgVersion}`;
 
 // extras (impostati dal gestore in Dashboard): reviewUrl, mapsUrl, phone
-function objectBody(customer, state, extras = {}) {
-  const n = cfg.stampsForReward;
+function objectBody(c, customer, state, extras = {}) {
+  const n = c.stampsForReward;
   const missing = n - state.stamps;
-  const cardUrl = `${cfg.publicUrl}/card/${customer.token}`;
+  const cardUrl = `${c.baseUrl}/card/${customer.token}`;
   const links = [];
-  if (!cfg.walletQr) links.push({ id: 'qr', uri: `${cardUrl}?qr=1`, description: '🔳 Mostra il QR per la cassa' });
-  links.push({ id: 'web', uri: cardUrl, description: '🍕 Apri la tessera animata' });
+  if (!c.walletQr) links.push({ id: 'qr', uri: `${cardUrl}?qr=1`, description: '🔳 Mostra il QR per la cassa' });
+  links.push({ id: 'web', uri: cardUrl, description: `${c.emoji} Apri la tessera animata` });
   if (extras.reviewUrl) links.push({ id: 'review', uri: extras.reviewUrl, description: '⭐ Lascia una recensione su Google' });
   if (extras.mapsUrl) links.push({ id: 'maps', uri: extras.mapsUrl, description: '📍 Come raggiungerci' });
   if (extras.phone) links.push({ id: 'tel', uri: `tel:${extras.phone.replace(/[^\d+]/g, '')}`, description: `📞 Chiama / prenota (${extras.phone})` });
   return {
     id: objectId(customer),
-    classId: classId(),
+    classId: classId(c),
     state: 'ACTIVE',
     accountId: customer.code,
     accountName: customer.name,
@@ -141,33 +140,33 @@ function objectBody(customer, state, extras = {}) {
     // QR nel Wallet facoltativo (WALLET_QR=on): Google non permette di spostarlo né rimpicciolirlo,
     // quindi di default si toglie per lasciare spazio alle pizze. In cassa si usa il codice cliente
     // (mostrato sul fronte) oppure il QR della tessera web, raggiungibile dal link nei dettagli.
-    ...(cfg.walletQr && { barcode: { type: 'QR_CODE', value: customer.token, alternateText: customer.code } }),
+    ...(c.walletQr && { barcode: { type: 'QR_CODE', value: customer.token, alternateText: customer.code } }),
     // Striscia dei timbri (immagine principale della tessera): un file per ogni stato,
     // URL diverso = Google la ricarica. Formato 3:1, come la mostra il Wallet sulle carte fedeltà.
     // Animata (GIF): l'ultima pizza ottenuta entra girando con il "+1"; con un premio pronto le pizze "saltano".
     heroImage: {
-      sourceUri: { uri: heroUri(state, n, extras.animated === true) },
+      sourceUri: { uri: heroUri(c, state, extras.animated === true) },
       contentDescription: { defaultValue: { language: 'it-IT', value: `${state.stamps} timbri su ${n}` } },
     },
     textModulesData: [
       // i primi tre compaiono sul fronte della tessera (vedi classTemplateInfo)
       { id: 'timbri', header: 'Timbri', body: `${state.stamps} / ${n}` },
-      { id: 'premio', header: 'Premio', body: state.rewards > 0 ? `🎁 ${state.rewards} da ritirare` : cfg.rewardShort },
+      { id: 'premio', header: 'Premio', body: state.rewards > 0 ? `🎁 ${state.rewards} da ritirare` : c.rewardShort },
       { id: 'codice', header: 'Codice', body: customer.code },
       {
         id: 'stato',
         header: state.rewards > 0 ? 'Hai un premio da ritirare!' : 'Prossimo premio',
         body: state.rewards > 0
-          ? `Mostra questa tessera in cassa: ${cfg.rewardText.toLowerCase()}.`
-          : `Ti ${missing === 1 ? 'manca 1 timbro' : `mancano ${missing} timbri`} per: ${cfg.rewardText.toLowerCase()}.`,
+          ? `Mostra questa tessera in cassa: ${c.rewardText.toLowerCase()}.`
+          : `Ti ${missing === 1 ? 'manca 1 timbro' : `mancano ${missing} timbri`} per: ${c.rewardText.toLowerCase()}.`,
       },
       {
         id: 'regole',
         header: 'Come funziona',
-        body: cfg.walletQr
-          ? `Mostra il QR a ogni visita: ricevi 1 timbro. Ogni ${n} timbri: ${cfg.rewardText.toLowerCase()}.`
+        body: c.walletQr
+          ? `Mostra il QR a ogni visita: ricevi 1 timbro. Ogni ${n} timbri: ${c.rewardText.toLowerCase()}.`
           : `A ogni visita apri questa tessera e avvicina il telefono in cassa: con il timbro NFC ricevi subito il punto. ` +
-            `In alternativa di' il codice ${customer.code}. Ogni ${n} timbri: ${cfg.rewardText.toLowerCase()}.`,
+            `In alternativa di' il codice ${customer.code}. Ogni ${n} timbri: ${c.rewardText.toLowerCase()}.`,
       },
     ],
     linksModuleData: { uris: links },
@@ -186,7 +185,7 @@ function walletMessage({ id, header, body, expiresAt }, type = 'TEXT') {
 // extras.messages: i soli messaggi che devono restare nella tessera (decisi dal server).
 // Sostituzione completa (PUT): tutto ciò che non è nell'elenco sparisce dal pass, compresi i
 // messaggi scaduti o eliminati e gli avvisi "timbro aggiunto". Nessuna lettura preliminare: più veloce.
-async function upsertObject(customer, state, { notifyOnUpdate = false, messages = [], ...extras } = {}) {
+async function upsertObject(c, customer, state, { notifyOnUpdate = false, messages = [], ...extras } = {}) {
   const send = async (body) => {
     const full = { ...body, messages: messages.map((m) => walletMessage(m)) };
     try {
@@ -197,7 +196,7 @@ async function upsertObject(customer, state, { notifyOnUpdate = false, messages 
       await request('POST', `${BASE}/loyaltyObject`, full);
     }
   };
-  const body = objectBody(customer, state, extras);
+  const body = objectBody(c, customer, state, extras);
   try {
     await send(body);
   } catch (err) {
@@ -206,7 +205,7 @@ async function upsertObject(customer, state, { notifyOnUpdate = false, messages 
     // Google ha rifiutato la GIF: d'ora in poi immagini fisse.
     gifSupported = false;
     console.warn(`[wallet] GIF animata rifiutata (${describe(err)}): uso le immagini fisse`);
-    await send(objectBody(customer, state, extras)).catch((e) => {
+    await send(objectBody(c, customer, state, extras)).catch((e) => {
       throw new Error(`aggiornamento pass fallito: ${describe(e)}`);
     });
   }
@@ -257,7 +256,7 @@ function saveUrl(customer) {
       iss: creds.client_email,
       aud: 'google',
       typ: 'savetowallet',
-      origins: [cfg.publicUrl],
+      origins: [cfg.origin],
       payload: { loyaltyObjects: [{ id: objectId(customer) }] },
     },
     creds.private_key,
@@ -266,4 +265,4 @@ function saveUrl(customer) {
   return `https://pay.google.com/gp/v/save/${token}`;
 }
 
-module.exports = { init, enabled, ensureClass, upsertObject, notify, saveUrl, isSaved };
+module.exports = { init, enabled, ensureClass, upsertObject, notify, saveUrl, isSaved, heroFile };
