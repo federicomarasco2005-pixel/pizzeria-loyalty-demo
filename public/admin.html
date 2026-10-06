@@ -38,8 +38,8 @@
     <div class="row" style="align-items:baseline;flex-wrap:wrap">
       <div><h1>Dashboard</h1><span class="muted" data-cfg="pizzeriaName"></span></div>
       <nav class="nav" style="justify-content:flex-end;flex:2">
-        <a class="chip" href="/staff.html">🍕 Cassa</a>
-        <a class="chip" href="/poster.html" target="_blank">🖨️ Stampa QR tavolo</a>
+        <a class="chip" href="staff">🍕 Cassa</a>
+        <a class="chip" href="poster" target="_blank">🖨️ Stampa QR tavolo</a>
         <button class="chip danger" id="reset">🗑️ Azzera dati demo</button>
       </nav>
     </div>
@@ -133,7 +133,7 @@
               <h2>Anteprima sul telefono</h2>
               <div class="preview-phone">
                 <div class="notif">
-                  <img src="/logo.png" alt="">
+                  <img src="logo.png" alt="">
                   <div>
                     <div class="app">Google Wallet · ora</div>
                     <strong id="pTitle">Titolo del messaggio</strong>
@@ -265,7 +265,7 @@
     async function load() {
       let s;
       try {
-        s = await api('/api/admin/stats', { pin });
+        s = await api('api/admin/stats', { pin });
       } catch (err) {
         if (err.status === 401) { $('login').classList.remove('hidden'); $('dash').classList.add('hidden'); }
         return;
@@ -317,7 +317,7 @@
     const isLater = () => document.querySelector('input[name=when]:checked').value === 'later';
 
     async function loadNotify() {
-      segData = await api('/api/admin/segments', { pin });
+      segData = await api('api/admin/segments', { pin });
       const current = selectedSegment() || 'all';
       $('segments').innerHTML = '';
       segData.segments.forEach((s) => {
@@ -351,7 +351,7 @@
       const segment = selectedSegment();
       $('manualBox').classList.toggle('hidden', segment !== 'manual');
       if (!segment) return;
-      const a = await api('/api/admin/audience', { method: 'POST', pin, body: { segment, ids: selectedIds(), promo: $('nPromo').checked } });
+      const a = await api('api/admin/audience', { method: 'POST', pin, body: { segment, ids: selectedIds(), promo: $('nPromo').checked } });
       const parts = ['<strong>Lo riceveranno ' + a.count + ' clienti</strong>'];
       if (a.count) {
         parts.push('📲 ' + a.pushable + ' con notifica sul telefono');
@@ -396,7 +396,7 @@
       if (!confirm('Inviare "' + body.title + '" ' + when + '?')) return;
       $('sendBtn').disabled = true;
       try {
-        const c = await api('/api/admin/campaigns', { method: 'POST', pin, body });
+        const c = await api('api/admin/campaigns', { method: 'POST', pin, body });
         if (c.status === 'sent') {
           const r = c.results;
           toast('📣 Inviato a ' + r.total + ' clienti (' + r.push + ' notifiche push)', 4000);
@@ -413,7 +413,7 @@
 
     const STATUS = { sent: 'Inviato', scheduled: 'Programmato', cancelled: 'Annullato', sending: 'In invio…' };
     async function loadCampaigns() {
-      const list = await api('/api/admin/campaigns', { pin });
+      const list = await api('api/admin/campaigns', { pin });
       $('campaigns').innerHTML = '';
       if (!list.length) {
         const tr = document.createElement('tr');
@@ -447,7 +447,7 @@
         if (c.status === 'scheduled') {
           const x = document.createElement('button');
           x.className = 'chip danger'; x.textContent = 'Annulla';
-          x.onclick = async () => { await api('/api/admin/campaigns/' + c.id + '/cancel', { method: 'POST', pin }); loadCampaigns(); };
+          x.onclick = async () => { await api('api/admin/campaigns/' + c.id + '/cancel', { method: 'POST', pin }); loadCampaigns(); };
           act.appendChild(x);
         }
         if (c.status === 'sent' && c.active) {
@@ -455,7 +455,7 @@
           del.className = 'chip danger'; del.textContent = '🗑️ Elimina dalle tessere';
           del.onclick = async () => {
             if (!confirm('Togliere "' + c.title + '" da tutte le tessere?')) return;
-            await api('/api/admin/campaigns/' + c.id + '/remove', { method: 'POST', pin });
+            await api('api/admin/campaigns/' + c.id + '/remove', { method: 'POST', pin });
             toast('🗑️ Messaggio tolto dalle tessere');
             loadCampaigns();
           };
@@ -467,7 +467,7 @@
 
     // ---------- Impostazioni ----------
     async function loadSettings() {
-      const s = await api('/api/admin/settings', { pin });
+      const s = await api('api/admin/settings', { pin });
       $('reviewUrl').value = s.reviewUrl || '';
       $('mapsUrl').value = s.mapsUrl || '';
       $('phone').value = s.phone || '';
@@ -482,7 +482,7 @@
     $('saveSettings').onclick = async () => {
       $('sErr').textContent = '';
       try {
-        await api('/api/admin/settings', { method: 'POST', pin, body: { reviewUrl: $('reviewUrl').value, mapsUrl: $('mapsUrl').value, phone: $('phone').value } });
+        await api('api/admin/settings', { method: 'POST', pin, body: { reviewUrl: $('reviewUrl').value, mapsUrl: $('mapsUrl').value, phone: $('phone').value } });
         toast('✔ Salvato. Le tessere si aggiornano in pochi secondi.', 3500);
       } catch (err) {
         $('sErr').textContent = err.message;
@@ -495,11 +495,11 @@
       $('nfcCooldown').value = String(n.cooldownHours);
       $('nfcUrl').value = n.url;
     }
-    async function loadNfc() { paintNfc(await api('/api/admin/nfc', { pin })); }
+    async function loadNfc() { paintNfc(await api('api/admin/nfc', { pin })); }
     async function saveNfc(extra = {}) {
       $('nfcErr').textContent = '';
       try {
-        paintNfc(await api('/api/admin/nfc', {
+        paintNfc(await api('api/admin/nfc', {
           method: 'POST', pin,
           body: { enabled: $('nfcEnabled').checked, cooldownHours: Number($('nfcCooldown').value), ...extra },
         }));
@@ -540,7 +540,7 @@
     $('reset').onclick = async (e) => {
       e.preventDefault();
       if (!confirm('Cancellare tutti i clienti, le operazioni e i messaggi della demo? (Le impostazioni restano)')) return;
-      await api('/api/admin/reset', { method: 'POST', pin }).catch((err) => toast(err.message));
+      await api('api/admin/reset', { method: 'POST', pin }).catch((err) => toast(err.message));
       load();
       if (tab === 'notify') loadNotify();
     };

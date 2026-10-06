@@ -17,7 +17,7 @@
 </head>
 <body>
   <div class="poster">
-    <img class="logo" src="/logo.png" alt="">
+    <img class="logo" src="logo.png" alt="">
     <h1 data-cfg="pizzeriaName"></h1>
     <p class="big">Ogni <span data-cfg="stampsForReward"></span> visite:<br><span data-cfg="rewardText"></span> 🍕</p>
     <img class="qr" id="qr" alt="QR iscrizione">
@@ -28,7 +28,7 @@
   <script src="/common.js"></script>
   <script>
     applyBrand();
-    api('/api/poster-qr').then((d) => {
+    api('api/poster-qr').then((d) => {
       document.getElementById('qr').src = d.qr;
       document.getElementById('url').textContent = d.url;
     });

@@ -107,7 +107,7 @@
     async function tap(extra = {}) {
       $('err').textContent = '';
       try {
-        const r = await api('/api/tap', { method: 'POST', body: { secret, requestId, token: getCardToken(), ...extra } });
+        const r = await api('api/tap', { method: 'POST', body: { secret, requestId, token: getCardToken(), ...extra } });
         setCardToken(r.token);
         vibrate(80);
         // Apre la tessera partendo dallo stato precedente: parte l'animazione del nuovo timbro.
@@ -115,7 +115,7 @@
         const params = new URLSearchParams();
         if (r.before) params.set('from', r.before.stamps + '-' + r.before.rewards);
         if (r.isNew) params.set('welcome', '1');
-        location.replace('/card/' + encodeURIComponent(r.token) + '?' + params);
+        location.replace('card/' + encodeURIComponent(r.token) + '?' + params);
       } catch (err) {
         const data = err.data || {};
         if (data.token) setCardToken(data.token);
@@ -132,7 +132,7 @@
         show('msg');
         $('msgText').textContent = err.message;
         const token = data.token || getCardToken();
-        if (token) { $('cardLink').href = '/card/' + encodeURIComponent(token); $('cardLink').classList.remove('hidden'); }
+        if (token) { $('cardLink').href = 'card/' + encodeURIComponent(token); $('cardLink').classList.remove('hidden'); }
       }
     }
 

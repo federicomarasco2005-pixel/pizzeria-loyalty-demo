@@ -9,7 +9,7 @@ async function api(path, { method = 'GET', body, pin } = {}) {
 }
 
 async function applyBrand() {
-  const cfg = await api('/api/config');
+  const cfg = await api('api/config');
   document.documentElement.style.setProperty('--brand', cfg.brandColor);
   document.querySelectorAll('[data-cfg]').forEach((el) => { el.textContent = cfg[el.dataset.cfg]; });
   return cfg;
@@ -20,6 +20,12 @@ function renderStamps(el, filled, total, { animate = true } = {}) {
   const prev = el.dataset.filled === undefined ? null : Number(el.dataset.filled);
   el.dataset.filled = filled;
   if (el.children.length !== total) {
+    // tessera grande: colonne scelte per avere righe piene (6 → 3x2, 8 → 4x2, 10 → 5x2…)
+    if (el.classList.contains('tiles')) {
+      const cols = { 4: 4, 5: 5, 7: 4, 8: 4, 10: 5, 11: 4, 12: 4 }[total] || 3;
+      el.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+      el.style.gap = cols > 3 ? '10px' : '';
+    }
     el.innerHTML = '';
     for (let i = 0; i < total; i++) {
       const d = document.createElement('div');
@@ -97,9 +103,23 @@ function toast(msg, ms = 2200) {
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
-// Tessera del cliente ricordata su questo telefono (serve al timbro con NFC)
-function getCardToken() { try { return localStorage.getItem('cardToken') || ''; } catch { return ''; } }
-function setCardToken(t) { try { if (t) localStorage.setItem('cardToken', t); } catch {} }
+// Ogni locale ha la sua memoria sul telefono (window.SHOP lo imposta il server nella pagina).
+// Il primo locale legge anche le chiavi senza nome usate dalle versioni precedenti.
+const SHOP = window.SHOP || { slug: '', legacy: true };
+const key = (name) => (SHOP.slug ? name + ':' + SHOP.slug : name);
+function load(name) {
+  try { return localStorage.getItem(key(name)) || (SHOP.legacy ? localStorage.getItem(name) : '') || ''; } catch { return ''; }
+}
+function store(name, value) {
+  try { value ? localStorage.setItem(key(name), value) : localStorage.removeItem(key(name)); } catch {}
+}
 
-function getPin() { try { return localStorage.getItem('staffPin') || ''; } catch { return ''; } }
-function setPin(p) { try { p ? localStorage.setItem('staffPin', p) : localStorage.removeItem('staffPin'); } catch {} }
+// Tessera del cliente ricordata su questo telefono (serve al timbro con NFC)
+function getCardToken() { return load('cardToken'); }
+function setCardToken(t) { if (t) store('cardToken', t); }
+
+function getPin() { return load('staffPin'); }
+function setPin(p) {
+  store('staffPin', p);
+  if (!p && SHOP.legacy) { try { localStorage.removeItem('staffPin'); } catch {} }
+}

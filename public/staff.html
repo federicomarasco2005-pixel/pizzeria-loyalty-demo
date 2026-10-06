@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#b3261e">
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="manifest.json">
   <title>Cassa — Staff</title>
   <link rel="stylesheet" href="/style.css">
   <style>
@@ -56,7 +56,7 @@
     </section>
 
     <nav class="nav">
-      <a class="chip" href="/admin.html">📊 Dashboard</a>
+      <a class="chip" href="admin">📊 Dashboard</a>
       <button class="chip danger" id="logout">🚪 Esci</button>
     </nav>
   </main>
@@ -78,7 +78,7 @@
 
     async function tryLogin(p) {
       try {
-        await api('/api/staff/login', { method: 'POST', pin: p });
+        await api('api/staff/login', { method: 'POST', pin: p });
         pin = p; setPin(p);
         connectStaffStream();
         startScan();
@@ -118,7 +118,7 @@
 
     async function openCustomer(token) {
       try {
-        render(await api('/api/staff/customer/' + encodeURIComponent(token), { pin }));
+        render(await api('api/staff/customer/' + encodeURIComponent(token), { pin }));
         show('cust');
       } catch (err) {
         toast(err.message);
@@ -159,16 +159,16 @@
         $('undoBtn').disabled = !current.canUndo;
       }
     }
-    $('stampBtn').onclick = () => act('/api/staff/stamp', 'Timbro aggiunto ✔');
-    $('redeemBtn').onclick = () => act('/api/staff/redeem', 'Premio consegnato ✔');
-    $('undoBtn').onclick = () => act('/api/staff/undo', 'Operazione annullata');
+    $('stampBtn').onclick = () => act('api/staff/stamp', 'Timbro aggiunto ✔');
+    $('redeemBtn').onclick = () => act('api/staff/redeem', 'Premio consegnato ✔');
+    $('undoBtn').onclick = () => act('api/staff/undo', 'Operazione annullata');
     $('nextBtn').onclick = () => startScan();
 
     let searchT;
     $('q').oninput = () => {
       clearTimeout(searchT);
       searchT = setTimeout(async () => {
-        const list = await api('/api/staff/search?q=' + encodeURIComponent($('q').value), { pin }).catch(() => []);
+        const list = await api('api/staff/search?q=' + encodeURIComponent($('q').value), { pin }).catch(() => []);
         $('results').innerHTML = '';
         // Codice cliente digitato per intero (con o senza "PZ-"): apre subito la tessera
         const typed = $('q').value.trim().toUpperCase().replace(/^PZ-?/, '');
@@ -188,7 +188,7 @@
     let staffStream = null;
     function connectStaffStream() {
       if (staffStream || !window.EventSource) return;
-      staffStream = new EventSource('/api/staff/stream?pin=' + encodeURIComponent(pin));
+      staffStream = new EventSource('api/staff/stream?pin=' + encodeURIComponent(pin));
       staffStream.onmessage = (e) => {
         let ev; try { ev = JSON.parse(e.data); } catch { return; }
         if (ev.type !== 'nfc') return;
@@ -217,7 +217,7 @@
       undo.onclick = async () => {
         if (!confirm('Annullare il timbro NFC di ' + ev.name + '?')) return;
         try {
-          await api('/api/staff/undo', { method: 'POST', pin, body: { token: ev.token } });
+          await api('api/staff/undo', { method: 'POST', pin, body: { token: ev.token } });
           meta.textContent += ' · annullato';
           name.style.textDecoration = 'line-through';
           undo.remove();

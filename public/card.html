@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Tessera">
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="manifest" id="manifest">
   <script>
     // manifest della singola tessera: l'icona installata riapre proprio questa tessera
@@ -22,7 +22,7 @@
   <main class="wrap stack">
     <div id="notfound" class="panel hidden">
       <h2>Tessera non trovata</h2>
-      <a class="btn" href="/"><span class="ico">🍕</span> Iscriviti</a>
+      <a class="btn" href="./"><span class="ico">🍕</span> Iscriviti</a>
     </div>
 
     <div id="card" class="hidden stack">
@@ -31,7 +31,7 @@
       <!-- Tessera: i timbri sono l'elemento principale -->
       <section class="passcard" id="pass">
         <div class="top">
-          <img src="/logo.png" alt="">
+          <img src="logo.png" alt="">
           <strong data-cfg="pizzeriaName" style="flex:1"></strong>
           <span class="live" id="live">live</span>
         </div>
@@ -61,7 +61,7 @@
       <!-- Salva la tessera sul telefono (soprattutto iPhone, dove Google Wallet non c'è) -->
       <section id="install" class="install hidden">
         <div class="install-row">
-          <img src="/icons/icon-192.png" alt="" class="install-ico">
+          <img src="icons/icon-192.png" alt="" class="install-ico">
           <div>
             <strong>Salva la tessera sul telefono</strong>
             <div class="small muted" id="installSub">Un'icona sulla schermata Home: la apri con un tocco, come un'app. Niente da scaricare.</div>
@@ -241,7 +241,7 @@
 
     async function load() {
       try {
-        const c = await api('/api/card/' + encodeURIComponent(token));
+        const c = await api('api/card/' + encodeURIComponent(token));
         const next = { stamps: c.stamps, rewards: c.rewards, stampsForReward: c.stampsForReward };
         if (!state) {
           $('card').classList.remove('hidden');
@@ -303,7 +303,7 @@
     // Tempo reale: il server avvisa appena la cassa assegna un timbro o il locale manda un messaggio.
     function connect() {
       if (!window.EventSource) return;
-      const es = new EventSource('/api/card/' + encodeURIComponent(token) + '/stream');
+      const es = new EventSource('api/card/' + encodeURIComponent(token) + '/stream');
       es.onopen = () => $('live').classList.remove('off');
       es.onmessage = (e) => {
         try {
