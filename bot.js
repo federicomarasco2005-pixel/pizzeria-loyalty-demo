@@ -9,7 +9,16 @@ const crypto = require('crypto');
 const express = require('express');
 const db = require('./db');
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+// Il token può essere una variabile d'ambiente oppure un "Secret File" di Render con lo stesso nome
+// (Render lo mette in /etc/secrets/ e nella cartella dell'app).
+function readSecret(name) {
+  if (process.env[name]) return process.env[name].trim();
+  for (const file of [`/etc/secrets/${name}`, require('path').join(__dirname, name)]) {
+    try { return require('fs').readFileSync(file, 'utf8').trim().replace(new RegExp(`^${name}\\s*=\\s*`), '').replace(/^["']|["']$/g, ''); } catch {}
+  }
+  return '';
+}
+const TOKEN = readSecret('TELEGRAM_BOT_TOKEN');
 const API = `https://api.telegram.org/bot${TOKEN}`;
 const hash = (s) => crypto.createHash('sha256').update(`${s}:${TOKEN}`).digest('hex');
 const HOOK_PATH = `/telegram/${hash('path').slice(0, 24)}`;

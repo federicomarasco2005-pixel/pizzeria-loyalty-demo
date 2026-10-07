@@ -4,3 +4,4 @@ data/
 service-account.json
 *.json.tmp
 tools/.frames/
+TELEGRAM_BOT_TOKEN
