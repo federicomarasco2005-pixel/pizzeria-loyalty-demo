@@ -87,6 +87,7 @@ for (const name of ['staff', 'admin', 'poster']) {
   shop.get([`/${name}`, `/${name}.html`], page(`${name}.html`));
 }
 shop.get('/card/:token', page('card.html'));
+shop.get(['/privacy', '/privacy.html'], page('privacy.html'));
 shop.get('/tap/:secret', page('tap.html'));
 
 // Immagini del locale (generate al volo, vedi images.js)
@@ -161,14 +162,84 @@ shop.post('/api/signup', wrap(async (req, res) => {
   const data = readSignup(req.body);
   if (data.error) return res.status(400).json({ error: data.error });
 
-  // Demo: se l'email esiste già restituiamo la tessera esistente invece di crearne una nuova.
-  let customer = ctx.db.findByEmail(data.email);
-  if (!customer) customer = ctx.db.createCustomer(data);
+  // Email già iscritta: la tessera NON viene restituita (chi conosce l'email di un altro non deve poterla aprire).
+  // Per ritrovarla servono codice tessera + email (/api/recover).
+  if (ctx.db.findByEmail(data.email)) {
+    return res.status(409).json({
+      emailExists: true,
+      error: 'Con questa email c\'è già una tessera. Inserisci il codice tessera (lo trovi nel Wallet o sulla tessera) per riaprirla.',
+    });
+  }
+  const customer = ctx.db.createCustomer(data);
 
   await syncWallet(ctx, customer);
   setCardCookie(req, res, customer.token);
   res.json({ token: customer.token });
 }));
+
+// Ritrova la tessera con codice + email (telefono nuovo, tessera persa). Tentativi limitati.
+shop.post('/api/recover', (req, res) => {
+  const { ctx } = req;
+  const k = `recover|${ctx.shop.slug}|${req.ip}`;
+  const lock = attempts.check(k);
+  if (lock) return res.status(429).json({ error: `Troppi tentativi: riprova tra ${lock} minuti.` });
+  const customer = findByCode(ctx, req.body.code, req.body.email);
+  if (!customer) {
+    attempts.fail(k);
+    return res.status(404).json({ error: 'Codice o email non corretti.' });
+  }
+  attempts.ok(k);
+  setCardCookie(req, res, customer.token);
+  res.json({ token: customer.token });
+});
+
+// Codice tessera scritto in qualsiasi modo ("ab12c", "PZ-AB12C", "pz ab12c") + email
+function findByCode(ctx, rawCode, rawEmail) {
+  const prefix = ctx.cfg.codePrefix;
+  const raw = String(rawCode || '').trim().toUpperCase().replace(/[\s-]/g, '');
+  const code = `${prefix}-${raw.replace(new RegExp(`^${prefix}`), '')}`;
+  return ctx.db.findByCodeAndEmail(code, String(rawEmail || '').trim().toLowerCase());
+}
+
+// ---------- Privacy: i dati del cliente, scaricabili e cancellabili da lui stesso ----------
+shop.get('/api/card/:token/export', (req, res) => {
+  const { ctx } = req;
+  const customer = ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  const data = { locale: ctx.cfg.pizzeriaName, esportato: new Date().toISOString(), ...ctx.db.exportCustomer(customer.id) };
+  res.set('Content-Disposition', `attachment; filename="tessera-${customer.code}.json"`).json(data);
+});
+
+// Consenso alle offerte: il cliente lo può dare o revocare dalla sua tessera
+shop.post('/api/card/:token/consent', (req, res) => {
+  const { ctx } = req;
+  const customer = ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  const on = req.body.consentMarketing === true;
+  ctx.db.updateCustomer(customer.id, { consentMarketing: on, consentAt: new Date().toISOString() });
+  res.json({ consentMarketing: on });
+});
+
+// Contatto del locale (pagina privacy)
+shop.get('/api/contact', (req, res) => res.json({ phone: req.ctx.db.getSettings().phone || null }));
+
+shop.post('/api/card/:token/delete', wrap(async (req, res) => {
+  const { ctx } = req;
+  const customer = ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  if (req.body.confirm !== true) return res.status(400).json({ error: 'Conferma richiesta.' });
+  await removeCustomer(ctx, customer);
+  res.append('Set-Cookie', `${cookieName(ctx)}=; Max-Age=0; Path=/`);
+  res.json({ ok: true });
+}));
+
+// Cancella un cliente: tessera Wallet disattivata, dati eliminati
+async function removeCustomer(ctx, customer) {
+  clearTimeout(settleTimers.get(customer.id));
+  if (wallet.enabled()) await wallet.deactivate(customer).catch((err) => console.error(`[wallet] ${err.message}`));
+  await ctx.db.deleteCustomer(customer.id);
+  console.log(`[privacy] ${ctx.shop.slug}: cliente ${customer.code} cancellato`);
+}
 
 shop.get('/api/card/:token', wrap(async (req, res) => {
   const { ctx } = req;
@@ -187,6 +258,7 @@ shop.get('/api/card/:token', wrap(async (req, res) => {
     walletSaved: await walletSaved(ctx, customer),
     reviewUrl: ctx.db.getSettings().reviewUrl || null,
     messages: ctx.db.messagesFor(customer.id).slice(0, 5),
+    consentMarketing: !!customer.consentMarketing,
   });
 }));
 
@@ -266,9 +338,51 @@ shop.get('/api/poster-qr', wrap(async (req, res) => {
 
 // ---------- Staff / Admin (protetti dal PIN del locale) ----------
 
+// Tentativi sbagliati (PIN, recupero tessera): dopo 5 errori dallo stesso indirizzo, blocco di 15 minuti.
+const attempts = {
+  map: new Map(), MAX: 5, LOCK_MS: 15 * 60 * 1000,
+  check(k) {
+    const f = this.map.get(k);
+    return f && f.until > Date.now() ? Math.ceil((f.until - Date.now()) / 60000) : 0;
+  },
+  fail(k) {
+    const f = this.map.get(k);
+    const n = f && !(f.until && f.until <= Date.now()) ? f.n + 1 : 1;
+    const until = n >= this.MAX ? Date.now() + this.LOCK_MS : 0;
+    this.map.set(k, { n, until });
+    if (this.map.size > 5000) this.map.delete(this.map.keys().next().value);
+    return !!until;
+  },
+  ok(k) { this.map.delete(k); },
+};
+
+// Chi sta usando la cassa: il gestore (PIN principale) o un dipendente (PIN personale, creato dal bot)
+function checkPin(req, pin) {
+  const { ctx } = req;
+  const k = `pin|${ctx.shop.slug}|${req.ip}`;
+  const locked = attempts.check(k);
+  if (locked) return { error: `Troppi tentativi sbagliati: riprova tra ${locked} minuti.`, status: 429 };
+  const who = shops.whoHasPin(ctx.shop, String(pin || ''));
+  if (who) { attempts.ok(k); return { who }; }
+  if (pin && attempts.fail(k)) {
+    bot.alert(`🔐 ${ctx.cfg.pizzeriaName}: 5 PIN sbagliati di fila su cassa/dashboard (indirizzo ${req.ip}). Bloccato per 15 minuti.`, `pin|${ctx.shop.slug}`);
+  }
+  return { error: 'PIN errato.', status: 401 };
+}
+
 function requirePin(req, res, next) {
-  if (req.get('x-staff-pin') !== req.ctx.cfg.staffPin) return res.status(401).json({ error: 'PIN errato.' });
+  const r = checkPin(req, req.get('x-staff-pin'));
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  req.who = r.who;
   next();
+}
+
+// Dashboard, notifiche e impostazioni: solo il gestore
+function requireManager(req, res, next) {
+  requirePin(req, res, () => {
+    if (req.who.role !== 'manager') return res.status(403).json({ error: 'Serve il PIN del gestore.' });
+    next();
+  });
 }
 
 function customerView(ctx, customer) {
@@ -293,7 +407,7 @@ function loadCustomer(req, res) {
   return customer;
 }
 
-shop.post('/api/staff/login', requirePin, (req, res) => res.json({ ok: true }));
+shop.post('/api/staff/login', requirePin, (req, res) => res.json({ ok: true, role: req.who.role, name: req.who.name }));
 
 shop.get('/api/staff/customer/:token', requirePin, (req, res) => {
   const customer = loadCustomer(req, res);
@@ -314,15 +428,15 @@ shop.post('/api/staff/stamp', requirePin, wrap(async (req, res) => {
   if (STAMP_COOLDOWN_SEC && before.lastVisitAt && Date.now() - Date.parse(before.lastVisitAt) < STAMP_COOLDOWN_SEC * 1000) {
     return res.status(429).json({ error: `Timbro già assegnato da meno di ${STAMP_COOLDOWN_SEC} secondi.` });
   }
-  const { rewardEarned } = await addStamp(ctx, customer, { requestId: req.body.requestId, by: 'staff' });
+  const { rewardEarned } = await addStamp(ctx, customer, { requestId: req.body.requestId, by: 'staff', who: req.who.name });
   res.json({ ...customerView(ctx, customer), rewardEarned });
 }));
 
 // Assegna un timbro (usato dalla Cassa e dal timbro NFC): ledger, tessera web live, Wallet.
-async function addStamp(ctx, customer, { requestId, by }) {
+async function addStamp(ctx, customer, { requestId, by, who }) {
   const n = ctx.cfg.stampsForReward;
   const before = ctx.db.stateOf(customer.id, n);
-  const event = ctx.db.addEvent({ type: 'stamp', customerId: customer.id, requestId, by });
+  const event = ctx.db.addEvent({ type: 'stamp', customerId: customer.id, requestId, by, who });
   const after = ctx.db.stateOf(customer.id, n);
   const rewardEarned = after.earned > before.earned;
   broadcast(ctx, customer, rewardEarned ? 'reward' : 'stamp');
@@ -358,12 +472,21 @@ async function walletAfterStamp(ctx, customer, after, rewardEarned) {
 // "+1 timbro" sparisce dai dettagli, così riaprendola più tardi non riparte nulla.
 const settleTimers = new Map();
 const SETTLE_MS = (Number(process.env.WALLET_ANIM_MINUTES) || 2) * 60 * 1000;
-function settleWallet(ctx, customer) {
+function settleWallet(ctx, customer, at = Date.now() + SETTLE_MS) {
   clearTimeout(settleTimers.get(customer.id));
-  settleTimers.set(customer.id, setTimeout(() => {
+  if (customer.settleAt !== new Date(at).toISOString()) ctx.db.updateCustomer(customer.id, { settleAt: new Date(at).toISOString() });
+  settleTimers.set(customer.id, setTimeout(async () => {
     settleTimers.delete(customer.id);
-    syncWallet(ctx, customer, null, { animated: false });
-  }, SETTLE_MS));
+    await syncWallet(ctx, customer, null, { animated: false });
+    if (ctx.db.findByToken(customer.token)) ctx.db.updateCustomer(customer.id, { settleAt: null });
+  }, Math.max(0, at - Date.now())));
+}
+
+// All'avvio: le tessere rimaste "animate" (server ripartito durante i 2 minuti) tornano ferme
+function resumeSettles() {
+  for (const ctx of shops.all()) {
+    for (const c of ctx.db.customers) if (c.settleAt) settleWallet(ctx, c, Math.max(Date.parse(c.settleAt), Date.now() + 5000));
+  }
 }
 
 // ---------- Timbro NFC del gestore ----------
@@ -412,12 +535,16 @@ shop.post('/api/tap', wrap(async (req, res) => {
     customer = ctx.db.createCustomer(data);
     isNew = true;
   } else if (!customer && req.body.code && req.body.email) {
-    // 3) ha già la tessera ma questo telefono non la conosce: codice tessera + email
-    const prefix = ctx.cfg.codePrefix;
-    const raw = String(req.body.code).trim().toUpperCase().replace(/\s/g, '');
-    const code = `${prefix}-${raw.replace(new RegExp(`^(${prefix}-?)?`), '')}`;
-    customer = ctx.db.findByCodeAndEmail(code, String(req.body.email).trim().toLowerCase());
-    if (!customer) return res.status(404).json({ error: 'Codice o email non corretti.', needLogin: true });
+    // 3) ha già la tessera ma questo telefono non la conosce: codice tessera + email (tentativi limitati)
+    const k = `recover|${ctx.shop.slug}|${req.ip}`;
+    const lock = attempts.check(k);
+    if (lock) return res.status(429).json({ error: `Troppi tentativi: riprova tra ${lock} minuti.`, needLogin: true });
+    customer = findByCode(ctx, req.body.code, req.body.email);
+    if (!customer) {
+      attempts.fail(k);
+      return res.status(404).json({ error: 'Codice o email non corretti.', needLogin: true });
+    }
+    attempts.ok(k);
   }
   if (!customer) return res.status(404).json({ needLogin: true });
   setCardCookie(req, res, customer.token);
@@ -443,7 +570,7 @@ shop.post('/api/tap', wrap(async (req, res) => {
 // Avvisi live per la Cassa (EventSource non può mandare header: il PIN arriva in query)
 const staffStreams = new Map(); // slug -> Set di risposte aperte
 shop.get('/api/staff/stream', (req, res) => {
-  if (req.query.pin !== req.ctx.cfg.staffPin) return res.status(401).end();
+  if (checkPin(req, req.query.pin).error) return res.status(401).end();
   const { slug } = req.ctx.shop;
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
@@ -463,9 +590,9 @@ function nfcView(ctx) {
   return { url: nfcUrl(ctx), enabled: s.nfcEnabled !== false, cooldownHours: nfcCooldownHours(ctx) };
 }
 
-shop.get('/api/admin/nfc', requirePin, (req, res) => res.json(nfcView(req.ctx)));
+shop.get('/api/admin/nfc', requireManager, (req, res) => res.json(nfcView(req.ctx)));
 
-shop.post('/api/admin/nfc', requirePin, (req, res) => {
+shop.post('/api/admin/nfc', requireManager, (req, res) => {
   const patch = {};
   if (typeof req.body.enabled === 'boolean') patch.nfcEnabled = req.body.enabled;
   if (req.body.cooldownHours !== undefined) {
@@ -487,7 +614,7 @@ shop.post('/api/staff/redeem', requirePin, wrap(async (req, res) => {
   if (ctx.db.stateOf(customer.id, ctx.cfg.stampsForReward).rewards < 1) {
     return res.status(400).json({ error: 'Nessun premio disponibile.' });
   }
-  ctx.db.addEvent({ type: 'redeem', customerId: customer.id, requestId: req.body.requestId, by: 'staff' });
+  ctx.db.addEvent({ type: 'redeem', customerId: customer.id, requestId: req.body.requestId, by: 'staff', who: req.who.name });
   broadcast(ctx, customer, 'redeem');
   await syncWallet(ctx, customer);
   res.json(customerView(ctx, customer));
@@ -500,7 +627,7 @@ shop.post('/api/staff/undo', requirePin, wrap(async (req, res) => {
   if (!customer) return;
   const { lastOp } = ctx.db.stateOf(customer.id, ctx.cfg.stampsForReward);
   if (!lastOp) return res.status(400).json({ error: 'Nessuna operazione da annullare.' });
-  ctx.db.addEvent({ type: 'void', customerId: customer.id, ref: lastOp.id, by: 'staff' });
+  ctx.db.addEvent({ type: 'void', customerId: customer.id, ref: lastOp.id, by: 'staff', who: req.who.name });
   broadcast(ctx, customer, 'undo');
   await syncWallet(ctx, customer);
   res.json(customerView(ctx, customer));
@@ -531,7 +658,7 @@ function stats(ctx) {
   };
 }
 
-shop.get('/api/admin/stats', requirePin, (req, res) => {
+shop.get('/api/admin/stats', requireManager, (req, res) => {
   const { ctx } = req;
   const { cfg } = ctx;
   const { views, voided, kpi } = stats(ctx);
@@ -544,19 +671,26 @@ shop.get('/api/admin/stats', requirePin, (req, res) => {
     kpi,
     customers: views.sort((a, b) => (b.lastVisitAt || '').localeCompare(a.lastVisitAt || '')),
     events: ctx.db.events.slice(-25).reverse().map((e) => ({
-      type: e.type, by: e.by, at: e.at, name: nameOf[e.customerId] || '?', voided: voided.has(e.id),
+      type: e.type, by: e.by, who: e.who || null, at: e.at, name: nameOf[e.customerId] || '?', voided: voided.has(e.id),
     })),
   });
 });
 
-shop.post('/api/admin/reset', requirePin, (req, res) => {
+shop.post('/api/admin/customers/:token/delete', requireManager, wrap(async (req, res) => {
+  const customer = req.ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Cliente non trovato.' });
+  await removeCustomer(req.ctx, customer);
+  res.json({ ok: true });
+}));
+
+shop.post('/api/admin/reset', requireManager, (req, res) => {
   req.ctx.db.reset();
   res.json({ ok: true });
 });
 
 // ---------- Impostazioni del locale ----------
 
-shop.get('/api/admin/settings', requirePin, (req, res) => res.json(req.ctx.db.getSettings()));
+shop.get('/api/admin/settings', requireManager, (req, res) => res.json(req.ctx.db.getSettings()));
 
 // Controlla i link del locale. Restituisce un messaggio d'errore oppure null.
 function checkLinks({ reviewUrl, mapsUrl, phone }) {
@@ -567,7 +701,7 @@ function checkLinks({ reviewUrl, mapsUrl, phone }) {
   return null;
 }
 
-shop.post('/api/admin/settings', requirePin, (req, res) => {
+shop.post('/api/admin/settings', requireManager, (req, res) => {
   const reviewUrl = String(req.body.reviewUrl || '').trim();
   const mapsUrl = String(req.body.mapsUrl || '').trim();
   const phone = String(req.body.phone || '').trim().slice(0, 30);
@@ -610,7 +744,7 @@ function resolveAudience(ctx, { segment, ids = [], promo }) {
   };
 }
 
-shop.get('/api/admin/segments', requirePin, (req, res) => {
+shop.get('/api/admin/segments', requireManager, (req, res) => {
   const { ctx } = req;
   res.json({
     pushLimit: db.PUSH_LIMIT,
@@ -623,12 +757,12 @@ shop.get('/api/admin/segments', requirePin, (req, res) => {
   });
 });
 
-shop.post('/api/admin/audience', requirePin, (req, res) => {
+shop.post('/api/admin/audience', requireManager, (req, res) => {
   const a = resolveAudience(req.ctx, req.body);
   res.json({ count: a.recipients.length, pushable: a.pushable, textOnly: a.recipients.length - a.pushable, excludedNoConsent: a.excludedNoConsent });
 });
 
-shop.get('/api/admin/campaigns', requirePin, (req, res) => {
+shop.get('/api/admin/campaigns', requireManager, (req, res) => {
   const { ctx } = req;
   res.json([...ctx.db.campaigns].reverse().slice(0, 30).map((c) => ({
     ...c,
@@ -637,7 +771,7 @@ shop.get('/api/admin/campaigns', requirePin, (req, res) => {
   })));
 });
 
-shop.post('/api/admin/campaigns', requirePin, wrap(async (req, res) => {
+shop.post('/api/admin/campaigns', requireManager, wrap(async (req, res) => {
   const { ctx } = req;
   const title = String(req.body.title || '').trim();
   const body = String(req.body.body || '').trim();
@@ -661,14 +795,14 @@ shop.post('/api/admin/campaigns', requirePin, wrap(async (req, res) => {
   res.json(ctx.db.findCampaign(campaign.id));
 }));
 
-shop.post('/api/admin/campaigns/:id/cancel', requirePin, (req, res) => {
+shop.post('/api/admin/campaigns/:id/cancel', requireManager, (req, res) => {
   const c = req.ctx.db.findCampaign(req.params.id);
   if (!c || c.status !== 'scheduled') return res.status(400).json({ error: 'Invio non annullabile.' });
   res.json(req.ctx.db.updateCampaign(c.id, { status: 'cancelled' }));
 });
 
 // Toglie un messaggio già inviato da tutte le tessere (Wallet e web)
-shop.post('/api/admin/campaigns/:id/remove', requirePin, (req, res) => {
+shop.post('/api/admin/campaigns/:id/remove', requireManager, (req, res) => {
   const c = req.ctx.db.findCampaign(req.params.id);
   if (!c || c.status !== 'sent') return res.status(400).json({ error: 'Messaggio non trovato.' });
   req.ctx.db.updateCampaign(c.id, { removed: true });
@@ -689,11 +823,20 @@ async function cleanCampaign(ctx, campaign) {
 
 async function sendCampaign(ctx, campaign) {
   // Il messaggio resta nella tessera per keepDays giorni, poi sparisce da solo.
-  const expiresAt = new Date(Date.now() + (campaign.keepDays || 3) * DAY_MS).toISOString();
-  ctx.db.updateCampaign(campaign.id, { status: 'sending', expiresAt });
-  const { recipients, excludedNoConsent } = resolveAudience(ctx, campaign);
-  const results = { total: recipients.length, push: 0, textOnly: 0, failed: 0, excludedNoConsent };
+  const expiresAt = campaign.expiresAt || new Date(Date.now() + (campaign.keepDays || 3) * DAY_MS).toISOString();
+  // destinatari fissati al primo tentativo; se il server riparte a metà si riprende da dove era rimasto
+  if (campaign.status !== 'sending') {
+    const a = resolveAudience(ctx, campaign);
+    ctx.db.updateCampaign(campaign.id, {
+      status: 'sending', expiresAt, pending: a.recipients.map((c) => c.id), sentTo: [],
+      results: { total: a.recipients.length, push: 0, textOnly: 0, failed: 0, excludedNoConsent: a.excludedNoConsent },
+    });
+  }
+  const results = campaign.results;
+  const done = new Set(campaign.sentTo || []);
+  const recipients = (campaign.pending || []).map((id) => ctx.db.customers.find((c) => c.id === id)).filter(Boolean);
   for (const customer of recipients) {
+    if (done.has(customer.id)) continue;
     if (wallet.enabled()) {
       const r = await wallet.notify(customer, campaign.title, campaign.body, {
         push: ctx.db.canPush(customer.id), messageId: `c_${campaign.id}`, expiresAt,
@@ -704,9 +847,11 @@ async function sendCampaign(ctx, campaign) {
     }
     // La tessera web aperta mostra subito il messaggio.
     broadcast(ctx, customer, 'message', { title: campaign.title, body: campaign.body });
+    done.add(customer.id);
+    ctx.db.updateCampaign(campaign.id, { sentTo: [...done], results });
   }
   ctx.db.updateCampaign(campaign.id, {
-    status: 'sent', sentAt: new Date().toISOString(), recipients: recipients.map((c) => c.id), results,
+    status: 'sent', sentAt: new Date().toISOString(), recipients: recipients.map((c) => c.id), results, pending: undefined, sentTo: undefined,
   });
   // Nella tessera resta solo l'ultimo messaggio: i precedenti vengono tolti subito
   if (wallet.enabled()) (async () => { for (const c of recipients) await syncWallet(ctx, c); })();
@@ -722,13 +867,54 @@ async function processDueCampaigns() {
   try {
     for (const ctx of shops.all()) {
       for (const c of ctx.db.dueCampaigns()) await sendCampaign(ctx, c);
+      // invii interrotti da un riavvio
+      for (const c of ctx.db.campaigns.filter((x) => x.status === 'sending')) await sendCampaign(ctx, c);
       // messaggi scaduti: si tolgono dalle tessere (Google li nasconde già alla scadenza)
       for (const c of ctx.db.campaignsToClean()) await cleanCampaign(ctx, c);
     }
+    await runJobs();
   } catch (err) {
     console.error(`[notifiche] ${err.message}`);
   } finally {
     sending = false;
+  }
+}
+
+// ---------- Lavori periodici (salvati: un riavvio non li fa saltare né ripetere) ----------
+// Lunedì dalle 9: backup e report settimanale su Telegram. Ogni giorno dalle 10: controllo dei locali fermi.
+const romeNow = () => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Rome', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', weekday: 'short', hourCycle: 'h23' })
+    .formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return { day: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour), weekday: p.weekday };
+};
+let jobsState = null;
+async function runJobs() {
+  if (!bot.enabled()) return;
+  if (!jobsState) jobsState = (await db.loadKey('jobs')) || {};
+  const now = romeNow();
+  const due = (name, cond) => cond && jobsState[name] !== now.day;
+  const mark = (name) => { jobsState[name] = now.day; db.saveKey('jobs', jobsState); };
+  if (due('weekly', now.weekday === 'Mon' && now.hour >= 9)) {
+    mark('weekly');
+    await bot.sendBackup('🗓️ Backup settimanale automatico').catch((err) => console.error(`[bot] backup: ${err.message}`));
+    await bot.sendWeeklyReports().catch((err) => console.error(`[bot] report: ${err.message}`));
+  }
+  if (due('daily', now.hour >= 10)) {
+    mark('daily');
+    for (const ctx of shops.all()) {
+      // privacy: tessere senza visite da 24 mesi vengono cancellate (come scritto nell'informativa)
+      const limit = Date.now() - 730 * DAY_MS;
+      for (const c of [...ctx.db.customers]) {
+        const s = ctx.db.stateOf(c.id, ctx.cfg.stampsForReward);
+        if (Date.parse(s.lastVisitAt || c.createdAt) < limit) await removeCustomer(ctx, c);
+      }
+      const last = ctx.db.events.filter((e) => e.type === 'stamp').pop();
+      const days = last ? (Date.now() - Date.parse(last.at)) / DAY_MS : 0;
+      // locale che timbrava e da 3 giorni non riceve timbri: forse il timbro NFC o la cassa non funzionano
+      if (days >= 3 && days < 30 && ctx.db.customers.length >= 3) {
+        bot.alert(`💤 ${ctx.cfg.pizzeriaName}: nessun timbro da ${Math.floor(days)} giorni. Il timbro NFC e la cassa funzionano?`, `idle|${ctx.shop.slug}`, 3 * DAY_MS);
+      }
+    }
   }
 }
 
@@ -761,6 +947,7 @@ async function syncWallet(ctx, customer, message, options = {}) {
   } catch (err) {
     // Il ledger è la fonte autorevole: un errore Wallet non blocca l'operazione in cassa.
     console.error(`[wallet] ${ctx.shop.slug}: ${err.message}`);
+    bot.alert(`⚠️ Google Wallet ha rifiutato un aggiornamento per ${ctx.cfg.pizzeriaName}:\n${err.message.slice(0, 300)}`, `wallet|${ctx.shop.slug}|${err.message.slice(0, 60)}`);
   }
 }
 
@@ -826,13 +1013,47 @@ const manager = {
     return { ctx: r.ctx, warnings };
   },
   resetPin: (slug) => shops.resetPin(slug),
+  addStaff: (slug, name) => shops.addStaff(slug, name),
+  removeStaff: (slug, id) => shops.removeStaff(slug, id),
+  addManager: (slug, chatId, name) => shops.addManager(slug, chatId, name),
+  removeManager: (slug, chatId) => shops.removeManager(slug, chatId),
+  managedBy: (chatId) => shops.all().filter((ctx) => (ctx.shop.managers || []).some((m) => m.chatId === chatId)),
+  // Settimana appena trascorsa di un locale: numeri per il report
+  weekly(ctx) {
+    const WEEK = 7 * DAY_MS, now = Date.now();
+    const { kpi, active } = stats(ctx);
+    const inWeek = (e, from, to) => Date.parse(e.at) >= now - from && Date.parse(e.at) < now - to;
+    const stamps = active.filter((e) => e.type === 'stamp');
+    const thisWeek = stamps.filter((e) => inWeek(e, WEEK, 0));
+    const lastWeek = stamps.filter((e) => inWeek(e, 2 * WEEK, WEEK));
+    const byStaff = {};
+    for (const e of thisWeek) { const k = e.by === 'nfc' ? 'Timbro NFC' : (e.who || 'Cassa'); byStaff[k] = (byStaff[k] || 0) + 1; }
+    return {
+      kpi,
+      newMembers: ctx.db.customers.filter((c) => now - Date.parse(c.createdAt) < WEEK).length,
+      stamps: thisWeek.length,
+      stampsPrev: lastWeek.length,
+      visitors: new Set(thisWeek.map((e) => e.customerId)).size,
+      redeemed: active.filter((e) => e.type === 'redeem' && inWeek(e, WEEK, 0)).length,
+      byStaff,
+    };
+  },
+  // Copia completa di tutti i locali (per il backup su Telegram)
+  async backup() {
+    await db.flush();
+    return {
+      creato: new Date().toISOString(),
+      versione: 1,
+      locali: shops.all().map((ctx) => ({ scheda: ctx.shop, dati: ctx.db.snapshot() })),
+    };
+  },
   remove: (slug) => shops.remove(slug),
   preview: (ctx) => images.preview(shops.imageSpec(ctx.shop)),
   prepareLogo: (buffer) => images.prepareLogo(buffer),
   themes: images.THEMES,
 };
 
-(async () => {
+const ready = (async () => {
   await db.init();
   await shops.init(PUBLIC_URL);
   wallet.init({
@@ -854,16 +1075,18 @@ const manager = {
       await ensureClass(ctx).catch((err) => console.error(`[wallet] ${ctx.shop.slug}: ${err.message}`));
     }
   })();
+  resumeSettles();
   setInterval(processDueCampaigns, 30000);
   processDueCampaigns();
-  app.listen(PORT, () => {
+  await new Promise((resolve) => app.listen(PORT, () => {
     console.log(`\nTessere fedeltà — ${shops.all().length} locali`);
     console.log(`  Locale:        http://localhost:${PORT}`);
     console.log(`  URL pubblico:  ${PUBLIC_URL}`);
     for (const ctx of shops.all()) console.log(`  ${ctx.cfg.pizzeriaName.padEnd(28)} ${ctx.cfg.baseUrl}/  (cassa: /staff, dashboard: /admin)`);
     console.log('');
-    bot.start(manager);
-  });
+    bot.start(manager).then(() => bot.alert(`🔄 Server avviato (${shops.all().length} locali, database: ${db.usingPostgres() ? 'Postgres' : 'file'}).`, 'start', 60 * 60 * 1000));
+    resolve();
+  }));
 })();
 
-module.exports = { manager }; // per i test del bot
+module.exports = { manager, ready }; // per i test

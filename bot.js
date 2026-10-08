@@ -5,6 +5,8 @@
 // Attivazione: variabile TELEGRAM_BOT_TOKEN (il token che dà @BotFather).
 // Accesso: solo il proprietario. È TELEGRAM_OWNER_ID se impostata, altrimenti la prima persona che scrive /start
 // (il bot lo ricorda). Su un server pubblico (https) usa il webhook, in locale interroga Telegram (polling).
+// I gestori dei locali possono collegarsi con un link d'invito: vedono solo i numeri del proprio locale.
+// Il bot manda anche: backup settimanale, report settimanale, avvisi quando qualcosa non va.
 const crypto = require('crypto');
 const express = require('express');
 const db = require('./db');
@@ -26,6 +28,9 @@ const HOOK_SECRET = hash('secret').slice(0, 48);
 
 let M = null;           // operazioni sui locali (vedi "manager" in server.js)
 let ownerId = null;
+let botUsername = '';
+let invites = {};       // codice d'invito -> { slug, exp }: link per collegare un gestore al suo locale
+const saveTg = () => db.saveKey('telegram', { ownerId, invites });
 let call = telegram;    // sostituibile nei test
 const sessions = new Map(); // chat -> modulo in corso { mode, step, data, slug, field }
 
@@ -56,22 +61,27 @@ function mount(app) {
   });
 }
 
-async function start(manager, { api } = {}) {
+async function start(manager, { api, username } = {}) {
   M = manager;
   if (api) call = api;
+  if (username) botUsername = username;
   if (!TOKEN && !api) {
     console.log('[bot] Telegram DISATTIVATO: imposta TELEGRAM_BOT_TOKEN per gestire i locali dal bot.');
     return;
   }
   const saved = (await db.loadKey('telegram')) || {};
   ownerId = Number(process.env.TELEGRAM_OWNER_ID) || saved.ownerId || null;
+  invites = saved.invites || {};
   if (api) return;
   try {
     const me = await call('getMe');
+    botUsername = me.username;
     await call('setMyCommands', {
       commands: [
         { command: 'nuova', description: 'Crea la tessera di un nuovo locale' },
         { command: 'locali', description: 'I tuoi locali: link, numeri, modifiche' },
+        { command: 'report', description: 'Report della settimana di tutti i locali' },
+        { command: 'backup', description: 'Copia completa dei dati, subito' },
         { command: 'annulla', description: 'Interrompi l\'operazione in corso' },
         { command: 'aiuto', description: 'Cosa sa fare il bot' },
       ],
@@ -226,13 +236,17 @@ async function handleUpdate(u) {
   const from = (u.message || u.callback_query).from;
   if (u.callback_query) call('answerCallbackQuery', { callback_query_id: u.callback_query.id }).catch(() => {});
 
-  if (!ownerId) {
+  const firstText = u.message ? (u.message.text || '').trim() : '';
+  const invite = firstText.match(/^\/start g_([A-Za-z0-9_-]+)$/);
+  if (!ownerId && !invite) {
     // Primo contatto: chi scrive per primo diventa il proprietario del bot
     ownerId = from.id;
-    db.saveKey('telegram', { ownerId });
+    saveTg();
     await send(chat, `🔐 Ciao ${esc(from.first_name)}! Da ora questo bot risponde solo a te.`);
   }
   if (from.id !== ownerId) {
+    if (invite) return redeemInvite(chat, from, invite[1]);
+    if (M.managedBy(chat).length) return managerUpdate(chat, u);
     return send(chat, `⛔ Questo bot è privato. (Il tuo ID Telegram è <code>${from.id}</code>)`);
   }
 
@@ -247,6 +261,8 @@ async function onCommand(chat, cmd) {
   if (cmd === '/start' || cmd === '/aiuto' || cmd === '/help') return menu(chat);
   if (cmd === '/nuova') return startCreate(chat);
   if (cmd === '/locali') return listShops(chat);
+  if (cmd === '/backup') return sendBackup('💾 Backup su richiesta', chat);
+  if (cmd === '/report') return sendReport(chat, M.all());
   if (cmd === '/annulla') {
     sessions.delete(chat);
     return send(chat, '👌 Operazione annullata.', kb([[btn('🏠 Menu', 'menu')]]));
@@ -260,7 +276,7 @@ function menu(chat) {
     '➕ <b>Nuova tessera</b>: rispondi a qualche domanda e il locale ha subito pagina di iscrizione, cassa, dashboard, timbro NFC e tessera Google Wallet.\n' +
     '📋 <b>I miei locali</b>: link, PIN della cassa, numeri, modifiche.\n\n' +
     'In ogni momento: /annulla',
-    kb([[btn('➕ Nuova tessera', 'new'), btn('📋 I miei locali', 'list')]]));
+    kb([[btn('➕ Nuova tessera', 'new'), btn('📋 I miei locali', 'list')], [btn('📈 Report settimana', 'report'), btn('💾 Backup ora', 'backup')]]));
 }
 
 function startCreate(chat) {
@@ -270,6 +286,7 @@ function startCreate(chat) {
 
 async function onText(chat, text) {
   const s = sessions.get(chat);
+  if (s && s.mode === 'staff') return addStaffNamed(chat, s.slug, text);
   if (!s || !s.field && s.mode !== 'create') return menu(chat);
   const field = s.mode === 'create' ? CREATE_STEPS[s.step] : s.field;
   if (!field) return send(chat, 'Usa i pulsanti qui sopra 👆');
@@ -333,6 +350,32 @@ async function onButton(chat, data, msg) {
   const [action, arg] = [data.split(':')[0], data.split(':').slice(1).join(':')];
 
   if (action === 'menu') return menu(chat);
+  if (action === 'report') return sendReport(chat, M.all());
+  if (action === 'backup') return sendBackup('💾 Backup su richiesta', chat);
+  if (action === 'rep1') { const ctx = M.get(arg); return ctx && sendReport(chat, [ctx]); }
+
+  // dipendenti con PIN personale
+  if (action === 'staff') return showStaff(chat, arg);
+  if (action === 'staffadd') {
+    sessions.set(chat, { mode: 'staff', slug: arg });
+    return send(chat, '👤 Come si chiama il dipendente? (es. Giulia)');
+  }
+  if (action === 'staffdel') {
+    const [slug, id] = arg.split('|');
+    M.removeStaff(slug, id);
+    await send(chat, '🗑️ Dipendente rimosso: il suo PIN non funziona più.');
+    return showStaff(chat, slug);
+  }
+
+  // gestori collegati su Telegram
+  if (action === 'inv') return createInvite(chat, arg);
+  if (action === 'mgrdel') {
+    const [slug, id] = arg.split('|');
+    M.removeManager(slug, Number(id));
+    call('sendMessage', { chat_id: Number(id), text: '🔒 Il tuo accesso al bot è stato rimosso.' }).catch(() => {});
+    await send(chat, '🔒 Gestore scollegato.');
+    return showShop(chat, slug);
+  }
   if (action === 'new') return startCreate(chat);
   if (action === 'list') return listShops(chat);
   if (action === 'cancel') { sessions.delete(chat); return send(chat, '👌 Annullato.', kb([[btn('🏠 Menu', 'menu')]])); }
@@ -460,10 +503,13 @@ async function showShop(chat, slug) {
     `🧾 Cassa: ${L.staff}\n` +
     `📊 Dashboard: ${L.admin}\n` +
     `📲 NFC: <code>${esc(L.nfc)}</code>\n` +
-    `⭐ Recensioni: ${st.reviewUrl ? esc(st.reviewUrl) : '—'} · 📞 ${st.phone ? esc(st.phone) : '—'}`;
+    `⭐ Recensioni: ${st.reviewUrl ? esc(st.reviewUrl) : '—'} · 📞 ${st.phone ? esc(st.phone) : '—'}\n` +
+    `👤 Dipendenti con PIN: ${(ctx.shop.staff || []).length} · 🤝 Gestori su Telegram: ${(ctx.shop.managers || []).map((m) => esc(m.name)).join(', ') || '—'}`;
   const rows = [
     [urlBtn('📊 Dashboard', L.admin), urlBtn('🖨️ QR tavolo', L.poster)],
     [btn('✏️ Modifica', `edit:${slug}`), btn('🖼️ Anteprima', `preview:${slug}`)],
+    [btn('👤 Dipendenti', `staff:${slug}`), btn('🤝 Accesso gestore', `inv:${slug}`)],
+    [btn('📈 Report', `rep1:${slug}`), ...(ctx.shop.managers || []).slice(0, 1).map((m) => btn(`🔒 Scollega ${m.name}`.slice(0, 30), `mgrdel:${slug}|${m.chatId}`))],
     [btn('🔑 Nuovo PIN', `pin:${slug}`), ...(ctx.shop.legacy ? [] : [btn('🗑️ Elimina', `del:${slug}`)])],
     [btn('⬅️ I miei locali', 'list')],
   ];
@@ -483,4 +529,143 @@ async function applyEdit(chat, s, field, value) {
     kb([[btn('✏️ Altra modifica', `edit:${s.slug}`), btn('⬅️ Torna al locale', `shop:${s.slug}`)]]));
 }
 
-module.exports = { mount, start, handleUpdate };
+// ---------- Dipendenti ----------
+
+async function showStaff(chat, slug) {
+  const ctx = M.get(slug);
+  if (!ctx) return;
+  const staff = ctx.shop.staff || [];
+  const lines = staff.map((p) => `• <b>${esc(p.name)}</b> — PIN <code>${p.pin}</code>`).join('\n') || '<i>Nessuno: tutti usano il PIN del gestore.</i>';
+  return send(chat,
+    `👤 <b>Dipendenti di ${esc(ctx.cfg.pizzeriaName)}</b>\n\n${lines}\n\n` +
+    'Ognuno entra in Cassa con il suo PIN: nello storico vedi chi ha dato ogni timbro. ' +
+    'Il PIN dei dipendenti apre solo la Cassa, non la dashboard.',
+    kb([[btn('➕ Aggiungi dipendente', `staffadd:${slug}`)],
+      ...staff.map((p) => [btn(`🗑️ Rimuovi ${p.name}`, `staffdel:${slug}|${p.id}`)]),
+      [btn('⬅️ Torna al locale', `shop:${slug}`)]]));
+}
+
+async function addStaffNamed(chat, slug, name) {
+  sessions.delete(chat);
+  const r = M.addStaff(slug, name);
+  if (r.error) { sessions.set(chat, { mode: 'staff', slug }); return send(chat, `⚠️ ${esc(r.error)}`); }
+  await send(chat, `✅ <b>${esc(r.person.name)}</b> aggiunto. Il suo PIN della Cassa: <code>${r.person.pin}</code>`);
+  return showStaff(chat, slug);
+}
+
+// ---------- Gestori dei locali ----------
+
+async function createInvite(chat, slug) {
+  const ctx = M.get(slug);
+  if (!ctx) return;
+  if (!botUsername) return send(chat, 'Il bot non conosce ancora il suo nome: riprova tra un minuto.');
+  const code = crypto.randomBytes(9).toString('base64url');
+  invites[code] = { slug, exp: Date.now() + 7 * 86400e3 };
+  for (const [k, v] of Object.entries(invites)) if (v.exp < Date.now()) delete invites[k];
+  saveTg();
+  const link = `https://t.me/${botUsername}?start=g_${code}`;
+  return send(chat,
+    `🤝 <b>Accesso per il gestore di ${esc(ctx.cfg.pizzeriaName)}</b>\n\n` +
+    `Mandagli questo link (vale 7 giorni, una sola volta):\n${link}\n\n` +
+    'Aprendolo vedrà nel bot <b>solo i numeri del suo locale</b> e riceverà il report ogni lunedì. ' +
+    'Non può creare né modificare tessere.',
+    kb([[btn('⬅️ Torna al locale', `shop:${slug}`)]]));
+}
+
+async function redeemInvite(chat, from, code) {
+  const inv = invites[code];
+  if (!inv || inv.exp < Date.now() || !M.get(inv.slug)) return send(chat, '⛔ Link non valido o scaduto: chiedine uno nuovo.');
+  delete invites[code];
+  saveTg();
+  const ctx = M.addManager(inv.slug, chat, [from.first_name, from.last_name].filter(Boolean).join(' '));
+  alert(`🤝 ${from.first_name || 'Un gestore'} si è collegato al bot per ${ctx.cfg.pizzeriaName}.`, `mgr|${chat}`, 0);
+  await send(chat, `👋 Benvenuto! Da ora vedi qui i numeri di <b>${esc(ctx.cfg.pizzeriaName)}</b> e ricevi il report ogni lunedì.`);
+  return managerMenu(chat);
+}
+
+// Il gestore vede solo i suoi locali: numeri, link e report
+async function managerUpdate(chat, u) {
+  const data = u.callback_query ? u.callback_query.data || '' : '';
+  const mine = M.managedBy(chat);
+  if (data.startsWith('mrep:')) {
+    const ctx = mine.find((c) => c.shop.slug === data.slice(5));
+    if (ctx) return sendReport(chat, [ctx]);
+  }
+  return managerMenu(chat);
+}
+
+function managerMenu(chat) {
+  const mine = M.managedBy(chat);
+  const text = mine.map((ctx) => {
+    const k = M.stats(ctx);
+    const L = M.links(ctx);
+    return `${ctx.cfg.emoji} <b>${esc(ctx.cfg.pizzeriaName)}</b>\n` +
+      `👥 Iscritti: <b>${k.members}</b> (nuovi in 7 giorni: ${k.newLast7})\n` +
+      `${ctx.cfg.emoji} Timbri: <b>${k.stamps}</b> (ultimi 7 giorni: ${k.stampsLast7})\n` +
+      `🔁 Clienti tornati: ${k.returning} · 🎁 premi consegnati: ${k.rewardsRedeemed}\n` +
+      `📊 Dashboard: ${L.admin}\n🧾 Cassa: ${L.staff}`;
+  }).join('\n\n');
+  return send(chat, text || 'Nessun locale collegato.',
+    kb(mine.map((ctx) => [btn(`📈 Report ${ctx.cfg.pizzeriaName}`.slice(0, 40), `mrep:${ctx.shop.slug}`)])));
+}
+
+// ---------- Report settimanale ----------
+
+function reportText(ctx) {
+  const w = M.weekly(ctx);
+  const diff = w.stamps - w.stampsPrev;
+  const trend = w.stampsPrev ? ` (${diff >= 0 ? '+' : ''}${Math.round((diff / w.stampsPrev) * 100)}% rispetto alla settimana prima)` : '';
+  const staff = Object.entries(w.byStaff).sort((a, b) => b[1] - a[1]).map(([n, c]) => `${esc(n)} ${c}`).join(' · ');
+  return `${ctx.cfg.emoji} <b>${esc(ctx.cfg.pizzeriaName)}</b>\n` +
+    `${ctx.cfg.emoji} Timbri: <b>${w.stamps}</b>${trend}\n` +
+    `🧑‍🤝‍🧑 Clienti passati: <b>${w.visitors}</b> · 🆕 nuovi iscritti: <b>${w.newMembers}</b>\n` +
+    `🎁 Premi consegnati: ${w.redeemed} · ⏳ a un timbro dal premio: ${w.kpi.nearReward}\n` +
+    `💤 Clienti che non tornano da 30+ giorni: ${w.kpi.inactive30}` +
+    (staff ? `\n👤 Timbri dati da: ${staff}` : '');
+}
+
+function sendReport(chat, list) {
+  if (!list.length) return send(chat, 'Nessun locale.');
+  return send(chat, `📈 <b>Ultimi 7 giorni</b>\n\n${list.map(reportText).join('\n\n')}`);
+}
+
+// Ogni lunedì: al proprietario il riepilogo di tutti i locali, a ogni gestore quello del suo
+async function sendWeeklyReports() {
+  if (ownerId) await sendReport(ownerId, M.all());
+  for (const ctx of M.all()) {
+    for (const m of ctx.shop.managers || []) {
+      await call('sendMessage', { chat_id: m.chatId, text: `📈 <b>La tua settimana</b>\n\n${reportText(ctx)}`, parse_mode: 'HTML' })
+        .catch((err) => console.error(`[bot] report a ${m.chatId}: ${err.message}`));
+    }
+  }
+}
+
+// ---------- Backup ----------
+// Copia completa (tutti i locali, clienti, timbri, impostazioni) in un file compresso mandato su Telegram.
+// Da tenere: se il database si rompe, da qui si ricostruisce tutto.
+async function sendBackup(caption, chat = ownerId) {
+  if (!chat) return;
+  const data = await M.backup();
+  const gz = require('zlib').gzipSync(JSON.stringify(data));
+  const day = new Date().toISOString().slice(0, 10);
+  const n = data.locali.reduce((t, l) => t + l.dati.customers.length, 0);
+  return call('sendDocument', {
+    chat_id: chat, parse_mode: 'HTML',
+    caption: `${caption}: ${data.locali.length} locali, ${n} clienti.\n<i>Conservalo: contiene dati personali dei clienti.</i>`,
+  }, { field: 'document', buf: gz, type: 'application/gzip', name: `backup-tessere-${day}.json.gz` });
+}
+
+// ---------- Avvisi al proprietario ----------
+// Lo stesso avviso (key) non si ripete prima di cooldownMs: niente raffiche di messaggi.
+const alerted = new Map();
+function alert(text, key = text, cooldownMs = 6 * 3600e3) {
+  if (!ownerId || !M || (!TOKEN && call === telegram)) return;
+  const last = alerted.get(key) || 0;
+  if (Date.now() - last < cooldownMs) return;
+  alerted.set(key, Date.now());
+  call('sendMessage', { chat_id: ownerId, text }).catch((err) => console.error(`[bot] avviso: ${err.message}`));
+}
+
+const enabled = () => !!M && !!ownerId && (!!TOKEN || call !== telegram);
+
+module.exports = { mount, start, handleUpdate, alert, enabled, sendBackup, sendWeeklyReports };

@@ -210,6 +210,62 @@ function resetPin(slug) {
   return ctx.shop.staffPin;
 }
 
+// ---------- Chi usa la cassa ----------
+// Il PIN principale è del gestore (dashboard compresa); ogni dipendente ha il suo PIN (solo cassa),
+// così nello storico si vede chi ha dato ogni timbro.
+function whoHasPin(shop, pin) {
+  if (!pin) return null;
+  const managerPin = shop.staffPin || process.env.STAFF_PIN || '1234';
+  if (pin === managerPin) return { role: 'manager', name: 'Gestore' };
+  const s = (shop.staff || []).find((x) => x.pin === pin);
+  return s ? { role: 'staff', name: s.name } : null;
+}
+
+function allPins(shop) {
+  return new Set([shop.staffPin || process.env.STAFF_PIN || '1234', ...(shop.staff || []).map((x) => x.pin)]);
+}
+
+function addStaff(slug, name) {
+  const ctx = get(slug);
+  if (!ctx) return { error: 'Locale non trovato.' };
+  name = String(name || '').trim().slice(0, 30);
+  if (name.length < 2) return { error: 'Scrivi il nome del dipendente.' };
+  const used = allPins(ctx.shop);
+  let pin;
+  do pin = newPin(); while (used.has(pin));
+  const person = { id: crypto.randomBytes(4).toString('hex'), name, pin, createdAt: new Date().toISOString() };
+  ctx.shop.staff = [...(ctx.shop.staff || []), person];
+  save();
+  return { person };
+}
+
+function removeStaff(slug, staffId) {
+  const ctx = get(slug);
+  if (!ctx) return null;
+  const before = (ctx.shop.staff || []).length;
+  ctx.shop.staff = (ctx.shop.staff || []).filter((x) => x.id !== staffId);
+  save();
+  return ctx.shop.staff.length < before;
+}
+
+// Gestori collegati su Telegram: vedono i numeri del loro locale e ricevono il report settimanale
+function addManager(slug, chatId, name) {
+  const ctx = get(slug);
+  if (!ctx) return null;
+  ctx.shop.managers = (ctx.shop.managers || []).filter((m) => m.chatId !== chatId);
+  ctx.shop.managers.push({ chatId, name: String(name || '').slice(0, 40), since: new Date().toISOString() });
+  save();
+  return ctx;
+}
+
+function removeManager(slug, chatId) {
+  const ctx = get(slug);
+  if (!ctx) return null;
+  ctx.shop.managers = (ctx.shop.managers || []).filter((m) => m.chatId !== chatId);
+  save();
+  return ctx;
+}
+
 async function remove(slug) {
   const ctx = get(slug);
   if (!ctx) return { error: 'Locale non trovato.' };
@@ -234,4 +290,5 @@ const findByNfcSecret = (secret) => all().find((ctx) => ctx.db.getSettings().nfc
 
 module.exports = {
   init, get, all, defaultSlug, cfgOf, imageSpec, create, update, resetPin, remove, findByToken, findByNfcSecret, RESERVED,
+  whoHasPin, addStaff, removeStaff, addManager, removeManager,
 };

@@ -5,10 +5,11 @@
   "description": "Tessere fedeltà digitali (web + Google Wallet) per più locali, con bot Telegram",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test \"test/*.test.js\""
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.10",
@@ -21,6 +22,7 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "pg-mem": "^3.0.14",
     "pngjs": "^7.0.0"
   }
 }

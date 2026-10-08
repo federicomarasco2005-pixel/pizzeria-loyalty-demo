@@ -240,6 +240,17 @@ async function notify(customer, header, body, { push = true, messageId, expiresA
   }
 }
 
+// Tessera cancellata su richiesta del cliente: il pass resta nel telefono ma disattivato e senza il nome.
+async function deactivate(customer) {
+  try {
+    await request('PATCH', `${BASE}/loyaltyObject/${objectId(customer)}`, {
+      state: 'INACTIVE', accountName: 'Tessera cancellata', accountId: '-', textModulesData: [], linksModuleData: { uris: [] }, messages: [],
+    });
+  } catch (err) {
+    if (status(err) !== 404) throw new Error(`disattivazione pass fallita: ${describe(err)}`);
+  }
+}
+
 // La tessera è già stata salvata in un Google Wallet? (campo hasUsers del pass)
 async function isSaved(customer) {
   try {
@@ -265,4 +276,4 @@ function saveUrl(customer) {
   return `https://pay.google.com/gp/v/save/${token}`;
 }
 
-module.exports = { init, enabled, ensureClass, upsertObject, notify, saveUrl, isSaved, heroFile };
+module.exports = { init, enabled, ensureClass, upsertObject, notify, saveUrl, isSaved, heroFile, deactivate };

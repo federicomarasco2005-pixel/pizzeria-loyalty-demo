@@ -87,6 +87,24 @@ Il primo locale nasce dalle variabili qui sotto; i vecchi link (`/card/…`, `/t
    colore, logo (foto), link recensioni, telefono → anteprima → **Crea**. Ricevi link, PIN e indirizzo da scrivere nel chip NFC.
 5. `/locali`: numeri di ogni locale, modifiche (premio, colore, logo…), nuovo PIN, elimina.
 
+**Cosa fa anche il bot:**
+- `/backup` (e ogni lunedì in automatico): copia completa di tutti i dati in un file `.json.gz`. Conservalo: contiene dati personali.
+- `/report` (e ogni lunedì): timbri, clienti passati, nuovi iscritti, premi, chi ha dato i timbri.
+- Avvisi: server riavviato, Google Wallet che rifiuta un aggiornamento, 5 PIN sbagliati, locale senza timbri da 3 giorni.
+- Scheda locale → **👤 Dipendenti**: un PIN personale per dipendente (solo Cassa; nello storico si vede chi ha timbrato).
+- Scheda locale → **🤝 Accesso gestore**: link d'invito; il gestore vede nel bot solo i numeri del suo locale e riceve il report.
+
+**Sicurezza e privacy:**
+- Un'email già iscritta non riapre la tessera: servono codice tessera + email. Recupero e PIN: blocco di 15 minuti dopo 5 errori.
+- Pagina `/<locale>/privacy` (informativa e regolamento: **testo di base da far verificare a un consulente**).
+- Dalla tessera il cliente scarica i suoi dati, li cancella, revoca il consenso alle offerte. Dalla dashboard il gestore può cancellare un cliente.
+- Tessere senza visite da 24 mesi: cancellate in automatico.
+
+**Dati:** su Postgres una riga per cliente / timbro / campagna (al primo avvio il vecchio archivio viene copiato nelle tabelle e resta come copia).
+Animazioni del Wallet e invii programmati riprendono dopo un riavvio.
+
+**Test:** `npm test` (database anche Postgres simulato, server, bot). Su GitHub partono a ogni modifica (`.github/workflows/test.yml`).
+
 Le immagini (timbri, GIF animate, icone, logo) sono generate dal server (`images.js`): niente script da lanciare.
 
 ## 5. Personalizzare il primo locale
@@ -118,13 +136,14 @@ Prova generale completa almeno una volta domenica, con il tunnel acceso e i due 
 
 **C'è:** iscrizione con consensi separati, pass Google Wallet aggiornabile, QR con token opaco (nessun dato personale nel codice), ledger append-only con annulli tracciati, protezione doppio tap, ricerca manuale come fallback, dashboard.
 
-**Non c'è ancora (prototipo):** Apple Wallet, integrazione con la cassa/POS, email automatiche, login vero per lo staff (solo PIN), informativa privacy reale, database di produzione, export/cancellazione dati self-service. Inoltre, in demo, chi reinserisce un'email già iscritta riceve la tessera esistente: in produzione servirà una verifica via email.
+**Non c'è ancora (prototipo):** Apple Wallet, integrazione con la cassa/POS, email automatiche, login vero per lo staff (solo PIN), informativa privacy reale, database di produzione, export/cancellazione dati self-service. 
 
 ## File
 
 - `server.js` — API e pagine (ogni locale sotto `/<slug>/`)
 - `shops.js` — registro dei locali (creazione, modifica, configurazione)
-- `bot.js` — bot Telegram
+- `bot.js` — bot Telegram (locali, dipendenti, gestori, report, backup, avvisi)
+- `test/` — test automatici
 - `images.js` — timbri, GIF, icone e logo generati per ogni locale
 - `wallet.js` — Google Wallet (una classe per locale, oggetti, notifiche, link di salvataggio)
 - `db.js` — archivio per locale (Postgres o file in `data/`) e calcolo saldo dal ledger
