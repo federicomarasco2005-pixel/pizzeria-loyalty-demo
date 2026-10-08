@@ -30,7 +30,7 @@
 
         <label class="check">
           <input id="terms" type="checkbox">
-          <span>Ho letto il regolamento e l'informativa privacy e aderisco al programma fedeltà. <em>(obbligatorio)</em></span>
+          <span>Ho letto il <a href="privacy" target="_blank">regolamento e l'informativa privacy</a> e aderisco al programma fedeltà. <em>(obbligatorio)</em></span>
         </label>
         <label class="check">
           <input id="mkt" type="checkbox">
@@ -39,6 +39,20 @@
 
         <button class="btn big" id="go" type="submit"><span class="ico">🍕</span> Crea la mia tessera</button>
         <p class="error" id="err"></p>
+      </form>
+
+      <!-- Email già iscritta: per riaprire la tessera serve il codice (la tessera non si consegna a chi conosce solo l'email) -->
+      <form id="recover" class="hidden" novalidate>
+        <p class="muted" style="margin:0">Hai già una tessera con questa email. Inserisci il <strong>codice tessera</strong>
+          (lo trovi nel Google Wallet o sulla tessera, es. PZ-AB12C) per riaprirla su questo telefono.</p>
+        <label for="rCode">Codice tessera</label>
+        <input id="rCode" type="text" autocapitalize="characters" autocomplete="off" placeholder="PZ-AB12C">
+        <label for="rEmail">Email</label>
+        <input id="rEmail" type="email" inputmode="email" autocomplete="email">
+        <button class="btn big" type="submit" style="margin-top:14px"><span class="ico">🔓</span> Apri la mia tessera</button>
+        <button class="install-later small" type="button" id="rBack">Torna all'iscrizione</button>
+        <p class="error" id="rErr"></p>
+        <p class="muted small">Non trovi il codice? Chiedilo in cassa: lo staff ti cerca per nome.</p>
       </form>
     </section>
     <p class="muted small" style="text-align:center">Demo — i dati inseriti servono solo a mostrare il funzionamento.</p>
@@ -59,8 +73,26 @@
         });
         location.href = 'card/' + encodeURIComponent(token);
       } catch (err) {
-        $('err').textContent = err.message;
         $('go').disabled = false;
+        if (err.data && err.data.emailExists) {
+          $('f').classList.add('hidden');
+          $('recover').classList.remove('hidden');
+          $('rEmail').value = $('email').value;
+          $('rCode').focus();
+          return;
+        }
+        $('err').textContent = err.message;
+      }
+    });
+    $('rBack').onclick = () => { $('recover').classList.add('hidden'); $('f').classList.remove('hidden'); };
+    $('recover').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('rErr').textContent = '';
+      try {
+        const { token } = await api('api/recover', { method: 'POST', body: { code: $('rCode').value, email: $('rEmail').value } });
+        location.href = 'card/' + encodeURIComponent(token);
+      } catch (err) {
+        $('rErr').textContent = err.message;
       }
     });
   </script>

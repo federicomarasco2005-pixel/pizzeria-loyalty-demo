@@ -56,7 +56,8 @@
     </section>
 
     <nav class="nav">
-      <a class="chip" href="admin">📊 Dashboard</a>
+      <a class="chip" href="admin" id="dashLink">📊 Dashboard</a>
+      <span class="chip" id="whoami" style="pointer-events:none"></span>
       <button class="chip danger" id="logout">🚪 Esci</button>
     </nav>
   </main>
@@ -78,8 +79,11 @@
 
     async function tryLogin(p) {
       try {
-        await api('api/staff/login', { method: 'POST', pin: p });
+        const me = await api('api/staff/login', { method: 'POST', pin: p });
         pin = p; setPin(p);
+        // PIN di un dipendente: solo cassa; il suo nome resta nello storico dei timbri
+        $('dashLink').classList.toggle('hidden', me.role !== 'manager');
+        $('whoami').textContent = me.role === 'manager' ? '' : '👤 ' + me.name;
         connectStaffStream();
         startScan();
       } catch (err) {

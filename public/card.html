@@ -97,6 +97,21 @@
         <h2>📣 Dal locale</h2>
         <div id="messages" class="stack"></div>
       </section>
+      <!-- I tuoi dati (privacy) -->
+      <p class="muted small center" style="margin:6px 0 0">
+        <a href="privacy">Privacy</a> ·
+        <a id="exportLink" download>Scarica i miei dati</a> ·
+        <a href="#" id="deleteLink">Elimina la tessera</a>
+      </p>
+      <label class="check small muted" style="justify-content:center;margin:0">
+        <input type="checkbox" id="consent"> <span>Voglio ricevere offerte e novità dal locale</span>
+      </label>
+    </div>
+
+    <div id="deleted" class="panel hidden center">
+      <h2>Tessera eliminata</h2>
+      <p class="muted">I tuoi dati sono stati cancellati. Se l'avevi aggiunta a Google Wallet, lì risulta disattivata: puoi toglierla dal Wallet.</p>
+      <a class="btn" href="./"><span class="ico">🍕</span> Crea una nuova tessera</a>
     </div>
   </main>
 
@@ -289,10 +304,31 @@
         else $('review').classList.add('hidden');
         renderMessages(c.messages || []);
         paintWallet(c);
+        if (document.activeElement !== $('consent')) $('consent').checked = !!c.consentMarketing;
       } catch (err) {
-        if (err.status === 404) $('notfound').classList.remove('hidden');
+        if (err.status === 404 && !deleted) $('notfound').classList.remove('hidden');
       }
     }
+
+    $('exportLink').href = 'api/card/' + encodeURIComponent(token) + '/export';
+    $('deleteLink').onclick = async (e) => {
+      e.preventDefault();
+      if (!confirm('Eliminare la tessera e tutti i tuoi dati (timbri e premi compresi)? Non si può annullare.')) return;
+      try {
+        await api('api/card/' + encodeURIComponent(token) + '/delete', { method: 'POST', body: { confirm: true } });
+        try { localStorage.removeItem('cardToken:' + SHOP.slug); if (SHOP.legacy) localStorage.removeItem('cardToken'); } catch {}
+        $('card').classList.add('hidden');
+        $('deleted').classList.remove('hidden');
+        deleted = true;
+      } catch (err) { toast(err.message); }
+    };
+    let deleted = false;
+    $('consent').onchange = async () => {
+      try {
+        const r = await api('api/card/' + encodeURIComponent(token) + '/consent', { method: 'POST', body: { consentMarketing: $('consent').checked } });
+        toast(r.consentMarketing ? '✅ Riceverai le offerte del locale' : 'Non riceverai più offerte');
+      } catch (err) { toast(err.message); }
+    };
 
     $('qrBtn').onclick = () => {
       const open = $('qrPanel').classList.toggle('hidden') === false;

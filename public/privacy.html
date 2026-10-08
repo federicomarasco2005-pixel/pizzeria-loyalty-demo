@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy e regolamento</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .doc h2 { margin-top: 22px; font-size: 1.1rem; }
+    .doc p, .doc li { line-height: 1.55; }
+  </style>
+</head>
+<body>
+  <main class="wrap stack">
+    <section class="panel doc">
+      <h1>Privacy e regolamento</h1>
+      <p class="muted small">Programma fedeltà di <strong data-cfg="pizzeriaName"></strong></p>
+
+      <h2>Come funziona il programma</h2>
+      <ul>
+        <li>A ogni visita ricevi un timbro sulla tessera digitale (dalla cassa o avvicinando il telefono al timbro NFC).</li>
+        <li>Ogni <strong data-cfg="stampsForReward"></strong> timbri ricevi: <strong data-cfg="rewardText"></strong>.</li>
+        <li>Un timbro per visita. Il locale può annullare timbri dati per errore. Il premio non è convertibile in denaro.</li>
+        <li>Il locale può modificare o chiudere il programma avvisando gli iscritti; i premi già maturati restano validi per almeno 30 giorni.</li>
+      </ul>
+
+      <h2>Chi tratta i tuoi dati</h2>
+      <p><strong>Titolare del trattamento</strong> è <strong data-cfg="pizzeriaName"></strong>, che gestisce il programma fedeltà.
+        Il servizio tecnico (tessera digitale, server) è fornito da un <strong>responsabile del trattamento</strong> nominato dal locale,
+        che usa i dati solo per far funzionare il servizio.</p>
+
+      <h2>Quali dati e perché</h2>
+      <ul>
+        <li><strong>Nome ed email</strong>: per creare la tessera e ritrovarla se cambi telefono. Base giuridica: la tua adesione al programma.</li>
+        <li><strong>Timbri, visite e premi</strong> (data e ora): per calcolare i premi ed evitare abusi. Base giuridica: la tua adesione.</li>
+        <li><strong>Offerte e novità</strong>: solo se hai dato il consenso (facoltativo, revocabile in ogni momento dalla tua tessera).</li>
+        <li>Un <strong>cookie tecnico</strong> ricorda la tua tessera su questo telefono, così il timbro NFC ti riconosce. Nessun cookie pubblicitario o di profilazione.</li>
+      </ul>
+
+      <h2>Google Wallet</h2>
+      <p>Se aggiungi la tessera a Google Wallet, Google riceve il tuo nome, il codice tessera e i timbri per mostrarli nel Wallet,
+        secondo le condizioni e l'informativa di Google.</p>
+
+      <h2>Dove e per quanto</h2>
+      <p>I dati sono conservati su server nell'Unione Europea (Francoforte). Restano finché la tessera è attiva;
+        dopo <strong>24 mesi senza visite</strong> la tessera e i dati vengono cancellati automaticamente.</p>
+
+      <h2>I tuoi diritti</h2>
+      <p>Puoi in ogni momento, direttamente dalla tua tessera:</p>
+      <ul>
+        <li><strong>scaricare tutti i tuoi dati</strong> ("Scarica i miei dati");</li>
+        <li><strong>cancellare la tessera e i dati</strong> ("Elimina la tessera");</li>
+        <li><strong>revocare il consenso</strong> alle offerte.</li>
+      </ul>
+      <p>Per rettifica, opposizione o qualsiasi altra richiesta rivolgiti al locale<span id="phoneLine"></span>.
+        Puoi anche presentare reclamo al Garante per la protezione dei dati personali (garanteprivacy.it).</p>
+    </section>
+    <p class="center"><a href="./">← Torna al programma fedeltà</a></p>
+  </main>
+  <script src="/common.js"></script>
+  <script>
+    applyBrand();
+    api('api/contact').then((c) => {
+      if (c.phone) document.getElementById('phoneLine').textContent = ' (tel. ' + c.phone + ')';
+    }).catch(() => {});
+  </script>
+</body>
+</html>

@@ -66,7 +66,7 @@
           <section class="panel">
             <h2>Clienti</h2>
             <div class="scroll"><table>
-              <thead><tr><th>Nome</th><th>Codice</th><th>Timbri</th><th>Premi</th><th>Visite</th><th>Ultima visita</th></tr></thead>
+              <thead><tr><th>Nome</th><th>Codice</th><th>Timbri</th><th>Premi</th><th>Visite</th><th>Ultima visita</th><th></th></tr></thead>
               <tbody id="customers"></tbody>
             </table></div>
           </section>
@@ -267,7 +267,11 @@
       try {
         s = await api('api/admin/stats', { pin });
       } catch (err) {
-        if (err.status === 401) { $('login').classList.remove('hidden'); $('dash').classList.add('hidden'); }
+        if (err.status === 401 || err.status === 403 || err.status === 429) {
+          $('login').classList.remove('hidden'); $('dash').classList.add('hidden');
+          if (err.status !== 401) $('err').textContent = err.message;
+          load.failed = err.message;
+        }
         return;
       }
       $('login').classList.add('hidden');
@@ -297,6 +301,17 @@
       s.customers.forEach((c) => {
         const tr = document.createElement('tr');
         [c.name, c.code, c.stamps + '/' + c.stampsForReward, c.rewards, c.visits, fmtDate(c.lastVisitAt)].forEach((v) => cell(tr, v));
+        // Cancellazione su richiesta del cliente (privacy): tessera disattivata e dati eliminati
+        const del = document.createElement('button');
+        del.className = 'chip danger small';
+        del.textContent = '🗑️';
+        del.title = 'Cancella i dati di ' + c.name;
+        del.onclick = async () => {
+          if (!confirm('Cancellare definitivamente ' + c.name + ' (' + c.code + ')?\nTessera, timbri e dati personali vengono eliminati. Non si può annullare.')) return;
+          try { await api('api/admin/customers/' + encodeURIComponent(c.token) + '/delete', { method: 'POST', pin }); toast('Cliente cancellato'); load(); }
+          catch (err) { toast(err.message); }
+        };
+        cell(tr, '').appendChild(del);
         $('customers').appendChild(tr);
       });
 
@@ -304,7 +319,7 @@
       s.events.forEach((e) => {
         const tr = document.createElement('tr');
         if (e.voided) tr.style.textDecoration = 'line-through';
-        cell(tr, (LABELS[e.type] || e.type) + (e.by === 'nfc' ? ' (NFC 📲)' : ''));
+        cell(tr, (LABELS[e.type] || e.type) + (e.by === 'nfc' ? ' (NFC 📲)' : e.who ? ' · ' + e.who : ''));
         cell(tr, e.name);
         cell(tr, fmtDate(e.at)).className = 'muted small';
         $('events').appendChild(tr);
@@ -536,7 +551,7 @@
     };
 
     // ---------- Accesso ----------
-    $('loginBtn').onclick = () => { pin = $('pin').value; setPin(pin); $('err').textContent = ''; load().then(() => { if (!$('login').classList.contains('hidden')) $('err').textContent = 'PIN errato.'; }); };
+    $('loginBtn').onclick = () => { pin = $('pin').value; setPin(pin); $('err').textContent = ''; load.failed = ''; load().then(() => { if (!$('login').classList.contains('hidden')) $('err').textContent = load.failed || 'PIN errato.'; }); };
     $('reset').onclick = async (e) => {
       e.preventDefault();
       if (!confirm('Cancellare tutti i clienti, le operazioni e i messaggi della demo? (Le impostazioni restano)')) return;
