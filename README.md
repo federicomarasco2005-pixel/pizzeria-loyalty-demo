@@ -90,7 +90,7 @@ Il primo locale nasce dalle variabili qui sotto; i vecchi link (`/card/…`, `/t
 **Cosa fa anche il bot:**
 - `/backup` (e ogni lunedì in automatico): copia completa di tutti i dati in un file `.json.gz`. Conservalo: contiene dati personali.
 - `/report` (e ogni lunedì): timbri, clienti passati, nuovi iscritti, premi, chi ha dato i timbri.
-- Avvisi: server riavviato, Google Wallet che rifiuta un aggiornamento, 5 PIN sbagliati, locale senza timbri da 3 giorni.
+- Avvisi: nuova versione online (non a ogni risveglio del server), Google Wallet che rifiuta un aggiornamento, 5 PIN sbagliati, locale senza timbri da 3 giorni.
 - Scheda locale → **👤 Dipendenti**: un PIN personale per dipendente (solo Cassa; nello storico si vede chi ha timbrato).
 - Scheda locale → **🤝 Accesso gestore**: link d'invito; il gestore vede nel bot solo i numeri del suo locale e riceve il report.
 

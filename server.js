@@ -1123,6 +1123,17 @@ const manager = {
   themes: images.THEMES,
 };
 
+// Avviso su Telegram solo quando è online una NUOVA versione (Render indica il commit in RENDER_GIT_COMMIT).
+// I semplici risvegli del server gratuito, che si addormenta dopo 15 minuti senza visite, non avvisano più.
+async function announceDeploy() {
+  const commit = process.env.RENDER_GIT_COMMIT;
+  if (!commit) return; // in locale: nessun avviso
+  const last = await db.loadKey('deploy');
+  if (last && last.commit === commit) return;
+  await db.saveKey('deploy', { commit, at: new Date().toISOString() });
+  bot.alert(`🚀 Nuova versione online (${commit.slice(0, 7)}): ${shops.all().length} locali, database ${db.usingPostgres() ? 'Postgres' : 'file'}.`, `deploy|${commit}`, 0);
+}
+
 const ready = (async () => {
   await db.init();
   await shops.init(PUBLIC_URL);
@@ -1155,7 +1166,7 @@ const ready = (async () => {
     console.log(`  URL pubblico:  ${PUBLIC_URL}`);
     for (const ctx of shops.all()) console.log(`  ${ctx.cfg.pizzeriaName.padEnd(28)} ${ctx.cfg.baseUrl}/  (cassa: /staff, dashboard: /admin)`);
     console.log('');
-    bot.start(manager).then(() => bot.alert(`🔄 Server avviato (${shops.all().length} locali, database: ${db.usingPostgres() ? 'Postgres' : 'file'}).`, 'start', 60 * 60 * 1000));
+    bot.start(manager).then(announceDeploy).catch((err) => console.error(`[bot] ${err.message}`));
     resolve();
   }));
 })();
