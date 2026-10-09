@@ -134,9 +134,9 @@ Prova generale completa almeno una volta domenica, con il tunnel acceso e i due 
 
 ## Cosa c'è e cosa no (da dire onestamente)
 
-**C'è:** iscrizione con consensi separati, pass Google Wallet aggiornabile, QR con token opaco (nessun dato personale nel codice), ledger append-only con annulli tracciati, protezione doppio tap, ricerca manuale come fallback, dashboard.
+**C'è:** iscrizione con consensi separati, tessera web in tempo reale, pass Google Wallet aggiornabile, timbro NFC, QR con token opaco (nessun dato personale nel codice), ledger append-only con annulli tracciati, protezione doppio tap, ricerca manuale come fallback, dashboard, notifiche, più locali con bot Telegram, database Postgres, export/cancellazione dati self-service.
 
-**Non c'è ancora (prototipo):** Apple Wallet, integrazione con la cassa/POS, email automatiche, login vero per lo staff (solo PIN), informativa privacy reale, database di produzione, export/cancellazione dati self-service. 
+**Non c'è ancora:** Apple Wallet, integrazione con la cassa/POS, email automatiche, login vero per lo staff (solo PIN), informativa privacy verificata da un consulente, chip NFC anti-copia (NTAG 424 DNA), pagamenti degli abbonamenti.
 
 ## File
 
