@@ -26,9 +26,12 @@ for (const [name, delays] of Object.entries(manifest)) {
     // Dal secondo fotogramma si scrivono solo i pixel cambiati: il resto è trasparente
     // e mostra il fotogramma precedente (dispose 1 = lascia al suo posto). File molto più leggero.
     const out = prev ? index.map((v, p) => (v === prev[p] ? TRANSPARENT : v)) : index;
+    const last = i === frames.length - 1;
     gif.writeFrame(out, width, height, {
       palette: i === 0 ? palette : undefined,
-      delay: delays[i],
+      // Ultimo fotogramma (pizze ferme) con la durata massima del formato GIF (~11 minuti):
+      // anche se il telefono ignorasse "una volta sola", l'animazione non ripartirebbe.
+      delay: last ? 655000 : delays[i],
       repeat: -1, // riproduci una volta sola: l'ultimo fotogramma (pizze ferme) resta visibile
       transparent: i > 0,
       transparentIndex: TRANSPARENT,
