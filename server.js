@@ -58,20 +58,33 @@ app.use(express.static(PUBLIC_DIR, { index: false }));
 
 // Le pagine sono le stesse per tutti i locali: il server aggiunge l'indirizzo di base (<base href="/slug/">),
 // colori, icona dei timbri ed emoji del locale.
-function page(file) {
-  return (req, res) => {
+// Nella pagina c'è già anche la configurazione del locale (window.CFG) e, per la tessera, i suoi dati (window.CARD):
+// la pagina si disegna subito, senza aspettare altre richieste al server.
+const pageFiles = new Map(); // file -> contenuto (letto una volta)
+const readPage = (file) => {
+  if (!pageFiles.has(file)) pageFiles.set(file, fs.readFileSync(path.join(PUBLIC_DIR, file), 'utf8'));
+  return pageFiles.get(file);
+};
+// JSON dentro <script>: "<" scritto come <, così un testo con "</script>" non chiude il blocco
+const inlineJson = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
+
+function page(file, extra) {
+  return wrap(async (req, res) => {
     const { cfg } = req.ctx;
-    let html = fs.readFileSync(path.join(PUBLIC_DIR, file), 'utf8');
-    const head = `<base href="/${cfg.slug}/">
-  <script>window.SHOP = ${JSON.stringify({ slug: cfg.slug, legacy: !!req.ctx.shop.legacy, prefix: cfg.codePrefix })};</script>`;
+    const data = { SHOP: { slug: cfg.slug, legacy: !!req.ctx.shop.legacy, prefix: cfg.codePrefix }, CFG: publicConfig(cfg) };
+    if (extra) Object.assign(data, await extra(req, res));
     // dopo style.css, così questi valori hanno la precedenza
     const vars = `<style>:root { --brand: ${cfg.brandColor}; --stamp-on: url(/${cfg.slug}/stamps/icon.png?v=${cfg.imgVersion}); --stamp-off: url(/${cfg.slug}/stamps/icon-empty.png?v=${cfg.imgVersion}); }</style>`;
-    html = html.replace('<head>', `<head>\n  ${head}`).replace('</head>', `  ${vars}\n</head>`)
+    let html = readPage(file).replace('</head>', `  ${vars}\n</head>`)
       .replace(/#b3261e/g, cfg.brandColor)
       .replace(/🍕/g, cfg.emoji)
       .replace(/PZ-/g, `${cfg.codePrefix}-`);
+    // i dati si aggiungono dopo le sostituzioni, così restano intatti
+    const head = `<base href="/${cfg.slug}/">
+  <script>${Object.entries(data).map(([k, v]) => `window.${k} = ${inlineJson(v)};`).join(' ')}</script>`;
+    html = html.replace('<head>', `<head>\n  ${head}`);
     res.type('html').set('Cache-Control', 'no-cache').send(html);
-  };
+  });
 }
 
 const shop = express.Router({ mergeParams: true });
@@ -86,7 +99,12 @@ shop.get('/', page('index.html'));
 for (const name of ['staff', 'admin', 'poster']) {
   shop.get([`/${name}`, `/${name}.html`], page(`${name}.html`));
 }
-shop.get('/card/:token', page('card.html'));
+shop.get('/card/:token', page('card.html', async (req, res) => {
+  const customer = req.ctx.db.findByToken(req.params.token);
+  if (!customer) return {};
+  setCardCookie(req, res, customer.token); // aprire la tessera "collega" questo telefono
+  return { CARD: await cardData(req.ctx, customer) };
+}));
 shop.get(['/privacy', '/privacy.html'], page('privacy.html'));
 shop.get('/tap/:secret', page('tap.html'));
 
@@ -144,9 +162,8 @@ function readSignup(body) {
 
 // ---------- Cliente ----------
 
-shop.get('/api/config', (req, res) => {
-  const { cfg } = req.ctx;
-  res.json({
+function publicConfig(cfg) {
+  return {
     pizzeriaName: cfg.pizzeriaName,
     programName: cfg.programName,
     rewardText: cfg.rewardText,
@@ -154,8 +171,9 @@ shop.get('/api/config', (req, res) => {
     brandColor: cfg.brandColor,
     emoji: cfg.emoji,
     walletEnabled: wallet.enabled(),
-  });
-});
+  };
+}
+shop.get('/api/config', (req, res) => res.json(publicConfig(req.ctx.cfg)));
 
 shop.post('/api/signup', wrap(async (req, res) => {
   const ctx = req.ctx;
@@ -172,7 +190,8 @@ shop.post('/api/signup', wrap(async (req, res) => {
   }
   const customer = ctx.db.createCustomer(data);
 
-  await syncWallet(ctx, customer);
+  // la tessera Wallet si crea in parallelo: il cliente vede subito la sua tessera web
+  syncWallet(ctx, customer);
   setCardCookie(req, res, customer.token);
   res.json({ token: customer.token });
 }));
@@ -236,8 +255,12 @@ shop.post('/api/card/:token/delete', wrap(async (req, res) => {
 // Cancella un cliente: tessera Wallet disattivata, dati eliminati
 async function removeCustomer(ctx, customer) {
   clearTimeout(settleTimers.get(customer.id));
-  if (wallet.enabled()) await wallet.deactivate(customer).catch((err) => console.error(`[wallet] ${err.message}`));
+  qrCache.delete(customer.token);
   await ctx.db.deleteCustomer(customer.id);
+  // prima finiscono gli aggiornamenti del pass già partiti (quelli in coda vedono il cliente cancellato e saltano),
+  // poi il pass si disattiva: nessun aggiornamento può riattivarlo dopo
+  await walletQueues.get(customer.id);
+  if (wallet.enabled()) await wallet.deactivate(customer).catch((err) => console.error(`[wallet] ${err.message}`));
   console.log(`[privacy] ${ctx.shop.slug}: cliente ${customer.code} cancellato`);
 }
 
@@ -245,22 +268,44 @@ shop.get('/api/card/:token', wrap(async (req, res) => {
   const { ctx } = req;
   const customer = ctx.db.findByToken(req.params.token);
   if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
-  const state = ctx.db.stateOf(customer.id, ctx.cfg.stampsForReward);
   setCardCookie(req, res, customer.token); // aprire la tessera "collega" questo telefono
-  res.json({
+  res.json(await cardData(ctx, customer));
+}));
+
+// Versione della tessera: cresce a ogni operazione. La pagina ignora una risposta più vecchia di
+// quello che già mostra (es. una lettura partita prima di un timbro arrivato in tempo reale).
+const versionOf = (ctx, customer) => ctx.db.eventsOf(customer.id).length;
+
+// QR della tessera: il token non cambia mai, si disegna una volta sola
+const qrCache = new Map();
+async function qrOf(token) {
+  if (!qrCache.has(token)) {
+    if (qrCache.size > 2000) qrCache.delete(qrCache.keys().next().value);
+    qrCache.set(token, await QRCode.toDataURL(token, { margin: 1, width: 360 }));
+  }
+  return qrCache.get(token);
+}
+
+// Dati della tessera web (API e pagina). Non aspetta mai Google: se la tessera è nel Wallet lo
+// si scopre in background e la pagina viene avvisata in tempo reale.
+async function cardData(ctx, customer) {
+  const state = ctx.db.stateOf(customer.id, ctx.cfg.stampsForReward);
+  checkWalletSaved(ctx, customer);
+  return {
     name: customer.name,
     code: customer.code,
     stamps: state.stamps,
     rewards: state.rewards,
     stampsForReward: ctx.cfg.stampsForReward,
-    qr: await QRCode.toDataURL(customer.token, { margin: 1, width: 360 }),
+    v: versionOf(ctx, customer),
+    qr: await qrOf(customer.token),
     saveUrl: wallet.enabled() ? wallet.saveUrl(customer) : null,
-    walletSaved: await walletSaved(ctx, customer),
+    walletSaved: !!customer.walletSaved,
     reviewUrl: ctx.db.getSettings().reviewUrl || null,
     messages: ctx.db.messagesFor(customer.id).slice(0, 5),
     consentMarketing: !!customer.consentMarketing,
-  });
-}));
+  };
+}
 
 // Aggiornamenti in tempo reale per la tessera web (Server-Sent Events).
 const streams = new Map(); // token -> Set di risposte aperte (i token sono unici fra tutti i locali)
@@ -280,28 +325,29 @@ shop.get('/api/card/:token/stream', (req, res) => {
   });
 });
 
+// L'evento contiene già il nuovo saldo: la tessera aperta lo mostra subito, senza chiedere altro al server.
 function broadcast(ctx, customer, type, extra = {}) {
   const clients = streams.get(customer.token);
   if (!clients || !clients.size) return;
-  const s = ctx.db.stateOf(customer.id, ctx.cfg.stampsForReward);
-  const payload = `data: ${JSON.stringify({ type, stamps: s.stamps, rewards: s.rewards, ...extra })}\n\n`;
+  const n = ctx.cfg.stampsForReward;
+  const s = ctx.db.stateOf(customer.id, n);
+  const payload = `data: ${JSON.stringify({ type, stamps: s.stamps, rewards: s.rewards, stampsForReward: n, v: versionOf(ctx, customer), ...extra })}\n\n`;
   clients.forEach((res) => res.write(payload));
 }
 
 // La tessera è già nel Google Wallet del cliente? Una volta confermato da Google resta salvato;
-// prima di allora si richiede al massimo ogni 20 secondi (la pagina web interroga il server spesso).
+// prima di allora si chiede a Google al massimo ogni 20 secondi, in background.
 const savedChecks = new Map(); // customerId -> timestamp ultimo controllo
-async function walletSaved(ctx, customer) {
-  if (customer.walletSaved) return true;
-  if (!wallet.enabled()) return false;
+function checkWalletSaved(ctx, customer) {
+  if (customer.walletSaved || !wallet.enabled()) return;
   const last = savedChecks.get(customer.id) || 0;
-  if (Date.now() - last < 20000) return false;
+  if (Date.now() - last < 20000) return;
   savedChecks.set(customer.id, Date.now());
-  if (await wallet.isSaved(customer)) {
+  wallet.isSaved(customer).then((saved) => {
+    if (!saved || !ctx.db.findByToken(customer.token)) return;
     ctx.db.updateCustomer(customer.id, { walletSaved: true });
-    return true;
-  }
-  return false;
+    broadcast(ctx, customer, 'wallet'); // la tessera web nasconde il pulsante "Aggiungi a Google Wallet"
+  }, () => {});
 }
 
 // La tessera web si può installare sul telefono come un'app (icona sulla schermata Home),
@@ -616,7 +662,7 @@ shop.post('/api/staff/redeem', requirePin, wrap(async (req, res) => {
   }
   ctx.db.addEvent({ type: 'redeem', customerId: customer.id, requestId: req.body.requestId, by: 'staff', who: req.who.name });
   broadcast(ctx, customer, 'redeem');
-  await syncWallet(ctx, customer);
+  syncWallet(ctx, customer); // la Cassa non aspetta Google
   res.json(customerView(ctx, customer));
 }));
 
@@ -629,7 +675,7 @@ shop.post('/api/staff/undo', requirePin, wrap(async (req, res) => {
   if (!lastOp) return res.status(400).json({ error: 'Nessuna operazione da annullare.' });
   ctx.db.addEvent({ type: 'void', customerId: customer.id, ref: lastOp.id, by: 'staff', who: req.who.name });
   broadcast(ctx, customer, 'undo');
-  await syncWallet(ctx, customer);
+  syncWallet(ctx, customer); // la Cassa non aspetta Google
   res.json(customerView(ctx, customer));
 }));
 
@@ -928,8 +974,20 @@ async function ensureClass(ctx, { force = false } = {}) {
   classReady.add(ctx.shop.slug);
 }
 
-async function syncWallet(ctx, customer, message, options = {}) {
-  if (!wallet.enabled()) return;
+// Aggiornamenti dello stesso pass uno alla volta, nell'ordine: ora che la Cassa non li aspetta,
+// due aggiornamenti in parallelo potrebbero arrivare a Google invertiti e lasciare un saldo vecchio.
+// Il saldo si legge al momento dell'invio, quindi l'ultimo aggiornamento è sempre quello giusto.
+const walletQueues = new Map(); // customerId -> ultimo aggiornamento in coda
+function syncWallet(ctx, customer, message, options = {}) {
+  if (!wallet.enabled()) return Promise.resolve();
+  const next = (walletQueues.get(customer.id) || Promise.resolve()).then(() => syncWalletNow(ctx, customer, message, options));
+  walletQueues.set(customer.id, next);
+  next.then(() => { if (walletQueues.get(customer.id) === next) walletQueues.delete(customer.id); });
+  return next;
+}
+
+async function syncWalletNow(ctx, customer, message, options) {
+  if (!ctx.db.findByToken(customer.token)) return; // cliente cancellato nel frattempo
   try {
     await ensureClass(ctx);
     const state = ctx.db.stateOf(customer.id, ctx.cfg.stampsForReward);
@@ -949,6 +1007,16 @@ async function syncWallet(ctx, customer, message, options = {}) {
     console.error(`[wallet] ${ctx.shop.slug}: ${err.message}`);
     bot.alert(`⚠️ Google Wallet ha rifiutato un aggiornamento per ${ctx.cfg.pizzeriaName}:\n${err.message.slice(0, 300)}`, `wallet|${ctx.shop.slug}|${err.message.slice(0, 60)}`);
   }
+}
+
+// Animazioni del Wallet preparate in anticipo (in un thread separato, vedi images.js):
+// al momento del timbro il pass si aggiorna subito, senza aspettare la GIF.
+async function warmGifs(ctx) {
+  if (!wallet.enabled()) return;
+  const t = Date.now();
+  await images.warm(shops.imageSpec(ctx.shop), { gifs: true })
+    .then(() => console.log(`[wallet] ${ctx.shop.slug}: animazioni pronte (${Date.now() - t} ms)`))
+    .catch((err) => console.error(`[wallet] ${ctx.shop.slug}: animazioni non preparate: ${err.message}`));
 }
 
 // Aggiorna in background tutte le tessere di un locale (es. dopo un cambio di premio, colore o link)
@@ -986,6 +1054,7 @@ const manager = {
       warnings.push(`Google Wallet: ${err.message}`);
     }
     if (!wallet.enabled()) warnings.push('Google Wallet non è configurato su questo server: funziona solo la tessera web.');
+    warmGifs(r.ctx);
     return { ctx: r.ctx, warnings };
   },
   async update(slug, input) {
@@ -1009,6 +1078,7 @@ const manager = {
     } catch (err) {
       warnings.push(`Google Wallet: ${err.message}`);
     }
+    if (r.visual) warmGifs(r.ctx);
     syncAll(r.ctx); // le tessere già emesse si aggiornano in background
     return { ctx: r.ctx, warnings };
   },
@@ -1074,6 +1144,7 @@ const ready = (async () => {
     for (const ctx of shops.all()) {
       await ensureClass(ctx).catch((err) => console.error(`[wallet] ${ctx.shop.slug}: ${err.message}`));
     }
+    for (const ctx of shops.all()) await warmGifs(ctx);
   })();
   resumeSettles();
   setInterval(processDueCampaigns, 30000);

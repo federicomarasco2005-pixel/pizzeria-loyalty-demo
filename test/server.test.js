@@ -86,6 +86,26 @@ test('cassa: timbro con PIN, dashboard solo per il gestore', async () => {
   assert.strictEqual(stats.data.events.find((e) => e.type === 'stamp').who, 'Gestore');
 });
 
+test('tessera veloce: dati già nella pagina, nuovo saldo nell\'avviso in tempo reale', async () => {
+  const page = await api(`${S}/card/${anna}`);
+  const card = JSON.parse(page.text.match(/window\.CARD = (\{.*?\});/)[1]);
+  assert.strictEqual(card.stamps, 1);
+  assert.match(page.text, /window\.CFG = \{/);
+
+  const ctrl = new AbortController();
+  const stream = await fetch(`${B}${S}/api/card/${anna}/stream`, { signal: ctrl.signal });
+  const reader = stream.body.getReader();
+  await reader.read(); // "retry: 3000"
+  await api(`${S}/api/staff/stamp`, { method: 'POST', pin: PIN, body: { token: anna, requestId: 'r2' } });
+  let text = '';
+  while (!text.includes('data:')) text += new TextDecoder().decode((await reader.read()).value);
+  ctrl.abort();
+  const ev = JSON.parse(text.slice(text.indexOf('data:') + 5));
+  assert.strictEqual(ev.type, 'stamp');
+  assert.strictEqual(ev.stamps, 2);
+  assert.ok(ev.v > card.v, 'la versione cresce a ogni operazione');
+});
+
 test('timbro NFC: nuovo cliente iscritto sul momento, poi pausa', async () => {
   const { url } = (await api(`${S}/api/admin/nfc`, { pin: PIN })).data;
   const secret = url.split('/').pop();

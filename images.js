@@ -6,6 +6,7 @@
 //   icons/icon-192.png, icon-512.png, apple-touch-icon.png   icona della tessera installata sul telefono
 //   logo.png                    logo del programma (caricato dal gestore oppure generato)
 // Prima erano script PowerShell da lanciare a mano (tools/); ora ogni nuovo locale ha le sue in automatico.
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { GIFEncoder, quantize, applyPalette } = require('gifenc');
 
@@ -366,13 +367,51 @@ function rewardGif(shop, draw) {
   return encodeGif(frames, delays);
 }
 
+// ---------- GIF in un thread separato ----------
+// Una GIF richiede centinaia di millisecondi di calcolo (secondi sul server gratuito): fatta nel thread
+// principale bloccherebbe il server proprio mentre la tessera web aspetta il timbro.
+let worker = null, seq = 0;
+const waiting = new Map(); // id -> { resolve, reject }
+function renderInWorker(shop, file) {
+  if (!worker) {
+    worker = new Worker(__filename, { workerData: { imagesWorker: true } });
+    worker.on('message', ({ id, buf, type, error }) => {
+      const w = waiting.get(id);
+      waiting.delete(id);
+      if (!waiting.size) worker.unref(); // nessun lavoro in corso: non tiene vivo il processo
+      if (w) error ? w.reject(new Error(error)) : w.resolve(buf ? { buf: Buffer.from(buf), type } : null);
+    });
+    worker.on('error', (err) => {
+      for (const w of waiting.values()) w.reject(err);
+      waiting.clear();
+      worker = null;
+    });
+  }
+  worker.ref();
+  return new Promise((resolve, reject) => {
+    const id = ++seq;
+    waiting.set(id, { resolve, reject });
+    worker.postMessage({ id, shop, file });
+  });
+}
+if (!isMainThread && workerData && workerData.imagesWorker) {
+  parentPort.on('message', async ({ id, shop, file }) => {
+    try {
+      const r = await render(shop, file);
+      parentPort.postMessage({ id, buf: r && r.buf, type: r && r.type });
+    } catch (err) {
+      parentPort.postMessage({ id, error: err.message });
+    }
+  });
+}
+
 // Immagine di un locale (generata la prima volta, poi dalla memoria). null se il file non esiste.
 const pending = new Map();
 async function get(shop, file) {
   const key = `${shop.slug}|${shop.imgVersion || 1}|${file}`;
   if (cache.has(key)) return cache.get(key);
   if (!pending.has(key)) {
-    pending.set(key, render(shop, file).then((r) => {
+    pending.set(key, (file.endsWith('.gif') ? renderInWorker(shop, file) : render(shop, file)).then((r) => {
       pending.delete(key);
       if (r) {
         if (cache.size > LIMIT) cache.delete(cache.keys().next().value);
@@ -411,11 +450,17 @@ async function prepareLogo(buffer) {
 }
 
 // Prepara in anticipo le immagini che Google scaricherà (così risponde subito).
-async function warm(shop) {
+// gifs: anche le animazioni del Wallet, così al momento del timbro sono già pronte.
+async function warm(shop, { gifs = false } = {}) {
   const N = shop.stampsForReward;
   const files = ['logo.png', 'stamps/icon.png', 'stamps/icon-empty.png'];
   for (let k = 0; k <= N; k++) files.push(`stamps/grid-${N}-${k}.png`);
   for (const f of files) await get(shop, f);
+  if (gifs) {
+    const anims = [`stamps/anim-${N}-reward.gif`];
+    for (let k = 1; k <= N; k++) anims.push(`stamps/anim-${N}-${k}.gif`);
+    for (const f of anims) await get(shop, f);
+  }
 }
 
 module.exports = { THEMES, get, preview, prepareLogo, warm };

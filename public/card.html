@@ -256,58 +256,71 @@
 
     async function load() {
       try {
-        const c = await api('api/card/' + encodeURIComponent(token));
-        const next = { stamps: c.stamps, rewards: c.rewards, stampsForReward: c.stampsForReward };
-        if (!state) {
-          $('card').classList.remove('hidden');
-          $('hello').textContent = c.name;
-          $('code').textContent = c.code;
-          $('qr').src = c.qr;
-          if (c.saveUrl) $('save').href = c.saveUrl;
-          else $('nowallet').classList.remove('hidden');
-          paintWallet(c);
-          setCardToken(token); // ricorda la tessera su questo telefono (timbro con NFC)
-          const params = new URLSearchParams(location.search);
-          // Arrivati dall'adesivo NFC (?from=timbri-premi): si parte dallo stato precedente
-          // e si anima il timbro appena aggiunto
-          const from = (params.get('from') || '').match(/^(\d+)-(\d+)$/);
-          if (from) {
-            const prev = { stamps: +from[1], rewards: +from[2], stampsForReward: c.stampsForReward };
-            paint(prev, { animate: false });
-            state = prev;
-            history.replaceState(null, '', location.pathname);
-            setTimeout(() => celebrate(prev, next), 450);
-            if (welcome) {
-              // nuovo cliente iscritto al timbro: subito l'invito a salvare la tessera sul telefono
-              setTimeout(() => {
-                toast('🎉 Benvenuto! Ecco il tuo primo timbro', 3500);
-                updateInstall();
-                if (!$('install').classList.contains('hidden')) {
-                  $('install').scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  $('installBtn').classList.add('pulse');
-                }
-              }, 2000);
-            }
-            state = next;
-            if (c.reviewUrl) { $('review').href = c.reviewUrl; $('review').classList.remove('hidden'); }
-            renderMessages(c.messages || []);
-            return;
-          }
-          paint(next, { animate: false });
-          // Arrivati dal link "Mostra il QR per la cassa" del Wallet: QR già aperto
-          if (params.has('qr')) $('qrBtn').click();
-        } else if (next.stamps !== state.stamps || next.rewards !== state.rewards) {
-          celebrate(state, next);
-        }
-        state = next;
-        if (c.reviewUrl) { $('review').href = c.reviewUrl; $('review').classList.remove('hidden'); }
-        else $('review').classList.add('hidden');
-        renderMessages(c.messages || []);
-        paintWallet(c);
-        if (document.activeElement !== $('consent')) $('consent').checked = !!c.consentMarketing;
+        show(await api('api/card/' + encodeURIComponent(token)));
       } catch (err) {
         if (err.status === 404 && !deleted) $('notfound').classList.remove('hidden');
       }
+    }
+
+    // Nuovo saldo (dal server o in tempo reale). v = versione della tessera: un dato più vecchio
+    // di quello già mostrato si ignora, così i timbri non "tornano indietro".
+    function applyState(c) {
+      if (state && c.v !== undefined && state.v !== undefined && c.v < state.v) return false;
+      const next = { stamps: c.stamps, rewards: c.rewards, stampsForReward: c.stampsForReward, v: c.v };
+      if (next.stamps !== state.stamps || next.rewards !== state.rewards) celebrate(state, next);
+      state = next;
+      return true;
+    }
+
+    // Disegna la tessera con i dati completi (dalla pagina stessa o dal server)
+    function show(c) {
+      const next = { stamps: c.stamps, rewards: c.rewards, stampsForReward: c.stampsForReward, v: c.v };
+      if (!state) {
+        $('card').classList.remove('hidden');
+        $('hello').textContent = c.name;
+        $('code').textContent = c.code;
+        $('qr').src = c.qr;
+        if (c.saveUrl) $('save').href = c.saveUrl;
+        else $('nowallet').classList.remove('hidden');
+        paintWallet(c);
+        setCardToken(token); // ricorda la tessera su questo telefono (timbro con NFC)
+        const params = new URLSearchParams(location.search);
+        // Arrivati dall'adesivo NFC (?from=timbri-premi): si parte dallo stato precedente
+        // e si anima il timbro appena aggiunto
+        const from = (params.get('from') || '').match(/^(\d+)-(\d+)$/);
+        if (from) {
+          const prev = { stamps: +from[1], rewards: +from[2], stampsForReward: c.stampsForReward };
+          paint(prev, { animate: false });
+          history.replaceState(null, '', location.pathname);
+          setTimeout(() => celebrate(prev, next), 450);
+          if (welcome) {
+            // nuovo cliente iscritto al timbro: subito l'invito a salvare la tessera sul telefono
+            setTimeout(() => {
+              toast('🎉 Benvenuto! Ecco il tuo primo timbro', 3500);
+              updateInstall();
+              if (!$('install').classList.contains('hidden')) {
+                $('install').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                $('installBtn').classList.add('pulse');
+              }
+            }, 2000);
+          }
+          state = next;
+          if (c.reviewUrl) { $('review').href = c.reviewUrl; $('review').classList.remove('hidden'); }
+          renderMessages(c.messages || []);
+          return;
+        }
+        paint(next, { animate: false });
+        state = next;
+        // Arrivati dal link "Mostra il QR per la cassa" del Wallet: QR già aperto
+        if (params.has('qr')) $('qrBtn').click();
+      } else if (!applyState(c)) {
+        return; // risposta superata da un aggiornamento in tempo reale
+      }
+      if (c.reviewUrl) { $('review').href = c.reviewUrl; $('review').classList.remove('hidden'); }
+      else $('review').classList.add('hidden');
+      renderMessages(c.messages || []);
+      paintWallet(c);
+      if (document.activeElement !== $('consent')) $('consent').checked = !!c.consentMarketing;
     }
 
     $('exportLink').href = 'api/card/' + encodeURIComponent(token) + '/export';
@@ -337,23 +350,29 @@
     };
 
     // Tempo reale: il server avvisa appena la cassa assegna un timbro o il locale manda un messaggio.
+    // L'avviso contiene già il nuovo saldo: il timbro compare subito, senza altre richieste.
+    // Solo messaggi e stato del Wallet richiedono di rileggere la tessera.
+    let reloadT;
     function connect() {
       if (!window.EventSource) return;
       const es = new EventSource('api/card/' + encodeURIComponent(token) + '/stream');
       es.onopen = () => $('live').classList.remove('off');
       es.onmessage = (e) => {
-        try {
-          const ev = JSON.parse(e.data);
-          if (ev.type === 'message') { toast('📣 ' + ev.title, 4000); vibrate(120); }
-        } catch {}
-        load();
+        let ev = {};
+        try { ev = JSON.parse(e.data); } catch {}
+        if (ev.type === 'message') { toast('📣 ' + ev.title, 4000); vibrate(120); }
+        if (state && ev.stamps !== undefined) applyState(ev);
+        clearTimeout(reloadT);
+        reloadT = setTimeout(load, /^(message|message-removed|wallet)$/.test(ev.type) ? 0 : 3000);
       };
       es.onerror = () => $('live').classList.add('off'); // EventSource si riconnette da solo
     }
 
     applyBrand().then((c) => {
       cfg = c;
-      load().then(connect);
+      // dati della tessera già nella pagina (window.CARD): si disegna subito, senza attese
+      if (window.CARD && window.CARD.code) { show(window.CARD); connect(); }
+      else load().then(connect);
       setInterval(load, 15000); // rete di sicurezza se la connessione live cade
       document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
     });

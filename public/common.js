@@ -9,7 +9,8 @@ async function api(path, { method = 'GET', body, pin } = {}) {
 }
 
 async function applyBrand() {
-  const cfg = await api('api/config');
+  // di solito la configurazione è già nella pagina (window.CFG, messa dal server): nessuna attesa
+  const cfg = window.CFG || await api('api/config');
   document.documentElement.style.setProperty('--brand', cfg.brandColor);
   document.querySelectorAll('[data-cfg]').forEach((el) => { el.textContent = cfg[el.dataset.cfg]; });
   return cfg;
