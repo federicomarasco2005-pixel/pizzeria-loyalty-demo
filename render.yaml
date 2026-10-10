@@ -9,6 +9,10 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/config
+    # Dominio proprio (registrato su Aruba). Il vecchio indirizzo onrender.com resta attivo.
+    domains:
+      - f5m.it
+      - www.f5m.it
     envVars:
       - key: DATABASE_URL
         fromDatabase:
