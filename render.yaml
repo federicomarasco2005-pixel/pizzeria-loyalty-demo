@@ -9,6 +9,8 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/config
+    # Pubblica da solo solo se i test su GitHub passano (senza questa riga il Blueprint torna a "ogni commit")
+    autoDeployTrigger: checksPass
     # Dominio proprio (registrato su Aruba). Il vecchio indirizzo onrender.com resta attivo.
     domains:
       - f5m.it
