@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{BRAND}} — Tessere fedeltà digitali per locali</title>
+  <meta name="description" content="Tessere fedeltà digitali per ristoranti, bar e pizzerie: niente app da scaricare, timbro con QR o NFC, tessera nel Google Wallet.">
+  <style>
+    :root { --ink: #1d1b19; --muted: #6b645c; --bg: #fbf6ee; --card: #fff; --line: #ece3d6; --brand: #b3261e; }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink: #f3ede6; --muted: #b5aca2; --bg: #171513; --card: #221f1c; --line: #34302b; --brand: #ef6b5f; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.55; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+    header { padding: 28px 0 8px; }
+    .logo { font-weight: 800; font-size: 1.35rem; letter-spacing: .02em; }
+    .logo span { color: var(--brand); }
+    .hero { padding: 40px 0 28px; }
+    h1 { font-size: clamp(1.9rem, 5vw, 2.8rem); line-height: 1.12; margin: 0 0 14px; }
+    .lead { font-size: 1.12rem; color: var(--muted); max-width: 640px; margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 26px 0 8px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+    .card h3 { margin: 6px 0 6px; font-size: 1.05rem; }
+    .card p { margin: 0; color: var(--muted); font-size: .97rem; }
+    .ico { font-size: 1.6rem; }
+    h2 { font-size: 1.4rem; margin: 40px 0 12px; }
+    ol { padding-left: 20px; margin: 0; }
+    ol li { margin: 6px 0; }
+    .contact { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; margin: 14px 0 0; }
+    .contact a { color: var(--brand); font-weight: 600; word-break: break-all; }
+    footer { color: var(--muted); font-size: .85rem; padding: 40px 0 30px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header><div class="logo">{{BRAND}}<span>.</span></div></header>
+
+    <section class="hero">
+      <h1>La tessera fedeltà del tuo locale, sul telefono dei clienti.</h1>
+      <p class="lead">Per ristoranti, bar, pizzerie e caffetterie. Niente app da scaricare e niente tessere di carta: il cliente si iscrive con un QR, riceve i timbri a ogni visita e trova la tessera nel Google Wallet o sulla schermata Home.</p>
+    </section>
+
+    <div class="grid">
+      <div class="card"><div class="ico">📲</div><h3>Nessuna app</h3><p>Iscrizione in 20 secondi da un QR sul tavolo. Funziona su Android e iPhone.</p></div>
+      <div class="card"><div class="ico">⚡</div><h3>Timbro istantaneo</h3><p>Dalla cassa con il QR del cliente, oppure appoggiando il telefono al timbro NFC.</p></div>
+      <div class="card"><div class="ico">🎁</div><h3>Premi automatici</h3><p>Ogni N visite il premio si sblocca da solo. Il cliente riceve la notifica.</p></div>
+      <div class="card"><div class="ico">📊</div><h3>Clienti che tornano</h3><p>Il locale vede chi torna, chi è vicino al premio e chi non viene da tempo, e può mandare offerte.</p></div>
+    </div>
+
+    <h2>Come funziona</h2>
+    <ol>
+      <li>Il cliente inquadra il QR del locale e crea la sua tessera.</li>
+      <li>A ogni visita riceve un timbro, in cassa o con il timbro NFC.</li>
+      <li>Al traguardo il premio è pronto: lo mostra in cassa e lo ritira.</li>
+    </ol>
+
+    <h2 id="assistenza">Assistenza</h2>
+    <div class="contact">
+      <p style="margin:0 0 8px">Hai una tessera di un locale e hai bisogno di aiuto? Per timbri e premi chiedi direttamente al locale. Per problemi con la tessera, i tuoi dati o la privacy scrivici:</p>
+      <p style="margin:0"><a href="mailto:{{EMAIL}}">{{EMAIL}}</a></p>
+      <p style="margin:12px 0 0;color:var(--muted);font-size:.93rem">Dalla tua tessera puoi anche scaricare i tuoi dati, revocare il consenso alle offerte o eliminare la tessera, in qualsiasi momento. L'informativa privacy di ogni locale è raggiungibile dalla tessera.</p>
+    </div>
+
+    <footer>© {{BRAND}} · Tessere fedeltà digitali per locali</footer>
+  </div>
+</body>
+</html>

@@ -202,6 +202,16 @@ const FIELDS = {
     ask: () => ['📞 <b>Numero di telefono per prenotare</b> (compare nella tessera)', kb([[btn('⏭️ Salta', 'skip')]])],
     parse: (t) => (/^\+?[\d\s./-]{6,30}$/.test(t) ? { value: t } : { error: 'Numero non valido.' }),
   },
+  slug: {
+    label: 'Indirizzo (sottodominio)',
+    ask: () => ['🌐 <b>Nuovo indirizzo del locale</b>\nSolo lettere minuscole, numeri e trattini. Diventa <i>indirizzo</i>.' + esc(M.domain || 'dominio') +
+      '\n<i>Es. da-mario · bar-luna · eldorado</i>\n\nIl vecchio indirizzo continua a funzionare e porta al nuovo: QR stampati, timbro NFC e tessere già emesse restano validi.'],
+    parse: (t) => {
+      const v = t.trim().toLowerCase().replace(new RegExp(`\\.${(M.domain || '').replace(/\./g, '\\.')}$`), '');
+      return /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/.test(v) && v.length >= 2
+        ? { value: v } : { error: 'Usa 2–40 caratteri: lettere minuscole, numeri e trattini (non all\'inizio o alla fine).' };
+    },
+  },
   mapsUrl: {
     label: 'Link Google Maps',
     optional: true,
@@ -213,7 +223,7 @@ const FIELDS = {
 
 // Ordine delle domande per una nuova tessera
 const CREATE_STEPS = ['name', 'theme', 'stampsForReward', 'rewardText', 'brandColor', 'logo', 'reviewUrl', 'phone'];
-const EDITABLE = ['name', 'rewardText', 'rewardShort', 'stampsForReward', 'theme', 'brandColor', 'logo', 'reviewUrl', 'phone', 'mapsUrl'];
+const EDITABLE = ['name', 'rewardText', 'rewardShort', 'stampsForReward', 'theme', 'brandColor', 'logo', 'reviewUrl', 'phone', 'mapsUrl', 'slug'];
 
 function chunk(arr, n) {
   const out = [];
@@ -525,8 +535,12 @@ async function applyEdit(chat, s, field, value) {
     return send(chat, `⚠️ ${esc(r.error)}`);
   }
   const warn = r.warnings && r.warnings.length ? `\n⚠️ ${r.warnings.map(esc).join('\n⚠️ ')}` : '';
-  await send(chat, `✅ ${esc(FIELDS[field].label)} aggiornato. Le tessere già emesse si aggiornano da sole nei prossimi minuti.${warn}`,
-    kb([[btn('✏️ Altra modifica', `edit:${s.slug}`), btn('⬅️ Torna al locale', `shop:${s.slug}`)]]));
+  const slug = r.ctx ? r.ctx.shop.slug : s.slug; // dopo un cambio di indirizzo
+  const text = field === 'slug'
+    ? `✅ Nuovo indirizzo: ${M.links(r.ctx).signup}\nIl vecchio continua a funzionare e porta qui. Le tessere già emesse ricevono i link nuovi nei prossimi minuti.`
+    : `✅ ${esc(FIELDS[field].label)} aggiornato. Le tessere già emesse si aggiornano da sole nei prossimi minuti.`;
+  await send(chat, text + warn,
+    kb([[btn('✏️ Altra modifica', `edit:${slug}`), btn('⬅️ Torna al locale', `shop:${slug}`)]]));
 }
 
 // ---------- Dipendenti ----------

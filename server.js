@@ -26,6 +26,34 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
+// ---------- Sottodomini dei locali (SHOP_DOMAIN, es. da-mario.f5m.it) ----------
+// Una richiesta a <slug>.f5m.it diventa internamente /<slug>/…: pagine e API sono le stesse dell'indirizzo con il percorso.
+// I file comuni (/style.css, /common.js…) restano comuni. Un indirizzo vecchio (locale rinominato) porta al nuovo.
+const GLOBAL_FILES = new Set(['/style.css', '/common.js', '/sw.js', '/wallet-button-it.svg', '/robots.txt']);
+app.use((req, res, next) => {
+  const domain = shops.shopDomain();
+  const host = String(req.hostname || '').toLowerCase();
+  if (!domain || !host.endsWith(`.${domain}`)) return next();
+  const sub = host.slice(0, -domain.length - 1);
+  if (sub === 'www') return res.redirect(301, `https://${domain}${req.originalUrl}`);
+  const found = shops.resolve(sub);
+  if (!found) return res.redirect(302, `https://${domain}/`);
+  const { slug } = found.ctx.shop;
+  if (found.alias) return res.redirect(301, `https://${slug}.${domain}${req.originalUrl}`);
+  req.subdomain = slug;
+  if (!GLOBAL_FILES.has(req.path) && req.path !== `/${slug}` && !req.path.startsWith(`/${slug}/`)) req.url = `/${slug}${req.url}`;
+  next();
+});
+
+// Dominio principale (es. https://f5m.it/): la pagina di presentazione del servizio, con i contatti per l'assistenza.
+const isMainDomain = (req) => shops.shopDomain() && String(req.hostname || '').toLowerCase() === shops.shopDomain();
+app.get(['/', '/assistenza'], (req, res, next) => {
+  if (!isMainDomain(req)) return next();
+  res.type('html').set('Cache-Control', 'no-cache').send(readPage('home.html')
+    .replace(/\{\{BRAND\}\}/g, process.env.BRAND_NAME || 'F5M')
+    .replace(/\{\{EMAIL\}\}/g, process.env.SUPPORT_EMAIL || ''));
+});
+
 // ---------- Vecchi indirizzi (prima che ci fossero più locali) ----------
 // Le tessere già nel Wallet, le icone già installate e il timbro NFC già scritto usano ancora questi link.
 
@@ -71,7 +99,7 @@ const inlineJson = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
 function page(file, extra) {
   return wrap(async (req, res) => {
     const { cfg } = req.ctx;
-    const data = { SHOP: { slug: cfg.slug, legacy: !!req.ctx.shop.legacy, prefix: cfg.codePrefix }, CFG: publicConfig(cfg) };
+    const data = { SHOP: { slug: cfg.slug, legacy: !!req.ctx.shop.legacy, prefix: cfg.codePrefix, aliases: req.ctx.shop.aliases || [] }, CFG: publicConfig(cfg) };
     if (extra) Object.assign(data, await extra(req, res));
     // dopo style.css, così questi valori hanno la precedenza
     const vars = `<style>:root { --brand: ${cfg.brandColor}; --stamp-on: url(/${cfg.slug}/stamps/icon.png?v=${cfg.imgVersion}); --stamp-off: url(/${cfg.slug}/stamps/icon-empty.png?v=${cfg.imgVersion}); }</style>`;
@@ -80,7 +108,8 @@ function page(file, extra) {
       .replace(/🍕/g, cfg.emoji)
       .replace(/PZ-/g, `${cfg.codePrefix}-`);
     // i dati si aggiungono dopo le sostituzioni, così restano intatti
-    const head = `<base href="/${cfg.slug}/">
+    // sul sottodominio del locale gli indirizzi relativi partono dalla radice (da-mario.f5m.it/api/…)
+    const head = `<base href="${req.subdomain ? '/' : `/${cfg.slug}/`}">
   <script>${Object.entries(data).map(([k, v]) => `window.${k} = ${inlineJson(v)};`).join(' ')}</script>`;
     html = html.replace('<head>', `<head>\n  ${head}`);
     res.type('html').set('Cache-Control', 'no-cache').send(html);
@@ -89,9 +118,11 @@ function page(file, extra) {
 
 const shop = express.Router({ mergeParams: true });
 app.use('/:slug', (req, res, next) => {
-  const ctx = shops.get(req.params.slug);
-  if (!ctx) return next();
-  req.ctx = ctx;
+  const found = shops.resolve(req.params.slug);
+  if (!found) return next();
+  // indirizzo vecchio di un locale rinominato: stesso percorso con l'indirizzo nuovo
+  if (found.alias) return res.redirect(301, `${found.ctx.cfg.baseUrl}${req.originalUrl.slice(req.params.slug.length + 1)}`);
+  req.ctx = found.ctx;
   shop(req, res, next);
 });
 
@@ -137,13 +168,19 @@ shop.get('/manifest.json', (req, res) => {
 // su iPhone Safari può cancellare la memoria delle pagine dopo 7 giorni senza visite,
 // mentre i cookie impostati dal server durano molto di più. Serve al timbro NFC.
 // Un cookie per locale (card_<slug>); il primo locale legge anche il vecchio cookie "card".
-const cookieName = (ctx) => `card_${ctx.shop.slug.replace(/[^a-z0-9]/g, '_')}`;
+const slugCookie = (slug) => `card_${slug.replace(/[^a-z0-9]/g, '_')}`;
+const cookieName = (ctx) => slugCookie(ctx.shop.slug);
 function getCookie(req, name) {
   const m = (req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
   return m ? decodeURIComponent(m[1]) : null;
 }
+// anche i cookie degli indirizzi precedenti del locale (se è stato rinominato)
 function getCardCookie(req) {
-  return getCookie(req, cookieName(req.ctx)) || (req.ctx.shop.legacy ? getCookie(req, 'card') : null);
+  for (const name of [cookieName(req.ctx), ...(req.ctx.shop.aliases || []).map(slugCookie)]) {
+    const v = getCookie(req, name);
+    if (v) return v;
+  }
+  return req.ctx.shop.legacy ? getCookie(req, 'card') : null;
 }
 function setCardCookie(req, res, token) {
   const secure = req.secure ? '; Secure' : '';
@@ -1019,6 +1056,21 @@ async function warmGifs(ctx) {
     .catch((err) => console.error(`[wallet] ${ctx.shop.slug}: animazioni non preparate: ${err.message}`));
 }
 
+// Indirizzi dei locali cambiati (es. passaggio ai sottodomini): le tessere Wallet già emesse ricevono i link nuovi.
+// Una volta sola: gli indirizzi aggiornati si ricordano nel database.
+async function refreshLinksIfMoved() {
+  if (!wallet.enabled()) return;
+  const saved = (await db.loadKey('baseUrls')) || {};
+  const now = Object.fromEntries(shops.all().map((ctx) => [ctx.shop.dataKey, ctx.cfg.baseUrl]));
+  for (const ctx of shops.all()) {
+    if (saved[ctx.shop.dataKey] && saved[ctx.shop.dataKey] !== now[ctx.shop.dataKey]) {
+      console.log(`[wallet] ${ctx.shop.slug}: nuovo indirizzo ${now[ctx.shop.dataKey]}, aggiorno ${ctx.db.customers.length} tessere`);
+      await syncAll(ctx);
+    }
+  }
+  db.saveKey('baseUrls', now);
+}
+
 // Aggiorna in background tutte le tessere di un locale (es. dopo un cambio di premio, colore o link)
 async function syncAll(ctx) {
   for (const c of [...ctx.db.customers]) await syncWallet(ctx, c);
@@ -1033,6 +1085,7 @@ app.use((err, req, res, next) => {
 
 const manager = {
   publicUrl: PUBLIC_URL,
+  get domain() { return shops.shopDomain(); },
   all: () => shops.all(),
   get: (slug) => shops.get(slug),
   stats: (ctx) => stats(ctx).kpi,
@@ -1058,6 +1111,23 @@ const manager = {
     return { ctx: r.ctx, warnings };
   },
   async update(slug, input) {
+    // Nuovo indirizzo (sottodominio): il vecchio resta e porta al nuovo; tessere Wallet aggiornate con i link nuovi
+    if ('slug' in input) {
+      const r = shops.rename(slug, input.slug);
+      if (r.error || !r.oldSlug) return r;
+      classReady.delete(r.oldSlug);
+      const warnings = [];
+      try {
+        await images.warm(shops.imageSpec(r.ctx.shop));
+        await ensureClass(r.ctx, { force: true });
+      } catch (err) {
+        warnings.push(`Google Wallet: ${err.message}`);
+      }
+      warmGifs(r.ctx);
+      syncAll(r.ctx);
+      console.log(`[locali] ${r.oldSlug} → ${r.ctx.shop.slug}`);
+      return { ctx: r.ctx, warnings };
+    }
     if (['reviewUrl', 'mapsUrl', 'phone'].some((k) => k in input)) {
       const ctx = shops.get(slug);
       if (!ctx) return { error: 'Locale non trovato.' };
@@ -1156,6 +1226,7 @@ const ready = (async () => {
       await ensureClass(ctx).catch((err) => console.error(`[wallet] ${ctx.shop.slug}: ${err.message}`));
     }
     for (const ctx of shops.all()) await warmGifs(ctx);
+    await refreshLinksIfMoved();
   })();
   resumeSettles();
   setInterval(processDueCampaigns, 30000);

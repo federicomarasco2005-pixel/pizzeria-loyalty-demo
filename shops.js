@@ -8,10 +8,15 @@ const { THEMES } = require('./images');
 
 const REGISTRY_KEY = 'shops';
 // Parole che non possono essere l'indirizzo di un locale (sono pagine o file del sito)
+// (anche sottodomini usati per altro: www, posta…)
 const RESERVED = new Set(['api', 'card', 'tap', 'stamps', 'icons', 'telegram', 'admin', 'staff', 'poster', 'static', 'public',
-  'sw.js', 'style.css', 'common.js', 'logo.png', 'manifest.json', 'favicon.ico', 'index.html', 'robots.txt']);
+  'sw.js', 'style.css', 'common.js', 'logo.png', 'manifest.json', 'favicon.ico', 'index.html', 'robots.txt',
+  'www', 'mail', 'smtp', 'pop', 'imap', 'ftp', 'webmail', 'app', 'assistenza', 'privacy', 'info', 'help', 'blog', 'dashboard', 'localhost', 'mx']);
 
 let publicUrl = '';
+// Dominio dei locali (SHOP_DOMAIN, es. f5m.it): ogni locale ha il suo sottodominio, es. https://da-mario.f5m.it.
+// Senza, ogni locale vive sotto l'indirizzo pubblico: https://…/da-mario/.
+const shopDomain = () => (process.env.SHOP_DOMAIN || '').toLowerCase().replace(/^\.+|\/+$/g, '');
 let list = [];                 // record dei locali, come salvati
 const contexts = new Map();    // slug -> { shop, db, cfg }
 
@@ -58,7 +63,7 @@ async function openContext(shop) {
 
 // Configurazione completa di un locale, nel formato usato da server e Wallet
 function cfgOf(shop) {
-  const baseUrl = `${publicUrl}/${shop.slug}`;
+  const baseUrl = shopDomain() ? `https://${shop.slug}.${shopDomain()}` : `${publicUrl}/${shop.slug}`;
   const v = shop.imgVersion || 1;
   return {
     slug: shop.slug,
@@ -93,6 +98,14 @@ function imageSpec(shop) {
 }
 
 const get = (slug) => contexts.get(String(slug || '').toLowerCase()) || null;
+
+// Indirizzo → locale, anche con un indirizzo vecchio (dopo un cambio di indirizzo): { ctx, alias }
+function resolve(slug) {
+  const s = String(slug || '').toLowerCase();
+  if (contexts.has(s)) return { ctx: contexts.get(s), alias: false };
+  for (const ctx of contexts.values()) if ((ctx.shop.aliases || []).includes(s)) return { ctx, alias: true };
+  return null;
+}
 const all = () => [...contexts.values()];
 const defaultSlug = () => (list[0] ? list[0].slug : 'da-mario');
 
@@ -101,11 +114,36 @@ function slugify(name) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'locale';
 }
 
+// indirizzo occupato: da un locale, da un indirizzo vecchio di un locale, o riservato
+const taken = (slug) => contexts.has(slug) || RESERVED.has(slug) || all().some((ctx) => (ctx.shop.aliases || []).includes(slug));
+
 function uniqueSlug(name) {
   const base = slugify(name);
   let slug = base, i = 2;
-  while (contexts.has(slug) || RESERVED.has(slug)) slug = `${base}-${i++}`;
+  while (taken(slug)) slug = `${base}-${i++}`;
   return slug;
+}
+
+// Cambia l'indirizzo (sottodominio) di un locale. Quello vecchio resta come "alias" e porta al nuovo:
+// QR stampati, chip NFC e tessere già emesse continuano a funzionare. Clienti, timbri e tessere Wallet restano gli stessi.
+function rename(slug, wanted) {
+  const ctx = get(slug);
+  if (!ctx) return { error: 'Locale non trovato.' };
+  const raw = String(wanted || '').trim().toLowerCase();
+  const next = slugify(raw);
+  if (!raw || next !== raw.replace(/\s+/g, '-')) {
+    return { error: 'Usa solo lettere minuscole, numeri e trattini (es. da-mario).' };
+  }
+  if (next.length < 2) return { error: 'L\'indirizzo è troppo corto.' };
+  if (next === slug) return { ctx };
+  const reclaim = (ctx.shop.aliases || []).includes(next); // si torna a un indirizzo usato prima da questo locale
+  if (!reclaim && taken(next)) return { error: `L'indirizzo "${next}" è già usato o riservato.` };
+  ctx.shop.aliases = [...new Set([...(ctx.shop.aliases || []).filter((a) => a !== next), slug])];
+  ctx.shop.slug = next;
+  contexts.delete(slug);
+  contexts.set(next, ctx);
+  save();
+  return { ctx, oldSlug: slug };
 }
 
 // Iniziali dei codici cliente: dalle parole "importanti" del nome (es. "Bar Luna" → LU)
@@ -289,6 +327,6 @@ function findByToken(token) {
 const findByNfcSecret = (secret) => all().find((ctx) => ctx.db.getSettings().nfcSecret === secret) || null;
 
 module.exports = {
-  init, get, all, defaultSlug, cfgOf, imageSpec, create, update, resetPin, remove, findByToken, findByNfcSecret, RESERVED,
+  init, get, resolve, rename, shopDomain, all, defaultSlug, cfgOf, imageSpec, create, update, resetPin, remove, findByToken, findByNfcSecret, RESERVED,
   whoHasPin, addStaff, removeStaff, addManager, removeManager,
 };

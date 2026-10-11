@@ -12,9 +12,10 @@ services:
     # Pubblica da solo solo se i test su GitHub passano (senza questa riga il Blueprint torna a "ogni commit")
     autoDeployTrigger: checksPass
     # Dominio proprio (registrato su Aruba). Il vecchio indirizzo onrender.com resta attivo.
+    # f5m.it (Render aggiunge da solo www.f5m.it, che porta a f5m.it) e un sottodominio per ogni locale (*.f5m.it)
     domains:
       - f5m.it
-      - www.f5m.it
+      - "*.f5m.it"
     envVars:
       - key: DATABASE_URL
         fromDatabase:

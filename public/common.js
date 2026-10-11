@@ -109,7 +109,14 @@ const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString('it-IT', { dateStyl
 const SHOP = window.SHOP || { slug: '', legacy: true };
 const key = (name) => (SHOP.slug ? name + ':' + SHOP.slug : name);
 function load(name) {
-  try { return localStorage.getItem(key(name)) || (SHOP.legacy ? localStorage.getItem(name) : '') || ''; } catch { return ''; }
+  try {
+    // anche le chiavi degli indirizzi precedenti del locale (se è stato rinominato)
+    for (const s of [SHOP.slug, ...(SHOP.aliases || [])]) {
+      const v = s ? localStorage.getItem(name + ':' + s) : null;
+      if (v) return v;
+    }
+    return (!SHOP.slug || SHOP.legacy ? localStorage.getItem(name) : '') || '';
+  } catch { return ''; }
 }
 function store(name, value) {
   try { value ? localStorage.setItem(key(name), value) : localStorage.removeItem(key(name)); } catch {}
