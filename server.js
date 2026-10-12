@@ -46,7 +46,13 @@ app.use((req, res, next) => {
 });
 
 // Dominio principale (es. https://f5m.it/): la pagina di presentazione del servizio, con i contatti per l'assistenza.
-const isMainDomain = (req) => shops.shopDomain() && String(req.hostname || '').toLowerCase() === shops.shopDomain();
+// È il dominio dei sottodomini (SHOP_DOMAIN) oppure quello dell'indirizzo pubblico, se è un dominio proprio.
+const mainHost = () => {
+  if (shops.shopDomain()) return shops.shopDomain();
+  const h = new URL(PUBLIC_URL).hostname;
+  return h === 'localhost' || h.endsWith('.onrender.com') ? null : h;
+};
+const isMainDomain = (req) => !!mainHost() && String(req.hostname || '').toLowerCase() === mainHost();
 app.get(['/', '/assistenza'], (req, res, next) => {
   if (!isMainDomain(req)) return next();
   res.type('html').set('Cache-Control', 'no-cache').send(readPage('home.html')

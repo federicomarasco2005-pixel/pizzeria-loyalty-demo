@@ -21,6 +21,18 @@ services:
         fromDatabase:
           name: pizzeria-loyalty-db
           property: connectionString
+      # Indirizzi: f5m.it (pagina del servizio) e un sottodominio per ogni locale (es. da-mario.f5m.it).
+      # QR, chip NFC e tessere già distribuiti con l'indirizzo onrender.com continuano a funzionare.
+      - key: PUBLIC_URL
+        value: https://f5m.it
+      # Sottodomini dei locali (da-mario.f5m.it): da attivare quando Render ha il certificato di *.f5m.it.
+      # Finché è spento i locali sono su f5m.it/<indirizzo>; all'attivazione le tessere si aggiornano da sole.
+      # - key: SHOP_DOMAIN
+      #   value: f5m.it
+      - key: BRAND_NAME
+        value: F5M
+      - key: SUPPORT_EMAIL
+        value: federico.marasco2005@gmail.com
       - key: PIZZERIA_NAME
         value: Pizzeria Da Mario
       - key: PROGRAM_NAME
