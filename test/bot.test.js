@@ -52,8 +52,14 @@ test('creazione di un locale con il modulo', async () => {
   await tap(OWNER, 'skip');
   await tap(OWNER, 'skip');
   assert.strictEqual(last(1).method, 'sendPhoto', 'riepilogo con anteprima');
+  const before = sent.length;
   await tap(OWNER, 'create');
-  assert.match(last(1).text, /è online/);
+  const after = sent.slice(before).filter((m) => m.chat === 1);
+  assert.ok(after.some((m) => /è online/.test(m.text)), 'conferma con PIN e link');
+  const kit = after.find((m) => m.method === 'sendDocument');
+  assert.ok(kit, 'il kit di lancio arriva subito dopo');
+  assert.strictEqual(kit.file.type, 'application/pdf');
+  assert.strictEqual(kit.file.buf.subarray(0, 4).toString(), '%PDF');
   const ctx = manager.get('bar-test-luna');
   assert.ok(ctx);
   assert.strictEqual(ctx.cfg.stampsForReward, 8);

@@ -129,6 +129,13 @@ function send(chat, text, keyboard) {
   });
 }
 
+function sendPdf(chat, buf, name, caption, keyboard) {
+  return call('sendDocument', {
+    chat_id: chat, caption, parse_mode: 'HTML', ...(keyboard && { reply_markup: keyboard }),
+  }, { field: 'document', buf, type: 'application/pdf', name });
+}
+const fileSlug = (ctx) => ctx.shop.slug.replace(/[^a-z0-9-]/g, '');
+
 async function sendPhoto(chat, buf, caption, keyboard) {
   return call('sendPhoto', {
     chat_id: chat, caption, parse_mode: 'HTML', ...(keyboard && { reply_markup: keyboard }),
@@ -212,6 +219,13 @@ const FIELDS = {
         ? { value: v } : { error: 'Usa 2–40 caratteri: lettere minuscole, numeri e trattini (non all\'inizio o alla fine).' };
     },
   },
+  avgTicket: {
+    label: 'Scontrino medio',
+    optional: true,
+    settings: true,
+    ask: () => ['💶 <b>Scontrino medio del locale, in euro</b> (es. 18 o 22,50)\nServe solo al report mensile per stimare l\'incasso portato dai clienti che tornano.', kb([[btn('⏭️ Salta', 'skip')]])],
+    parse: (t) => (/^\d{1,4}([.,]\d{1,2})?$/.test(t.trim()) ? { value: t.trim() } : { error: 'Scrivi solo l\'importo, es. 18 o 22,50.' }),
+  },
   mapsUrl: {
     label: 'Link Google Maps',
     optional: true,
@@ -223,7 +237,7 @@ const FIELDS = {
 
 // Ordine delle domande per una nuova tessera
 const CREATE_STEPS = ['name', 'theme', 'stampsForReward', 'rewardText', 'brandColor', 'logo', 'reviewUrl', 'phone'];
-const EDITABLE = ['name', 'rewardText', 'rewardShort', 'stampsForReward', 'theme', 'brandColor', 'logo', 'reviewUrl', 'phone', 'mapsUrl', 'slug'];
+const EDITABLE = ['name', 'rewardText', 'rewardShort', 'stampsForReward', 'theme', 'brandColor', 'logo', 'reviewUrl', 'phone', 'mapsUrl', 'avgTicket', 'slug'];
 
 function chunk(arr, n) {
   const out = [];
@@ -363,6 +377,14 @@ async function onButton(chat, data, msg) {
   if (action === 'report') return sendReport(chat, M.all());
   if (action === 'backup') return sendBackup('💾 Backup su richiesta', chat);
   if (action === 'rep1') { const ctx = M.get(arg); return ctx && sendReport(chat, [ctx]); }
+  if (action === 'kit') { const ctx = M.get(arg); return ctx && sendKit(chat, ctx); }
+  if (action === 'mpdf') { const ctx = M.get(arg); return ctx && sendMonthPdf(chat, ctx, 0); }
+  if (action === 'auto') return showAutomations(chat, arg);
+  if (action === 'autot') {
+    const [slug, key, on] = arg.split('|');
+    M.setAutomation(slug, key, on === '1');
+    return showAutomations(chat, slug);
+  }
 
   // dipendenti con PIN personale
   if (action === 'staff') return showStaff(chat, arg);
@@ -479,7 +501,46 @@ async function createShop(chat, s) {
     `📊 Dashboard e notifiche: ${L.admin}\n` +
     `📲 Da scrivere nel timbro NFC:\n<code>${esc(L.nfc)}</code>\n\n` +
     `Per provarla: apri il link di iscrizione dal telefono e crea una tessera.${warn}`,
-    kb([[urlBtn('🖨️ QR da tavolo', L.poster), urlBtn('🧾 Cassa', L.staff)], [btn('📋 I miei locali', 'list'), btn('➕ Nuova', 'new')]]));
+    kb([[urlBtn('🖨️ QR da tavolo', L.poster), urlBtn('🧾 Cassa', L.staff)], [btn('📋 I miei locali', 'list'), btn('➕ Nuova', 'new')]]))
+    .then(() => sendKit(chat, ctx));
+}
+
+// ---------- Kit di lancio, report mensile, automazioni ----------
+
+async function sendKit(chat, ctx) {
+  const buf = await M.launchKit(ctx);
+  return sendPdf(chat, buf, `kit-lancio-${fileSlug(ctx)}.pdf`,
+    `🖨️ <b>Kit di lancio di ${esc(ctx.cfg.pizzeriaName)}</b>\nQR da tavolo, adesivi per vetrina e cassa, istruzioni per il personale e testi pronti per i social. Da stampare e girare al titolare.`);
+}
+
+// monthsAgo 0 = mese in corso (su richiesta), 1 = mese appena chiuso (automatico il 1° del mese)
+async function sendMonthPdf(chat, ctx, monthsAgo) {
+  const buf = await M.monthlyReport(ctx, monthsAgo);
+  const { monthLabel } = M.monthNumbers(ctx, monthsAgo);
+  return sendPdf(chat, buf, `report-${fileSlug(ctx)}-${monthLabel.replace(' ', '-')}.pdf`,
+    `📄 <b>${esc(ctx.cfg.pizzeriaName)}</b> - report di ${monthLabel}${monthsAgo === 0 ? ' (fino a oggi)' : ''}`);
+}
+
+// Il 1° del mese: a te il report di ogni locale, a ogni gestore quello del suo
+async function sendMonthlyReports() {
+  for (const ctx of M.all()) {
+    const targets = [ownerId, ...(ctx.shop.managers || []).map((m) => m.chatId)].filter(Boolean);
+    for (const chat of targets) await sendMonthPdf(chat, ctx, 1).catch((err) => console.error(`[bot] report mensile a ${chat}: ${err.message}`));
+  }
+}
+
+function showAutomations(chat, slug) {
+  const ctx = M.get(slug);
+  if (!ctx) return send(chat, 'Locale non trovato.');
+  const list = M.automations(ctx);
+  const lines = list.map((a) => `${a.on ? '🟢' : '⚪'} <b>${esc(a.label)}</b>${a.promo ? ' <i>(solo a chi accetta le offerte)</i>' : ''}${a.note ? ` — ⚠️ ${a.note}` : ''}`);
+  return send(chat,
+    `🤖 <b>Messaggi automatici di ${esc(ctx.cfg.pizzeriaName)}</b>\n` +
+    'Partono da soli ogni giorno in tarda mattinata, nella tessera Google Wallet (con notifica) e nella tessera web. ' +
+    'Al massimo uno al giorno per cliente.\n\n' + lines.join('\n') +
+    '\n\n<i>Ti manca 1 timbro: una volta per premio. Recensione: una volta sola, dopo la 3ª visita. Ci manchi: dopo 21 giorni senza visite.</i>',
+    kb([...list.map((a) => [btn(`${a.on ? '⏸️ Spegni' : '▶️ Accendi'}: ${a.label}`, `autot:${slug}|${a.key}|${a.on ? 0 : 1}`)]),
+      [btn('⬅️ Torna al locale', `shop:${slug}`)]]));
 }
 
 async function listShops(chat) {
@@ -519,6 +580,8 @@ async function showShop(chat, slug) {
     [urlBtn('📊 Dashboard', L.admin), urlBtn('🖨️ QR tavolo', L.poster)],
     [btn('✏️ Modifica', `edit:${slug}`), btn('🖼️ Anteprima', `preview:${slug}`)],
     [btn('👤 Dipendenti', `staff:${slug}`), btn('🤝 Accesso gestore', `inv:${slug}`)],
+    [btn('🖨️ Kit di lancio (PDF)', `kit:${slug}`), btn('🤖 Automazioni', `auto:${slug}`)],
+    [btn('📄 Report del mese (PDF)', `mpdf:${slug}`)],
     [btn('📈 Report', `rep1:${slug}`), ...(ctx.shop.managers || []).slice(0, 1).map((m) => btn(`🔒 Scollega ${m.name}`.slice(0, 30), `mgrdel:${slug}|${m.chatId}`))],
     [btn('🔑 Nuovo PIN', `pin:${slug}`), ...(ctx.shop.legacy ? [] : [btn('🗑️ Elimina', `del:${slug}`)])],
     [btn('⬅️ I miei locali', 'list')],
@@ -605,6 +668,10 @@ async function managerUpdate(chat, u) {
     const ctx = mine.find((c) => c.shop.slug === data.slice(5));
     if (ctx) return sendReport(chat, [ctx]);
   }
+  if (data.startsWith('mpdfm:')) {
+    const ctx = mine.find((c) => c.shop.slug === data.slice(6));
+    if (ctx) return sendMonthPdf(chat, ctx, 0);
+  }
   return managerMenu(chat);
 }
 
@@ -620,7 +687,7 @@ function managerMenu(chat) {
       `📊 Dashboard: ${L.admin}\n🧾 Cassa: ${L.staff}`;
   }).join('\n\n');
   return send(chat, text || 'Nessun locale collegato.',
-    kb(mine.map((ctx) => [btn(`📈 Report ${ctx.cfg.pizzeriaName}`.slice(0, 40), `mrep:${ctx.shop.slug}`)])));
+    kb(mine.map((ctx) => [btn(`📈 Report ${ctx.cfg.pizzeriaName}`.slice(0, 40), `mrep:${ctx.shop.slug}`), btn('📄 Mese (PDF)', `mpdfm:${ctx.shop.slug}`)])));
 }
 
 // ---------- Report settimanale ----------
@@ -682,4 +749,4 @@ function alert(text, key = text, cooldownMs = 6 * 3600e3) {
 
 const enabled = () => !!M && !!ownerId && (!!TOKEN || call !== telegram);
 
-module.exports = { mount, start, handleUpdate, alert, enabled, sendBackup, sendWeeklyReports };
+module.exports = { mount, start, handleUpdate, alert, enabled, sendBackup, sendWeeklyReports, sendMonthlyReports };

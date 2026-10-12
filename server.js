@@ -8,6 +8,7 @@ const db = require('./db');
 const shops = require('./shops');
 const images = require('./images');
 const wallet = require('./wallet');
+const pdf = require('./pdf');
 const bot = require('./bot');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -855,7 +856,7 @@ shop.get('/api/admin/campaigns', requireManager, (req, res) => {
   const { ctx } = req;
   res.json([...ctx.db.campaigns].reverse().slice(0, 30).map((c) => ({
     ...c,
-    segmentLabel: (SEGMENTS[c.segment] || {}).label,
+    segmentLabel: c.auto ? `🤖 Automatico: ${(AUTOMATIONS[c.auto] || {}).label || c.auto}` : (SEGMENTS[c.segment] || {}).label,
     ...(c.status === 'sent' && { active: ctx.db.isActive(c), expiresAt: ctx.db.expiryOf(c) }),
   })));
 });
@@ -978,15 +979,19 @@ const romeNow = () => {
 };
 let jobsState = null;
 async function runJobs() {
-  if (!bot.enabled()) return;
   if (!jobsState) jobsState = (await db.loadKey('jobs')) || {};
   const now = romeNow();
   const due = (name, cond) => cond && jobsState[name] !== now.day;
   const mark = (name) => { jobsState[name] = now.day; db.saveKey('jobs', jobsState); };
-  if (due('weekly', now.weekday === 'Mon' && now.hour >= 9)) {
+  if (bot.enabled() && due('weekly', now.weekday === 'Mon' && now.hour >= 9)) {
     mark('weekly');
     await bot.sendBackup('🗓️ Backup settimanale automatico').catch((err) => console.error(`[bot] backup: ${err.message}`));
     await bot.sendWeeklyReports().catch((err) => console.error(`[bot] report: ${err.message}`));
+  }
+  // il 1° del mese: report del mese appena chiuso, in PDF, a te e ai gestori
+  if (bot.enabled() && due('monthly', now.day.endsWith('-01') && now.hour >= 9)) {
+    mark('monthly');
+    await bot.sendMonthlyReports().catch((err) => console.error(`[bot] report mensile: ${err.message}`));
   }
   if (due('daily', now.hour >= 10)) {
     mark('daily');
@@ -1005,6 +1010,127 @@ async function runJobs() {
       }
     }
   }
+  // messaggi automatici ai clienti: in tarda mattinata, prima del pranzo
+  if (due('auto', now.hour >= 11 && now.hour < 21)) {
+    mark('auto');
+    for (const ctx of shops.all()) await runAutomations(ctx).catch((err) => console.error(`[auto] ${ctx.shop.slug}: ${err.message}`));
+  }
+}
+
+// ---------- Messaggi automatici ----------
+// Ogni giorno il server guarda i clienti di ogni locale e manda da solo, nella tessera (Wallet e web):
+//   near     "Ti manca 1 timbro"            una volta per ogni premio, se il cliente è passato da poco
+//   review   "Lasciaci una recensione"      una volta sola, dopo la 3ª visita (se il locale ha il link)
+//   inactive "Ci manchi"                    dopo 21 giorni senza visite, solo a chi ha dato il consenso alle offerte
+// Al massimo un messaggio automatico al giorno per cliente. Si attivano/disattivano dal bot (scheda del locale).
+// I messaggi passano dalle campagne: stesso limite di notifiche Google, compaiono nello storico della dashboard.
+const AUTOMATIONS = {
+  near: {
+    label: 'Ti manca 1 timbro', promo: false,
+    text: (cfg) => ({ title: `Ti manca 1 timbro! ${cfg.emoji}`, body: `Alla prossima visita da ${cfg.pizzeriaName}: ${cfg.rewardText.toLowerCase()}.` }),
+    due: (c, s, cfg) => s.stamps === cfg.stampsForReward - 1 && recent(s.lastVisitAt, 30) && (c.autoSent || {}).near !== s.earned,
+    mark: (c, s) => ({ near: s.earned }),
+  },
+  review: {
+    label: 'Richiesta di recensione', promo: false,
+    text: (cfg) => ({ title: `Ti piace ${cfg.pizzeriaName}?`, body: 'Lasciaci una recensione su Google: per noi conta tantissimo. Trovi il link nella tua tessera.' }),
+    due: (c, s, cfg, settings) => !!settings.reviewUrl && s.visits >= 3 && recent(s.lastVisitAt, 3) && !(c.autoSent || {}).review,
+    mark: () => ({ review: true }),
+  },
+  inactive: {
+    label: 'Ci manchi (21 giorni)', promo: true,
+    text: (cfg) => ({ title: `Ci manchi! ${cfg.emoji}`, body: `È da un po' che non passi da ${cfg.pizzeriaName}: i tuoi timbri ti aspettano. ${cfg.rewardText} è più vicino di quanto pensi!` }),
+    due: (c, s) => s.visits >= 1 && !recent(s.lastVisitAt, 21) && recent(s.lastVisitAt, 120) && (c.autoSent || {}).inactive !== s.lastVisitAt,
+    mark: (c, s) => ({ inactive: s.lastVisitAt }),
+  },
+};
+const recent = (iso, days) => !!iso && Date.now() - Date.parse(iso) < days * DAY_MS;
+const autoEnabled = (ctx, key) => (ctx.db.getSettings().auto || {})[key] !== false; // attive di default
+
+async function runAutomations(ctx) {
+  const { cfg } = ctx;
+  const settings = ctx.db.getSettings();
+  const done = new Set(); // un solo messaggio automatico per cliente in questo giro
+  for (const [key, a] of Object.entries(AUTOMATIONS)) {
+    if (!autoEnabled(ctx, key)) continue;
+    const chosen = [];
+    for (const c of ctx.db.customers) {
+      if (done.has(c.id) || (a.promo && !c.consentMarketing)) continue;
+      const s = ctx.db.stateOf(c.id, cfg.stampsForReward);
+      if (!a.due(c, s, cfg, settings)) continue;
+      chosen.push(c.id);
+      done.add(c.id);
+      // segnato subito: se il server riparte a metà, nessuno riceve due volte lo stesso messaggio
+      ctx.db.updateCustomer(c.id, { autoSent: { ...(c.autoSent || {}), ...a.mark(c, s) } });
+    }
+    if (!chosen.length) continue;
+    const campaign = ctx.db.createCampaign({
+      ...a.text(cfg), segment: 'manual', ids: chosen, promo: a.promo, auto: key,
+      sendAt: new Date().toISOString(), recipients: [], keepDays: 3,
+    });
+    await sendCampaign(ctx, campaign);
+    console.log(`[auto] ${ctx.shop.slug}: "${a.label}" a ${chosen.length} clienti`);
+  }
+}
+
+// ---------- Numeri di un mese (report mensile) ----------
+const MONTHS = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+
+function monthNumbers(ctx, monthsAgo = 1) {
+  const { cfg } = ctx;
+  const n = cfg.stampsForReward;
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
+  const end = new Date(now.getFullYear(), now.getMonth() - monthsAgo + 1, 1);
+  const prevStart = new Date(now.getFullYear(), now.getMonth() - monthsAgo - 1, 1);
+  const { active } = stats(ctx);
+  const inRange = (iso, a, b) => { const t = Date.parse(iso); return t >= a.getTime() && t < b.getTime(); };
+
+  // prima visita di ogni cliente: le visite successive sono "di ritorno"
+  const firstStamp = new Map();
+  for (const e of active) if (e.type === 'stamp' && !firstStamp.has(e.customerId)) firstStamp.set(e.customerId, e.id);
+
+  const numbers = (a, b) => {
+    const stamps = active.filter((e) => e.type === 'stamp' && inRange(e.at, a, b));
+    const visitors = new Set(stamps.map((e) => e.customerId));
+    const repeat = stamps.filter((e) => firstStamp.get(e.customerId) !== e.id);
+    return {
+      stamps: stamps.length,
+      visitors: visitors.size,
+      returning: new Set(repeat.map((e) => e.customerId)).size,
+      returningVisits: repeat.length,
+      newMembers: ctx.db.customers.filter((c) => inRange(c.createdAt, a, b)).length,
+      redeemed: active.filter((e) => e.type === 'redeem' && inRange(e.at, a, b)).length,
+    };
+  };
+  const kpi = { ...numbers(start, end), members: ctx.db.customers.length, consent: ctx.db.customers.filter((c) => c.consentMarketing).length };
+
+  // settimane del mese: 1-7, 8-14, 15-21, 22-fine
+  const days = new Date(end - 1).getDate();
+  const mon = MONTHS[start.getMonth()].slice(0, 3);
+  const weeks = [[1, 7], [8, 14], [15, 21], [22, days]].map(([a, b]) => ({
+    label: `${a}-${b} ${mon}`,
+    stamps: active.filter((e) => e.type === 'stamp' && inRange(e.at, new Date(start.getFullYear(), start.getMonth(), a), new Date(start.getFullYear(), start.getMonth(), b + 1))).length,
+  }));
+
+  // consigli calcolati sui clienti di oggi
+  const settings = ctx.db.getSettings();
+  const views = ctx.db.customers.map((c) => ({ c, s: ctx.db.stateOf(c.id, n) }));
+  const near = views.filter(({ s }) => s.stamps === n - 1).length;
+  const sleeping = views.filter(({ c, s }) => c.consentMarketing && s.lastVisitAt && !recent(s.lastVisitAt, 30)).length;
+  const tips = [];
+  if (near) tips.push(`${near} ${near === 1 ? 'cliente è' : 'clienti sono'} a un timbro dal premio: ricevono già il promemoria automatico.`);
+  if (sleeping) tips.push(`${sleeping} clienti con il consenso alle offerte non passano da più di 30 giorni: prova un'offerta dalla dashboard (Notifiche > "Non tornano da 30+ giorni").`);
+  if (!settings.reviewUrl) tips.push('Aggiungi il link per le recensioni Google: dopo la 3ª visita i clienti ricevono la richiesta in automatico.');
+  if (kpi.newMembers < 10) tips.push('Pochi nuovi iscritti: proponi la tessera a ogni scontrino ("Hai la nostra tessera? Inquadra qui") e tieni il QR su ogni tavolo.');
+  if (!settings.avgTicket) tips.push('Indica lo scontrino medio (dal bot, Modifica > Scontrino medio): il report stimerà l\'incasso portato dai clienti tornati.');
+  if (!tips.length) tips.push('Ottimo mese: continua così e prova un\'offerta per i giorni più vuoti.');
+
+  return {
+    monthLabel: `${MONTHS[start.getMonth()]} ${start.getFullYear()}`,
+    kpi, prev: numbers(prevStart, start), weeks, tips: tips.slice(0, 4),
+    avgTicket: Number(settings.avgTicket) || 0,
+  };
 }
 
 // ---------- Wallet sync ----------
@@ -1134,6 +1260,15 @@ const manager = {
       console.log(`[locali] ${r.oldSlug} → ${r.ctx.shop.slug}`);
       return { ctx: r.ctx, warnings };
     }
+    // Scontrino medio (solo per la stima dell'incasso nel report mensile)
+    if ('avgTicket' in input) {
+      const ctx = shops.get(slug);
+      if (!ctx) return { error: 'Locale non trovato.' };
+      const v = input.avgTicket === '' || input.avgTicket === null ? 0 : Number(String(input.avgTicket).replace(',', '.'));
+      if (!Number.isFinite(v) || v < 0 || v > 1000) return { error: 'Scrivi un importo in euro, es. 18 o 22,50.' };
+      ctx.db.updateSettings({ avgTicket: v || null });
+      return { ctx };
+    }
     if (['reviewUrl', 'mapsUrl', 'phone'].some((k) => k in input)) {
       const ctx = shops.get(slug);
       if (!ctx) return { error: 'Locale non trovato.' };
@@ -1194,6 +1329,39 @@ const manager = {
     };
   },
   remove: (slug) => shops.remove(slug),
+  // Messaggi automatici: stato e interruttori (scheda del locale nel bot)
+  automations: (ctx) => Object.entries(AUTOMATIONS).map(([key, a]) => ({
+    key, label: a.label, on: autoEnabled(ctx, key), promo: a.promo,
+    note: key === 'review' && !ctx.db.getSettings().reviewUrl ? 'serve il link recensioni' : '',
+  })),
+  setAutomation(slug, key, on) {
+    const ctx = shops.get(slug);
+    if (!ctx || !AUTOMATIONS[key]) return null;
+    ctx.db.updateSettings({ auto: { ...(ctx.db.getSettings().auto || {}), [key]: !!on } });
+    return ctx;
+  },
+  runAutomations: (ctx) => runAutomations(ctx),
+  // Kit di lancio in PDF: QR da tavolo, adesivi, istruzioni per il personale, testi per i social
+  async launchKit(ctx) {
+    const { cfg } = ctx;
+    const links = manager.links(ctx);
+    return pdf.launchKit({
+      name: cfg.pizzeriaName, programName: cfg.programName, rewardText: cfg.rewardText, stampsForReward: cfg.stampsForReward,
+      brandColor: cfg.brandColor, links, brand: process.env.BRAND_NAME || 'F5M',
+      logo: (await images.get(shops.imageSpec(ctx.shop), 'logo.png')).buf,
+      qr: await QRCode.toBuffer(links.signup, { margin: 1, width: 700 }),
+    });
+  },
+  // Report di un mese in PDF (monthsAgo = 1: il mese appena chiuso; 0: il mese in corso)
+  async monthlyReport(ctx, monthsAgo = 1) {
+    const { cfg } = ctx;
+    const r = monthNumbers(ctx, monthsAgo);
+    return pdf.monthlyReport({
+      ...r, name: cfg.pizzeriaName, brandColor: cfg.brandColor, brand: process.env.BRAND_NAME || 'F5M',
+      logo: (await images.get(shops.imageSpec(ctx.shop), 'logo.png')).buf,
+    });
+  },
+  monthNumbers: (ctx, monthsAgo = 1) => monthNumbers(ctx, monthsAgo),
   preview: (ctx) => images.preview(shops.imageSpec(ctx.shop)),
   prepareLogo: (buffer) => images.prepareLogo(buffer),
   themes: images.THEMES,
