@@ -102,6 +102,15 @@ test('kit di lancio e report del mese in PDF, anche dal bot', async () => {
   assert.ok(sent.length >= 1 && sent.every((m) => m.method === 'sendDocument' && m.chat === 1));
 });
 
+test('bot: interruttore del ritiro premio dal telefono del cliente', async () => {
+  assert.strictEqual(manager.selfRedeem(ctx), true);
+  await tap(`selfr:${ctx.shop.slug}`);
+  assert.strictEqual(manager.selfRedeem(ctx), false);
+  assert.ok(sent.some((m) => /Ritiro del premio dal telefono del cliente: spento/.test(m.text)));
+  await tap(`selfr:${ctx.shop.slug}`);
+  assert.strictEqual(manager.selfRedeem(ctx), true);
+});
+
 test('scontrino medio: importo valido, stima dell\'incasso nel report', async () => {
   assert.match((await manager.update(ctx.shop.slug, { avgTicket: 'tanti' })).error, /importo/);
   assert.ok(!(await manager.update(ctx.shop.slug, { avgTicket: '22,50' })).error);

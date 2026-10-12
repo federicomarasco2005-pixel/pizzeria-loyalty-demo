@@ -106,6 +106,31 @@ test('tessera veloce: dati già nella pagina, nuovo saldo nell\'avviso in tempo 
   assert.ok(ev.v > card.v, 'la versione cresce a ogni operazione');
 });
 
+test('premio ritirato dal telefono del cliente, annullabile', async () => {
+  const gino = (await api(`${S}/api/signup`, { method: 'POST', body: { name: 'Gino', email: 'gino@x.it', acceptTerms: true } })).data.token;
+  assert.strictEqual((await api(`${S}/api/card/${gino}/redeem`, { method: 'POST', body: {} })).status, 400, 'niente premio, niente ritiro');
+  for (let i = 0; i < 6; i++) await api(`${S}/api/staff/stamp`, { method: 'POST', pin: PIN, body: { token: gino, requestId: `g${i}` } });
+  let card = (await api(`${S}/api/card/${gino}`)).data;
+  assert.strictEqual(card.rewards, 1);
+  assert.strictEqual(card.selfRedeem, true, 'attivo di default');
+
+  const r = await api(`${S}/api/card/${gino}/redeem`, { method: 'POST', body: { requestId: 'gr1' } });
+  assert.strictEqual(r.status, 200);
+  assert.ok(r.data.redeem.id && r.data.redeem.undoUntil);
+  card = (await api(`${S}/api/card/${gino}`)).data;
+  assert.strictEqual(card.rewards, 0);
+  assert.strictEqual(card.lastRedeem.id, r.data.redeem.id, 'ricaricando la pagina la schermata PREMIO VALIDO torna');
+  assert.strictEqual((await api(`${S}/api/card/${gino}/redeem`, { method: 'POST', body: { requestId: 'gr2' } })).status, 400, 'un premio si usa una volta');
+  const stats = (await api(`${S}/api/admin/stats`, { pin: PIN })).data;
+  assert.ok(stats.events.some((e) => e.type === 'redeem' && e.by === 'customer'), 'nello storico della dashboard');
+
+  assert.strictEqual((await api(`${S}/api/card/${gino}/redeem/undo`, { method: 'POST', body: { id: 'sbagliato' } })).status, 400);
+  assert.strictEqual((await api(`${S}/api/card/${gino}/redeem/undo`, { method: 'POST', body: { id: r.data.redeem.id } })).status, 200);
+  card = (await api(`${S}/api/card/${gino}`)).data;
+  assert.strictEqual(card.rewards, 1, 'annullato: il premio è di nuovo disponibile');
+  assert.strictEqual(card.lastRedeem, null);
+});
+
 test('timbro NFC: nuovo cliente iscritto sul momento, poi pausa', async () => {
   const { url } = (await api(`${S}/api/admin/nfc`, { pin: PIN })).data;
   const secret = url.split('/').pop();

@@ -380,6 +380,17 @@ async function onButton(chat, data, msg) {
   if (action === 'kit') { const ctx = M.get(arg); return ctx && sendKit(chat, ctx); }
   if (action === 'mpdf') { const ctx = M.get(arg); return ctx && sendMonthPdf(chat, ctx, 0); }
   if (action === 'auto') return showAutomations(chat, arg);
+  // Il cliente può ritirare il premio dalla sua tessera (schermata "PREMIO VALIDO" da mostrare al personale)
+  if (action === 'selfr') {
+    const ctx = M.get(arg);
+    if (!ctx) return;
+    const on = !M.selfRedeem(ctx);
+    M.setSelfRedeem(arg, on);
+    await send(chat, on
+      ? '🎁 <b>Ritiro del premio dal telefono del cliente: acceso.</b>\nQuando il premio è pronto, il cliente tocca "Usa il premio" davanti al personale: compare la schermata PREMIO VALIDO (animata, con l\'orologio) e il premio risulta consegnato. Errori: si annulla entro 10 minuti dalla tessera o dalla Cassa.'
+      : '🎁 <b>Ritiro del premio dal telefono del cliente: spento.</b>\nIl premio si consegna solo dalla Cassa ("Consegna premio").');
+    return showShop(chat, arg);
+  }
   if (action === 'autot') {
     const [slug, key, on] = arg.split('|');
     M.setAutomation(slug, key, on === '1');
@@ -582,6 +593,7 @@ async function showShop(chat, slug) {
     [btn('👤 Dipendenti', `staff:${slug}`), btn('🤝 Accesso gestore', `inv:${slug}`)],
     [btn('🖨️ Kit di lancio (PDF)', `kit:${slug}`), btn('🤖 Automazioni', `auto:${slug}`)],
     [btn('📄 Report del mese (PDF)', `mpdf:${slug}`)],
+    [btn(M.selfRedeem(ctx) ? '🎁 Premio dal telefono del cliente: ✅' : '🎁 Premio dal telefono del cliente: ❌', `selfr:${slug}`)],
     [btn('📈 Report', `rep1:${slug}`), ...(ctx.shop.managers || []).slice(0, 1).map((m) => btn(`🔒 Scollega ${m.name}`.slice(0, 30), `mgrdel:${slug}|${m.chatId}`))],
     [btn('🔑 Nuovo PIN', `pin:${slug}`), ...(ctx.shop.legacy ? [] : [btn('🗑️ Elimina', `del:${slug}`)])],
     [btn('⬅️ I miei locali', 'list')],

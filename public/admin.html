@@ -319,7 +319,7 @@
       s.events.forEach((e) => {
         const tr = document.createElement('tr');
         if (e.voided) tr.style.textDecoration = 'line-through';
-        cell(tr, (LABELS[e.type] || e.type) + (e.by === 'nfc' ? ' (NFC 📲)' : e.who ? ' · ' + e.who : ''));
+        cell(tr, (LABELS[e.type] || e.type) + (e.by === 'nfc' ? ' (NFC 📲)' : e.by === 'customer' ? ' (dal telefono del cliente 📱)' : e.who ? ' · ' + e.who : ''));
         cell(tr, e.name);
         cell(tr, fmtDate(e.at)).className = 'muted small';
         $('events').appendChild(tr);

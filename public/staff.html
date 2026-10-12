@@ -195,6 +195,9 @@
       staffStream = new EventSource('api/staff/stream?pin=' + encodeURIComponent(pin));
       staffStream.onmessage = (e) => {
         let ev; try { ev = JSON.parse(e.data); } catch { return; }
+        // premio ritirato dal cliente con la sua tessera: basta guardare la schermata "PREMIO VALIDO"
+        if (ev.type === 'redeem') { vibrate([60, 40, 60]); toast('🎁 ' + ev.name + ' ha ritirato il premio dal suo telefono', 5000); return; }
+        if (ev.type === 'redeem-undo') { toast('↩️ ' + ev.name + ': ritiro del premio annullato', 4000); return; }
         if (ev.type !== 'nfc') return;
         vibrate([60, 40, 60]);
         toast((ev.isNew ? '🆕 Nuovo cliente ' + ev.name + ': iscritto e primo timbro con NFC' : '📲 ' + ev.name + ': timbro con NFC') +

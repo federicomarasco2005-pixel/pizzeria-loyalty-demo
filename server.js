@@ -283,6 +283,51 @@ shop.post('/api/card/:token/consent', (req, res) => {
   res.json({ consentMarketing: on });
 });
 
+// ---------- Premio ritirato dal telefono del cliente ----------
+// Per i locali dove il personale non usa la Cassa: il cliente tocca "Usa il premio" davanti al cameriere,
+// la tessera mostra una schermata "PREMIO VALIDO" animata con l'orologio che scorre (uno screenshot non basta)
+// e il premio risulta già consegnato. Errore? Si annulla dalla tessera entro 10 minuti (o dalla Cassa).
+// Attivo di default; il locale lo può spegnere dal bot.
+const SELF_UNDO_MS = 10 * 60 * 1000;
+const selfRedeemOn = (ctx) => ctx.db.getSettings().selfRedeem !== false;
+
+// ultimo ritiro fatto dal cliente, se è ancora annullabile
+function recentSelfRedeem(ctx, customer) {
+  const evs = ctx.db.eventsOf(customer.id);
+  const voided = new Set(evs.filter((e) => e.type === 'void').map((e) => e.ref));
+  const e = evs.filter((x) => x.type === 'redeem' && x.by === 'customer' && !voided.has(x.id)).pop();
+  if (!e || Date.now() - Date.parse(e.at) > SELF_UNDO_MS) return null;
+  return { id: e.id, at: e.at, undoUntil: new Date(Date.parse(e.at) + SELF_UNDO_MS).toISOString() };
+}
+
+shop.post('/api/card/:token/redeem', (req, res) => {
+  const { ctx } = req;
+  const customer = ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  if (!selfRedeemOn(ctx)) return res.status(403).json({ error: 'Per ritirare il premio mostra la tessera in cassa.' });
+  if (req.body.requestId && ctx.db.findByRequestId(req.body.requestId)) return res.json({ redeem: recentSelfRedeem(ctx, customer) });
+  if (ctx.db.stateOf(customer.id, ctx.cfg.stampsForReward).rewards < 1) return res.status(400).json({ error: 'Non hai premi da ritirare.' });
+  ctx.db.addEvent({ type: 'redeem', customerId: customer.id, requestId: req.body.requestId, by: 'customer' });
+  broadcast(ctx, customer, 'redeem');
+  staffBroadcast(ctx, { type: 'redeem', name: customer.name, code: customer.code, token: customer.token });
+  syncWallet(ctx, customer);
+  console.log(`[premi] ${ctx.shop.slug}: ${customer.code} ha ritirato il premio dal telefono`);
+  res.json({ redeem: recentSelfRedeem(ctx, customer) });
+});
+
+shop.post('/api/card/:token/redeem/undo', (req, res) => {
+  const { ctx } = req;
+  const customer = ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  const r = recentSelfRedeem(ctx, customer);
+  if (!r || r.id !== req.body.id) return res.status(400).json({ error: 'Non si può più annullare: chiedi in cassa.' });
+  ctx.db.addEvent({ type: 'void', customerId: customer.id, ref: r.id, by: 'customer' });
+  broadcast(ctx, customer, 'undo');
+  staffBroadcast(ctx, { type: 'redeem-undo', name: customer.name, code: customer.code });
+  syncWallet(ctx, customer);
+  res.json({ ok: true });
+});
+
 // Contatto del locale (pagina privacy)
 shop.get('/api/contact', (req, res) => res.json({ phone: req.ctx.db.getSettings().phone || null }));
 
@@ -348,6 +393,9 @@ async function cardData(ctx, customer) {
     reviewUrl: ctx.db.getSettings().reviewUrl || null,
     messages: ctx.db.messagesFor(customer.id).slice(0, 5),
     consentMarketing: !!customer.consentMarketing,
+    selfRedeem: selfRedeemOn(ctx),
+    lastRedeem: recentSelfRedeem(ctx, customer),
+    rewardText: ctx.cfg.rewardText,
   };
 }
 
@@ -1341,6 +1389,14 @@ const manager = {
     return ctx;
   },
   runAutomations: (ctx) => runAutomations(ctx),
+  // Premio ritirato dal telefono del cliente (acceso di default)
+  selfRedeem: (ctx) => selfRedeemOn(ctx),
+  setSelfRedeem(slug, on) {
+    const ctx = shops.get(slug);
+    if (!ctx) return null;
+    ctx.db.updateSettings({ selfRedeem: !!on });
+    return ctx;
+  },
   // Kit di lancio in PDF: QR da tavolo, adesivi, istruzioni per il personale, testi per i social
   async launchKit(ctx) {
     const { cfg } = ctx;

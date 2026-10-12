@@ -13,6 +13,25 @@
   <meta name="apple-mobile-web-app-title" content="Tessera">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="manifest" id="manifest">
+  <style>
+    /* Schermata "PREMIO VALIDO": colori in movimento e orologio coi secondi, così uno screenshot non basta */
+    .valid { position: fixed; inset: 0; z-index: 60; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 24px 16px; gap: 10px;
+      background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 55%, #000), #1b5e20, var(--brand));
+      background-size: 400% 400%; animation: validBg 6s ease infinite; }
+    @keyframes validBg { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    .valid .tick { width: 112px; height: 112px; border-radius: 50%; background: #fff; color: #1b5e20; font-size: 64px; line-height: 112px; font-weight: 900;
+      animation: validPulse 1.2s ease-in-out infinite; box-shadow: 0 0 0 0 rgba(255,255,255,.6); }
+    @keyframes validPulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,255,255,.55); } 70% { transform: scale(1.06); box-shadow: 0 0 0 22px rgba(255,255,255,0); } 100% { transform: scale(1); } }
+    .valid h1 { color: #fff; font-size: 2.3rem; letter-spacing: .04em; margin: 8px 0 0; }
+    .valid .reward { font-size: 1.25rem; font-weight: 700; max-width: 420px; }
+    .valid .who { opacity: .92; }
+    .valid .clock { font-size: 3rem; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: .03em; margin-top: 6px; }
+    .valid .small { opacity: .85; font-size: .92rem; }
+    .valid .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; justify-content: center; }
+    .valid button { border: 2px solid rgba(255,255,255,.85); background: transparent; color: #fff; border-radius: 14px; padding: 12px 16px; font-weight: 700; font-size: 1rem; }
+    .valid button.solid { background: #fff; color: #1d1b19; border-color: #fff; }
+  </style>
   <script>
     // manifest della singola tessera: l'icona installata riapre proprio questa tessera
     document.getElementById('manifest').href = location.pathname.replace(/\/$/, '') + '/manifest.webmanifest';
@@ -51,6 +70,9 @@
           <span id="missing"></span>
         </div>
       </section>
+
+      <!-- Premio pronto: il cliente lo ritira da solo, davanti al personale -->
+      <button class="btn ok big pulse hidden" id="useReward"><span class="ico">🎁</span> Usa il premio</button>
 
       <a id="save" class="gwallet hidden" target="_blank" rel="noopener" aria-label="Aggiungi a Google Wallet">
         <img src="/wallet-button-it.svg" alt="Aggiungi a Google Wallet">
@@ -108,6 +130,20 @@
       </label>
     </div>
 
+    <div id="valid" class="valid hidden" role="dialog" aria-modal="true" aria-labelledby="validTitle">
+      <div class="tick">✓</div>
+      <h1 id="validTitle">PREMIO VALIDO</h1>
+      <div class="reward" id="validReward"></div>
+      <div class="who" id="validWho"></div>
+      <div class="clock" id="validClock"></div>
+      <div class="small" id="validWhen"></div>
+      <div class="small">Mostra questo schermo al personale</div>
+      <div class="actions">
+        <button class="solid" id="validClose">Fatto</button>
+        <button id="validUndo">Annulla</button>
+      </div>
+    </div>
+
     <div id="deleted" class="panel hidden center">
       <h2>Tessera eliminata</h2>
       <p class="muted">I tuoi dati sono stati cancellati. Se l'avevi aggiunta a Google Wallet, lì risulta disattivata: puoi toglierla dal Wallet.</p>
@@ -130,7 +166,56 @@
       $('missing').textContent = miss === 1 ? 'Manca 1 timbro ›' : 'Mancano ' + miss + ' timbri ›';
       $('reward').classList.toggle('hidden', c.rewards < 1);
       $('rewardsN').textContent = c.rewards;
+      $('useReward').classList.toggle('hidden', !(selfRedeem && c.rewards > 0));
     }
+
+    // ---------- Ritiro del premio dal telefono del cliente ----------
+    let selfRedeem = false, me = { name: '', rewardText: '' }, validTimer = null;
+    const closedValid = new Set(); // ritiri già chiusi dal cliente: la schermata non si riapre da sola
+    const hhmm = (d) => d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+
+    function openValid(r) {
+      if (!r) return;
+      $('validReward').textContent = me.rewardText;
+      $('validWho').textContent = me.name + ' · ' + $('code').textContent;
+      $('validWhen').textContent = 'Ritirato alle ' + hhmm(new Date(r.at));
+      $('valid').classList.remove('hidden');
+      $('valid').dataset.id = r.id;
+      clearInterval(validTimer);
+      const tick = () => {
+        const now = new Date();
+        $('validClock').textContent = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const left = Date.parse(r.undoUntil) - now;
+        $('validUndo').classList.toggle('hidden', left <= 0);
+        if (left > 0) $('validUndo').textContent = 'Annulla (' + Math.floor(left / 60000) + ':' + String(Math.floor(left / 1000) % 60).padStart(2, '0') + ')';
+      };
+      tick();
+      validTimer = setInterval(tick, 1000);
+      vibrate([100, 60, 100]);
+    }
+    function closeValid() {
+      closedValid.add($('valid').dataset.id);
+      $('valid').classList.add('hidden');
+      clearInterval(validTimer);
+    }
+
+    $('useReward').onclick = async () => {
+      if (!confirm('Usare il premio adesso?\n\nFallo davanti al personale: mostra lo schermo che compare e il premio risulterà consegnato.')) return;
+      $('useReward').disabled = true;
+      try {
+        const r = await api('api/card/' + encodeURIComponent(token) + '/redeem', { method: 'POST', body: { requestId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) } });
+        openValid(r.redeem);
+      } catch (err) { toast(err.message, 3500); }
+      $('useReward').disabled = false;
+    };
+    $('validClose').onclick = closeValid;
+    $('validUndo').onclick = async () => {
+      try {
+        await api('api/card/' + encodeURIComponent(token) + '/redeem/undo', { method: 'POST', body: { id: $('valid').dataset.id } });
+        closeValid();
+        toast('Ritiro annullato: il premio è ancora tuo.', 3500);
+      } catch (err) { toast(err.message, 3500); }
+    };
 
     function celebrate(prev, next) {
       const n = next.stampsForReward;
@@ -264,16 +349,22 @@
 
     // Nuovo saldo (dal server o in tempo reale). v = versione della tessera: un dato più vecchio
     // di quello già mostrato si ignora, così i timbri non "tornano indietro".
-    function applyState(c) {
+    // quiet: annullo o premio ritirato, si aggiorna senza festeggiare (un premio che "torna" non è un premio nuovo)
+    function applyState(c, { quiet = false } = {}) {
       if (state && c.v !== undefined && state.v !== undefined && c.v < state.v) return false;
       const next = { stamps: c.stamps, rewards: c.rewards, stampsForReward: c.stampsForReward, v: c.v };
-      if (next.stamps !== state.stamps || next.rewards !== state.rewards) celebrate(state, next);
+      if (quiet) paint(next, { animate: false });
+      else if (next.stamps !== state.stamps || next.rewards !== state.rewards) celebrate(state, next);
       state = next;
       return true;
     }
 
     // Disegna la tessera con i dati completi (dalla pagina stessa o dal server)
     function show(c) {
+      selfRedeem = !!c.selfRedeem;
+      me = { name: c.name, rewardText: c.rewardText || '' };
+      // ritiro di pochi minuti fa (es. pagina ricaricata): la schermata "PREMIO VALIDO" torna visibile
+      if (c.lastRedeem && !closedValid.has(c.lastRedeem.id) && $('valid').classList.contains('hidden')) setTimeout(() => openValid(c.lastRedeem), 0);
       const next = { stamps: c.stamps, rewards: c.rewards, stampsForReward: c.stampsForReward, v: c.v };
       if (!state) {
         $('card').classList.remove('hidden');
@@ -361,7 +452,7 @@
         let ev = {};
         try { ev = JSON.parse(e.data); } catch {}
         if (ev.type === 'message') { toast('📣 ' + ev.title, 4000); vibrate(120); }
-        if (state && ev.stamps !== undefined) applyState(ev);
+        if (state && ev.stamps !== undefined) applyState(ev, { quiet: ev.type === 'undo' || (ev.type === 'redeem' && !$('valid').classList.contains('hidden')) });
         clearTimeout(reloadT);
         reloadT = setTimeout(load, /^(message|message-removed|wallet)$/.test(ev.type) ? 0 : 3000);
       };
