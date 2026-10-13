@@ -53,6 +53,16 @@ test('dominio principale: pagina del servizio e assistenza', async () => {
   assert.strictEqual(www.headers.location, `https://${DOMAIN}/x?y=1`);
 });
 
+test('richiesta di demo dal sito: dati obbligatori, consenso, anti-spam', async () => {
+  const send = (body) => get(DOMAIN, '/api/lead', { method: 'POST', body });
+  const ok = { nome: 'Mario', locale: 'Bar Prova', contatto: '3331234567', consent: true };
+  assert.strictEqual((await send({ ...ok, nome: '' })).status, 400);
+  assert.strictEqual((await send({ ...ok, consent: false })).status, 400, 'senza consenso no');
+  assert.strictEqual((await send({ ...ok, website: 'spam.com' })).json.ok, true, 'robot: risposta finta, niente salvato');
+  for (let i = 0; i < 3; i++) assert.strictEqual((await send(ok)).status, 200);
+  assert.strictEqual((await send(ok)).status, 429, 'al massimo 3 richieste all\'ora');
+});
+
 test('sottodominio del locale: pagine, API e tessera', async () => {
   const host = `da-mario.${DOMAIN}`;
   const page = await get(host, '/');

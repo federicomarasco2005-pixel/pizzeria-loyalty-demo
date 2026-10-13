@@ -3,66 +3,543 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{BRAND}} — Tessere fedeltà digitali per locali</title>
-  <meta name="description" content="Tessere fedeltà digitali per ristoranti, bar e pizzerie: niente app da scaricare, timbro con QR o NFC, tessera nel Google Wallet.">
+  <title>{{BRAND}} — La tessera fedeltà digitale per il tuo locale</title>
+  <meta name="description" content="Tessere fedeltà digitali per ristoranti, bar e pizzerie: niente app da scaricare, timbro con QR o NFC, tessera nel Google Wallet, messaggi automatici e report mensile.">
+  <meta name="theme-color" content="#05060a">
+  <!-- font da Bunny Fonts: stesso catalogo di Google Fonts, senza tracciamento dei visitatori -->
+  <link rel="preconnect" href="https://fonts.bunny.net">
+  <link href="https://fonts.bunny.net/css?family=anton:400|inter:400,500,600,700,800&display=swap" rel="stylesheet">
   <style>
-    :root { --ink: #1d1b19; --muted: #6b645c; --bg: #fbf6ee; --card: #fff; --line: #ece3d6; --brand: #b3261e; }
-    @media (prefers-color-scheme: dark) {
-      :root { --ink: #f3ede6; --muted: #b5aca2; --bg: #171513; --card: #221f1c; --line: #34302b; --brand: #ef6b5f; }
+    :root {
+      --bg: #05060a; --ink: #f2f4fa; --muted: #9aa3b8; --line: rgba(255,255,255,.1); --glass: rgba(14,17,28,.62);
+      --blue: #5b8cff; --orange: #ff8a3d; --yellow: #ffd25e; --cyan: #58d6ff; --pink: #ff5e7a; --green: #2fbf71;
+      --display: "Anton", "Impact", "Arial Narrow", sans-serif;
+      --body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.55; }
-    .wrap { max-width: 860px; margin: 0 auto; padding: 0 20px; }
-    header { padding: 28px 0 8px; }
-    .logo { font-weight: 800; font-size: 1.35rem; letter-spacing: .02em; }
-    .logo span { color: var(--brand); }
-    .hero { padding: 40px 0 28px; }
-    h1 { font-size: clamp(1.9rem, 5vw, 2.8rem); line-height: 1.12; margin: 0 0 14px; }
-    .lead { font-size: 1.12rem; color: var(--muted); max-width: 640px; margin: 0; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 26px 0 8px; }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
-    .card h3 { margin: 6px 0 6px; font-size: 1.05rem; }
-    .card p { margin: 0; color: var(--muted); font-size: .97rem; }
-    .ico { font-size: 1.6rem; }
-    h2 { font-size: 1.4rem; margin: 40px 0 12px; }
-    ol { padding-left: 20px; margin: 0; }
-    ol li { margin: 6px 0; }
-    .contact { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; margin: 14px 0 0; }
-    .contact a { color: var(--brand); font-weight: 600; word-break: break-all; }
-    footer { color: var(--muted); font-size: .85rem; padding: 40px 0 30px; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); line-height: 1.55; overflow-x: hidden; }
+    a { color: inherit; }
+    #fx { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+    .wrap { position: relative; z-index: 1; max-width: 1160px; margin: 0 auto; padding: 0 20px; }
+
+    /* barra in alto */
+    nav { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); background: rgba(5,6,10,.55); border-bottom: 1px solid var(--line); }
+    nav .wrap { display: flex; align-items: center; gap: 22px; height: 64px; }
+    .logo { font-family: var(--display); font-size: 1.6rem; letter-spacing: .04em; text-decoration: none; }
+    .logo span { color: var(--orange); }
+    nav .links { display: flex; gap: 22px; margin-left: auto; font-size: .92rem; color: var(--muted); }
+    nav .links a { text-decoration: none; }
+    nav .links a:hover { color: var(--ink); }
+    .cta { display: inline-flex; align-items: center; gap: 8px; background: var(--ink); color: #05060a; text-decoration: none; font-weight: 700;
+      padding: 12px 18px; border-radius: 999px; border: 0; font-size: .95rem; cursor: pointer; font-family: var(--body); }
+    .cta.ghost { background: transparent; color: var(--ink); border: 1px solid rgba(255,255,255,.28); }
+    .cta:hover { filter: brightness(1.08); }
+    @media (max-width: 760px) { nav .links { display: none; } nav .cta { margin-left: auto; padding: 10px 14px; } }
+
+    /* titoli grandi, stretti, maiuscoli */
+    .display { font-family: var(--display); text-transform: uppercase; line-height: .92; letter-spacing: .01em; margin: 0; font-weight: 400; }
+    .eyebrow { text-transform: uppercase; letter-spacing: .2em; font-size: .74rem; color: var(--muted); font-weight: 600; }
+    .grad { background: linear-gradient(92deg, var(--blue), var(--cyan) 35%, var(--yellow) 65%, var(--orange)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+    section { position: relative; z-index: 1; }
+    .hero { min-height: calc(100vh - 64px); display: flex; align-items: center; padding: 60px 0; }
+    .hero .display { font-size: clamp(3.4rem, 10vw, 8.4rem); max-width: 760px; }
+    .hero p { font-size: clamp(1.02rem, 1.8vw, 1.2rem); color: #c8cfe0; max-width: 520px; margin: 22px 0 30px; }
+    .hero .buttons { display: flex; gap: 12px; flex-wrap: wrap; }
+    .scrollhint { position: absolute; bottom: 22px; left: 20px; font-size: .78rem; color: var(--muted); letter-spacing: .14em; text-transform: uppercase; }
+
+    .strip { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(5,6,10,.5); }
+    .strip div { padding: 26px 20px; border-right: 1px solid var(--line); }
+    .strip div:last-child { border-right: 0; }
+    .strip b { display: block; font-family: var(--display); font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 400; line-height: 1; }
+    .strip span { color: var(--muted); font-size: .92rem; }
+    @media (max-width: 640px) { .strip { grid-template-columns: 1fr; } .strip div { border-right: 0; border-bottom: 1px solid var(--line); } }
+
+    .block { padding: 110px 0; }
+    .block h2 { font-size: clamp(2.6rem, 7vw, 5.4rem); }
+    .lead { color: #c8cfe0; font-size: 1.08rem; max-width: 620px; margin: 18px 0 0; }
+
+    /* ---------- demo ---------- */
+    .demo { display: grid; grid-template-columns: 340px 1fr; gap: 26px; margin-top: 46px; align-items: start; }
+    @media (max-width: 900px) { .demo { grid-template-columns: 1fr; justify-items: center; } }
+    .label { font-size: .74rem; text-transform: uppercase; letter-spacing: .18em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+    .phone { width: 320px; height: 640px; border-radius: 46px; background: #0d0f16; padding: 12px; box-shadow: 0 0 0 2px #262a38, 0 40px 90px rgba(0,0,0,.6), 0 0 120px rgba(91,140,255,.18); position: relative; }
+    .screen { width: 100%; height: 100%; border-radius: 36px; overflow: hidden; background: #f6f1e8; color: #1d1b19; position: relative; display: flex; flex-direction: column; }
+    .notch { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 92px; height: 24px; border-radius: 14px; background: #0d0f16; z-index: 3; }
+    .status { display: flex; justify-content: space-between; font-size: .72rem; font-weight: 700; padding: 14px 24px 0; }
+    .app { padding: 18px 16px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+    .hello { font-size: .85rem; color: #6b645c; margin: 6px 4px 0; }
+    .card { border-radius: 22px; padding: 16px; color: #fff; background: radial-gradient(120% 80% at 100% 0%, #e2574f 0%, #b3261e 45%, #6d140f 100%); box-shadow: 0 14px 30px rgba(179,38,30,.35); }
+    .card .top { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: .95rem; }
+    .card .top i { width: 30px; height: 30px; border-radius: 50%; background: #fff; color: #b3261e; display: grid; place-items: center; font-style: normal; font-weight: 900; }
+    .card .live { margin-left: auto; font-size: .62rem; background: rgba(255,255,255,.18); padding: 3px 8px; border-radius: 999px; font-weight: 700; }
+    .stamps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0 12px; }
+    .stamp { aspect-ratio: 1; border-radius: 50%; background: rgba(0,0,0,.28); display: grid; place-items: center; font-size: 1.7rem; filter: grayscale(1) brightness(.6); opacity: .55; transition: all .3s; }
+    .stamp.on { filter: none; opacity: 1; background: rgba(255,255,255,.16); }
+    .stamp.pop { animation: pop .6s cubic-bezier(.2,1.6,.4,1); }
+    @keyframes pop { from { transform: scale(.2) rotate(-160deg); } to { transform: none; } }
+    .card .row { display: flex; justify-content: space-between; align-items: end; }
+    .card .count { font-size: 1.5rem; font-weight: 800; }
+    .card .small { font-size: .7rem; opacity: .85; text-transform: uppercase; letter-spacing: .08em; }
+    .badge { background: #ffcf4a; color: #4a2b00; font-weight: 800; font-size: .74rem; padding: 6px 10px; border-radius: 999px; }
+    .use { border: 0; border-radius: 16px; padding: 15px; font-weight: 800; font-size: 1rem; color: #fff; background: #2e7d32; box-shadow: 0 4px 0 #1b5e20; cursor: pointer; font-family: var(--body); }
+    .hint { font-size: .78rem; color: #6b645c; text-align: center; margin: 2px 0 0; }
+    .push { position: absolute; top: 40px; left: 12px; right: 12px; z-index: 4; background: rgba(255,255,255,.96); color: #1d1b19; border-radius: 18px; padding: 10px 12px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.25); display: flex; gap: 10px; align-items: center; transform: translateY(calc(-100% - 60px)); transition: transform .45s cubic-bezier(.2,1.2,.4,1); font-size: .8rem; }
+    .push.show { transform: none; }
+    .push .ico { width: 34px; height: 34px; border-radius: 10px; background: #1a73e8; color: #fff; display: grid; place-items: center; font-size: 1.1rem; flex: none; }
+    .push b { display: block; font-size: .82rem; }
+    .valid { position: absolute; inset: 0; z-index: 5; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; color: #fff; padding: 20px;
+      background: linear-gradient(135deg, #b3261e, #5a120d, #1b5e20, #b3261e); background-size: 400% 400%; animation: validBg 6s ease infinite; }
+    .valid.show { display: flex; }
+    @keyframes validBg { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    .valid .tick { width: 84px; height: 84px; border-radius: 50%; background: #fff; color: #1b5e20; font-size: 48px; line-height: 84px; font-weight: 900; animation: vp 1.2s ease-in-out infinite; }
+    @keyframes vp { 50% { transform: scale(1.07); } }
+    .valid h3 { font-size: 1.6rem; margin: 6px 0 0; letter-spacing: .04em; }
+    .valid .clock { font-size: 2.2rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+    .valid button { margin-top: 10px; border: 0; background: #fff; color: #1d1b19; border-radius: 12px; padding: 10px 16px; font-weight: 800; cursor: pointer; font-family: var(--body); }
+
+    .side { display: flex; flex-direction: column; gap: 18px; width: 100%; max-width: 640px; }
+    .panel { background: var(--glass); border: 1px solid var(--line); border-radius: 24px; padding: 22px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+    .steps { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .steps span { font-size: .76rem; border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; color: var(--muted); }
+    .steps span.now { color: #05060a; background: var(--yellow); border-color: var(--yellow); font-weight: 700; }
+    .cust { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 16px; background: rgba(255,255,255,.05); border: 1px solid var(--line); }
+    .avatar { width: 42px; height: 42px; border-radius: 50%; background: linear-gradient(135deg, var(--orange), var(--pink)); display: grid; place-items: center; font-weight: 800; }
+    .cust .meta { font-size: .8rem; color: var(--muted); }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    .act { border: 0; border-radius: 16px; padding: 18px 12px; font-weight: 800; font-size: 1.02rem; cursor: pointer; font-family: var(--body); color: #05060a; transition: transform .1s; }
+    .act:active { transform: scale(.97); }
+    .act.stamp-btn { background: var(--yellow); }
+    .act.nfc-btn { background: var(--cyan); }
+    .act small { display: block; font-weight: 500; font-size: .74rem; opacity: .75; margin-top: 2px; }
+    .act:disabled { opacity: .35; cursor: default; }
+    .feed { margin-top: 14px; font-size: .84rem; color: var(--muted); min-height: 1.4em; }
+    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .kpi { background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+    .kpi b { display: block; font-family: var(--display); font-size: 2rem; font-weight: 400; line-height: 1.05; }
+    .kpi span { font-size: .74rem; color: var(--muted); }
+    .reset { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: .82rem; padding: 0; font-family: var(--body); }
+    .nfcfly { position: fixed; z-index: 50; font-size: 2.2rem; pointer-events: none; transition: all .7s cubic-bezier(.5,0,.3,1); }
+
+    /* ---------- funzioni ---------- */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; margin-top: 44px; }
+    .feat { background: var(--glass); border: 1px solid var(--line); border-radius: 22px; padding: 22px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    .feat .n { font-family: var(--display); font-size: 1rem; color: var(--orange); letter-spacing: .1em; }
+    .feat h3 { margin: 8px 0 6px; font-size: 1.12rem; }
+    .feat p { margin: 0; color: var(--muted); font-size: .95rem; }
+
+    .how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 44px; }
+    @media (max-width: 820px) { .how { grid-template-columns: 1fr; } }
+    .how div { border-top: 2px solid var(--ink); padding-top: 18px; }
+    .how b { font-family: var(--display); font-size: 3rem; font-weight: 400; display: block; line-height: 1; }
+    .how h3 { margin: 12px 0 6px; font-size: 1.12rem; }
+    .how p { color: var(--muted); margin: 0; }
+
+    /* ---------- contatti ---------- */
+    .contact { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: start; }
+    @media (max-width: 860px) { .contact { grid-template-columns: 1fr; } }
+    form { display: grid; gap: 12px; }
+    label { font-size: .82rem; color: var(--muted); display: grid; gap: 6px; }
+    input, textarea { width: 100%; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16); color: var(--ink); border-radius: 14px; padding: 13px 14px; font: inherit; font-size: 1rem; }
+    input:focus, textarea:focus { outline: none; border-color: var(--cyan); }
+    .consent { display: flex; gap: 10px; align-items: flex-start; font-size: .82rem; color: var(--muted); }
+    .consent input { width: 18px; height: 18px; margin-top: 2px; flex: none; accent-color: var(--orange); }
+    .trap { position: absolute; left: -9999px; }
+    .msg { min-height: 1.3em; font-weight: 600; }
+    .msg.ok { color: var(--green); } .msg.err { color: var(--pink); }
+    .support a { color: var(--yellow); font-weight: 700; word-break: break-all; }
+    footer { border-top: 1px solid var(--line); padding: 30px 0 40px; color: var(--muted); font-size: .85rem; position: relative; z-index: 1; }
+    footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s, transform .8s; }
+    .reveal.in { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } html { scroll-behavior: auto; } }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header><div class="logo">{{BRAND}}<span>.</span></div></header>
+  <canvas id="fx" aria-hidden="true"></canvas>
 
-    <section class="hero">
-      <h1>La tessera fedeltà del tuo locale, sul telefono dei clienti.</h1>
-      <p class="lead">Per ristoranti, bar, pizzerie e caffetterie. Niente app da scaricare e niente tessere di carta: il cliente si iscrive con un QR, riceve i timbri a ogni visita e trova la tessera nel Google Wallet o sulla schermata Home.</p>
-    </section>
-
-    <div class="grid">
-      <div class="card"><div class="ico">📲</div><h3>Nessuna app</h3><p>Iscrizione in 20 secondi da un QR sul tavolo. Funziona su Android e iPhone.</p></div>
-      <div class="card"><div class="ico">⚡</div><h3>Timbro istantaneo</h3><p>Dalla cassa con il QR del cliente, oppure appoggiando il telefono al timbro NFC.</p></div>
-      <div class="card"><div class="ico">🎁</div><h3>Premi automatici</h3><p>Ogni N visite il premio si sblocca da solo. Il cliente riceve la notifica.</p></div>
-      <div class="card"><div class="ico">📊</div><h3>Clienti che tornano</h3><p>Il locale vede chi torna, chi è vicino al premio e chi non viene da tempo, e può mandare offerte.</p></div>
+  <nav>
+    <div class="wrap">
+      <a class="logo" href="#top">{{BRAND}}<span>.</span></a>
+      <div class="links">
+        <a href="#demo">Demo</a>
+        <a href="#come-funziona">Come funziona</a>
+        <a href="#funzioni">Funzioni</a>
+        <a href="#assistenza">Assistenza</a>
+      </div>
+      <a class="cta" href="#contatti">Richiedi una demo</a>
     </div>
+  </nav>
 
-    <h2>Come funziona</h2>
-    <ol>
-      <li>Il cliente inquadra il QR del locale e crea la sua tessera.</li>
-      <li>A ogni visita riceve un timbro, in cassa o con il timbro NFC.</li>
-      <li>Al traguardo il premio è pronto: lo mostra in cassa e lo ritira.</li>
-    </ol>
-
-    <h2 id="assistenza">Assistenza</h2>
-    <div class="contact">
-      <p style="margin:0 0 8px">Hai una tessera di un locale e hai bisogno di aiuto? Per timbri e premi chiedi direttamente al locale. Per problemi con la tessera, i tuoi dati o la privacy scrivici:</p>
-      <p style="margin:0"><a href="mailto:{{EMAIL}}">{{EMAIL}}</a></p>
-      <p style="margin:12px 0 0;color:var(--muted);font-size:.93rem">Dalla tua tessera puoi anche scaricare i tuoi dati, revocare il consenso alle offerte o eliminare la tessera, in qualsiasi momento. L'informativa privacy di ogni locale è raggiungibile dalla tessera.</p>
+  <header class="hero" id="top" data-shape="phone">
+    <div class="wrap">
+      <div class="eyebrow">Tessere fedeltà digitali per ristoranti, bar e pizzerie</div>
+      <h1 class="display" style="margin-top:18px">I tuoi clienti <span class="grad">tornano.</span></h1>
+      <p>La tessera fedeltà che vive nel telefono dei clienti: niente app da scaricare, niente carta da perdere. Un timbro a ogni visita, il premio arriva da solo e tu sai finalmente chi torna.</p>
+      <div class="buttons">
+        <a class="cta" href="#demo">Prova la demo ↓</a>
+        <a class="cta ghost" href="#contatti">Parliamone</a>
+      </div>
     </div>
+    <div class="scrollhint">Scorri</div>
+  </header>
 
-    <footer>© {{BRAND}} · Tessere fedeltà digitali per locali</footer>
+  <div class="strip">
+    <div><b>20 sec</b><span>per iscriversi da un QR sul tavolo</span></div>
+    <div><b>0 app</b><span>da scaricare: tessera web e Google Wallet</span></div>
+    <div><b>1 tocco</b><span>per dare il timbro, in cassa o con l'NFC</span></div>
   </div>
+
+  <!-- ===== DEMO ===== -->
+  <section class="block" id="demo" data-shape="stamp">
+    <div class="wrap">
+      <div class="eyebrow">Demo · provala adesso</div>
+      <h2 class="display reveal" style="margin-top:14px">Sei tu il <span class="grad">cameriere.</span></h2>
+      <p class="lead reveal">A sinistra il telefono del cliente, a destra la cassa del tuo locale. Dai qualche timbro e guarda cosa vede il cliente: è esattamente così, ogni giorno.</p>
+
+      <div class="demo">
+        <div>
+          <p class="label">Il telefono del cliente</p>
+          <div class="phone" id="phone">
+            <div class="screen">
+              <div class="notch"></div>
+              <div class="status"><span id="ptime">20:41</span><span>●●● 5G</span></div>
+              <div class="push" id="push"><div class="ico">W</div><div><b id="pushT">+1 timbro!</b><span id="pushB">Sei a 1/5</span></div></div>
+              <div class="app">
+                <p class="hello">Ciao <b>Giulia</b> 👋</p>
+                <div class="card">
+                  <div class="top"><i>P</i> Pizzeria Demo <span class="live">● live</span></div>
+                  <div class="stamps" id="stamps"></div>
+                  <div class="row">
+                    <div><div class="small">Timbri</div><div class="count"><span id="cnt">0</span> / 5</div></div>
+                    <span class="badge" id="badge" hidden>🎁 Premio pronto</span>
+                  </div>
+                </div>
+                <button class="use" id="use" hidden>🎁 Usa il premio</button>
+                <p class="hint" id="hint">Ogni 5 visite: una pizza margherita omaggio</p>
+              </div>
+              <div class="valid" id="valid">
+                <div class="tick">✓</div>
+                <h3>PREMIO VALIDO</h3>
+                <div>Pizza margherita omaggio</div>
+                <div class="clock" id="vclock"></div>
+                <div style="font-size:.8rem;opacity:.85">Mostra questo schermo al personale</div>
+                <button id="vdone">Fatto</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="side">
+          <div class="panel">
+            <p class="label">La cassa del locale</p>
+            <div class="steps" id="steps">
+              <span class="now">1 · Dai un timbro</span><span>2 · Arriva il premio</span><span>3 · Il cliente lo usa</span>
+            </div>
+            <div class="cust">
+              <div class="avatar">G</div>
+              <div><b>Giulia</b><div class="meta">Tessera PZ-DEMO1 · <span id="visits">0</span> visite</div></div>
+            </div>
+            <div class="actions">
+              <button class="act stamp-btn" id="stampBtn">+1 timbro<small>Inquadri il QR del cliente</small></button>
+              <button class="act nfc-btn" id="nfcBtn">Timbro NFC<small>Il cliente avvicina il telefono</small></button>
+            </div>
+            <div class="feed" id="feed">Tocca "+1 timbro": il cliente lo vede subito.</div>
+          </div>
+
+          <div class="panel">
+            <p class="label">Quello che vedi tu, ogni giorno</p>
+            <div class="kpis">
+              <div class="kpi"><b id="k1">128</b><span>iscritti</span></div>
+              <div class="kpi"><b id="k2">41%</b><span>clienti tornati</span></div>
+              <div class="kpi"><b id="k3">9</b><span>premi questo mese</span></div>
+            </div>
+            <p style="margin:14px 0 0;color:var(--muted);font-size:.88rem">E ogni mese un report in PDF: visite, clienti che tornano e quanto incasso ti porta la tessera.</p>
+            <p style="margin:10px 0 0"><button class="reset" id="reset">Ricomincia la demo</button></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== COME FUNZIONA ===== -->
+  <section class="block" id="come-funziona" data-shape="gift">
+    <div class="wrap">
+      <div class="eyebrow">Come funziona</div>
+      <h2 class="display reveal" style="margin-top:14px">Operativo in <span class="grad">una settimana.</span></h2>
+      <div class="how">
+        <div class="reveal"><b>01</b><h3>Prepariamo tutto noi</h3><p>Tessera con il tuo logo e i tuoi colori, il premio che scegli tu, QR da tavolo, adesivi e istruzioni per il personale già pronti da stampare.</p></div>
+        <div class="reveal"><b>02</b><h3>I clienti si iscrivono</h3><p>Inquadrano il QR sul tavolo e in 20 secondi hanno la tessera nel telefono: nel Google Wallet o sulla schermata Home, anche su iPhone.</p></div>
+        <div class="reveal"><b>03</b><h3>Tornano più spesso</h3><p>Timbro a ogni visita, premio automatico, promemoria quando manca un timbro. E tu vedi chi torna, chi manca da un po' e cosa funziona.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== FUNZIONI ===== -->
+  <section class="block" id="funzioni" data-shape="globe">
+    <div class="wrap">
+      <div class="eyebrow">Tutto incluso</div>
+      <h2 class="display reveal" style="margin-top:14px">Lavora <span class="grad">da sola.</span></h2>
+      <p class="lead reveal">Una volta acceso, il sistema fa il suo lavoro senza che tu debba pensarci.</p>
+      <div class="grid">
+        <div class="feat reveal"><div class="n">01</div><h3>Google Wallet e tessera web</h3><p>La tessera sta nel telefono con il tuo logo. Funziona su Android e iPhone, senza scaricare niente.</p></div>
+        <div class="feat reveal"><div class="n">02</div><h3>Timbro con QR o NFC</h3><p>Dalla cassa con il QR del cliente, oppure appoggiando il telefono al timbro NFC sul bancone.</p></div>
+        <div class="feat reveal"><div class="n">03</div><h3>Messaggi automatici</h3><p>"Ti manca 1 timbro", "Ci manchi": arrivano da soli nella tessera, con la notifica sul telefono.</p></div>
+        <div class="feat reveal"><div class="n">04</div><h3>Più recensioni Google</h3><p>Dopo la terza visita il cliente riceve l'invito a lasciare una recensione, con il link già pronto.</p></div>
+        <div class="feat reveal"><div class="n">05</div><h3>Premio anche senza cassa</h3><p>Il cliente mostra "Premio valido" sul suo telefono: il personale non deve usare nessun dispositivo.</p></div>
+        <div class="feat reveal"><div class="n">06</div><h3>Report mensile</h3><p>Ogni mese in PDF: visite, clienti tornati, premi e una stima dell'incasso portato dalla tessera.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CONTATTI ===== -->
+  <section class="block" id="contatti" data-shape="phone">
+    <div class="wrap contact">
+      <div>
+        <div class="eyebrow">Parliamone</div>
+        <h2 class="display reveal" style="margin-top:14px">Accendiamo la <span class="grad">tua tessera.</span></h2>
+        <p class="lead reveal">Lasciaci un contatto: ti richiamiamo, ti mostriamo la tessera con il tuo logo e in una settimana sei operativo.</p>
+      </div>
+      <div class="panel">
+        <form id="lead" novalidate>
+          <label>Il tuo nome<input name="nome" autocomplete="name" maxlength="60" required></label>
+          <label>Nome del locale<input name="locale" maxlength="80" required></label>
+          <label>Telefono o email<input name="contatto" autocomplete="email" maxlength="100" required></label>
+          <label>Messaggio (facoltativo)<textarea name="messaggio" rows="3" maxlength="500" placeholder="Che tipo di locale hai? Quanti coperti?"></textarea></label>
+          <input class="trap" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <label class="consent"><input type="checkbox" name="consent"> <span>Acconsento a essere ricontattato da {{BRAND}} per questa richiesta. I dati servono solo a questo.</span></label>
+          <button class="cta" type="submit" style="justify-content:center">Richiedi la demo →</button>
+          <div class="msg" id="leadMsg" role="status"></div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== ASSISTENZA (anche per i clienti che hanno una tessera) ===== -->
+  <section class="block" id="assistenza" style="padding-top:40px" data-shape="stamp">
+    <div class="wrap">
+      <div class="panel support">
+        <div class="eyebrow">Assistenza</div>
+        <h3 style="margin:10px 0 8px;font-size:1.3rem">Hai una tessera di un locale?</h3>
+        <p style="margin:0 0 10px;color:#c8cfe0">Per timbri e premi chiedi direttamente al locale. Per problemi con la tessera, i tuoi dati o la privacy scrivici:</p>
+        <p style="margin:0"><a href="mailto:{{EMAIL}}">{{EMAIL}}</a></p>
+        <p style="margin:12px 0 0;color:var(--muted);font-size:.9rem">Dalla tua tessera puoi scaricare i tuoi dati, revocare il consenso alle offerte o eliminare la tessera, in qualsiasi momento. L'informativa privacy di ogni locale è raggiungibile dalla tessera.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <span>© {{BRAND}} · Tessere fedeltà digitali per locali</span>
+      <span><a href="#assistenza">Assistenza</a> · <a href="mailto:{{EMAIL}}">{{EMAIL}}</a></span>
+    </div>
+  </footer>
+
+  <script>
+  // ===================== Particelle 3D =====================
+  // Una nuvola di particelle colorate che prende la forma dell'oggetto della sezione visibile
+  // (telefono, timbro, regalo, globo) e si trasforma scorrendo. Canvas 2D, nessuna libreria.
+  (() => {
+    const cv = document.getElementById('fx');
+    const g = cv.getContext('2d');
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let W, H, DPR, mobile;
+    function size() {
+      DPR = Math.min(2, devicePixelRatio || 1);
+      W = cv.width = innerWidth * DPR; H = cv.height = innerHeight * DPR;
+      mobile = innerWidth < 860;
+    }
+    size(); addEventListener('resize', size);
+    const N = innerWidth < 860 ? 1000 : 1900;
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const COLORS = ['#5b8cff', '#ff8a3d', '#ffd25e', '#e9f1ff', '#58d6ff', '#ff5e7a', '#5b8cff', '#ffd25e'];
+
+    function shape(fn) { const p = []; for (let i = 0; i < N; i++) p.push(fn(i)); return p; }
+    const phone = () => shape(() => {
+      const w = .48, h = .95, d = .06, r = Math.random();
+      if (r < .3) {
+        const side = Math.floor(rnd(0, 4)), u = rnd(-1, 1);
+        const z = Math.random() < .5 ? d : -d;
+        return side < 2 ? [side ? w : -w, u * h, z] : [u * w, side === 2 ? h : -h, z];
+      }
+      if (r < .45) return [rnd(-.38, .38), rnd(.3, .78), d];                 // tessera in alto
+      if (r < .85) {                                                          // timbri 3x2
+        const k = Math.floor(rnd(0, 6)), a = rnd(0, 6.283), rr = Math.sqrt(Math.random()) * .1;
+        return [-.26 + (k % 3) * .26 + Math.cos(a) * rr, .05 - Math.floor(k / 3) * .28 + Math.sin(a) * rr, d];
+      }
+      return [rnd(-.38, .38), rnd(-.8, -.66), d];                             // pulsante
+    });
+    const stamp = () => shape(() => {
+      const r = Math.random();
+      if (r < .45) { const a = rnd(0, 6.283), rad = rnd(.82, .95); return [Math.cos(a) * rad, Math.sin(a) * rad, rnd(-.12, .12)]; }
+      if (r < .55) { const a = rnd(0, 6.283), rad = rnd(.66, .7); return [Math.cos(a) * rad, Math.sin(a) * rad, rnd(-.05, .05)]; }
+      const k = Math.floor(rnd(0, 10)), u = Math.random();
+      const pt = (j) => { const a = Math.PI / 2 + j * Math.PI / 5, R = j % 2 ? .24 : .56; return [Math.cos(a) * R, Math.sin(a) * R]; };
+      const A = pt(k), B = pt((k + 1) % 10);
+      return [A[0] + (B[0] - A[0]) * u, A[1] + (B[1] - A[1]) * u, rnd(-.06, .06)];
+    });
+    const gift = () => shape(() => {
+      const s = .62, r = Math.random();
+      if (r < .62) {                                                          // facce del pacco
+        const f = Math.floor(rnd(0, 6)), u = rnd(-s, s), v = rnd(-s, s) - .12;
+        const sgn = f % 2 ? s : -s;
+        return f < 2 ? [sgn, v, u] : f < 4 ? [u, sgn - .12, v + .12] : [u, v, sgn];
+      }
+      if (r < .86) {                                                          // nastro
+        const u = rnd(-s, s), t = rnd(-.06, .06);
+        return Math.random() < .5 ? [t, u - .12, s] : [u, s - .12 + .001, t];
+      }
+      const a = rnd(0, 6.283), left = Math.random() < .5;                     // fiocco
+      return [(left ? -.18 : .18) + Math.cos(a) * .17, s - .12 + .16 + Math.sin(a) * .12, rnd(-.04, .04)];
+    });
+    const globe = () => shape((i) => {
+      if (Math.random() < .12) { const a = rnd(0, 6.283); return [Math.cos(a) * 1.25, Math.sin(a) * .18, Math.sin(a) * 1.25 * .3]; }
+      const y = 1 - (i / (N - 1)) * 2, rad = Math.sqrt(1 - y * y), t = i * 2.39996;
+      return [Math.cos(t) * rad * .9, y * .9, Math.sin(t) * rad * .9];
+    });
+    const SHAPES = { phone: phone(), stamp: stamp(), gift: gift(), globe: globe() };
+    let target = 'phone';
+
+    const P = Array.from({ length: N }, (_, i) => ({
+      x: rnd(-4, 4), y: rnd(-4, 4), z: rnd(-4, 4),
+      c: COLORS[i % COLORS.length], s: rnd(.7, 1.9), j: rnd(0, 6.283), k: rnd(.035, .09),
+    }));
+
+    let mx = 0, my = 0;
+    addEventListener('pointermove', (e) => { mx = e.clientX / innerWidth - .5; my = e.clientY / innerHeight - .5; });
+
+    // forma della sezione più visibile
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting && e.intersectionRatio > .35) target = e.target.dataset.shape; });
+    }, { threshold: [.35, .6] });
+    document.querySelectorAll('[data-shape]').forEach((el) => io.observe(el));
+
+    function frame(t) {
+      g.clearRect(0, 0, W, H);
+      // oscilla invece di girare del tutto: l'oggetto non si vede mai di profilo (una linea sottile)
+      const ry = (reduce ? -.35 : Math.sin(t * .00045) * .75 - .25) + mx * .5, rx = -.12 + Math.sin(t * .0003) * .12 + my * .25;
+      const cy = Math.cos(ry), sy = Math.sin(ry), cx = Math.cos(rx), sx = Math.sin(rx);
+      const T = SHAPES[target];
+      const medium = !mobile && innerWidth < 1200; // schermi medi: oggetto più piccolo e più a destra, lontano dal titolo
+      // telefono: oggetto nello spazio libero in basso, sotto i pulsanti
+      const S = Math.min(W, H) * (mobile ? .26 : medium ? .3 : .36);
+      const ox = W * (mobile ? .5 : medium ? .8 : .72), oy = H * (mobile ? .8 : .52);
+      g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < N; i++) {
+        const p = P[i], q = T[i], k = reduce ? .25 : p.k;
+        p.x += (q[0] - p.x) * k; p.y += (q[1] - p.y) * k; p.z += (q[2] - p.z) * k;
+        const wob = reduce ? 0 : Math.sin(t * .0018 + p.j) * .01;
+        const x = p.x + wob, y = p.y + wob, z = p.z;
+        const x1 = x * cy - z * sy, z1 = x * sy + z * cy;
+        const y1 = y * cx - z1 * sx, z2 = y * sx + z1 * cx;
+        const f = 3 / (3 + z2);
+        const X = ox + x1 * S * f, Y = oy - y1 * S * f, r = p.s * DPR * f;
+        g.globalAlpha = Math.max(.12, Math.min(.95, (f - .62) * 1.7)) * (mobile ? .75 : .9);
+        g.fillStyle = p.c;
+        g.fillRect(X, Y, r, r);
+      }
+      g.globalAlpha = 1;
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    // comparsa morbida dei blocchi
+    const ro = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); ro.unobserve(e.target); } }), { threshold: .15 });
+    document.querySelectorAll('.reveal').forEach((el) => ro.observe(el));
+  })();
+
+  // ===================== Demo interattiva =====================
+  (() => {
+    const N = 5, $ = (id) => document.getElementById(id);
+    let stamps = 0, visits = 0, rewards = 0, pushT;
+    const kpi = { members: 128, back: 41, prizes: 9 };
+    $('stamps').innerHTML = Array.from({ length: N }, (_, i) => '<div class="stamp" data-i="' + i + '">🍕</div>').join('') + '<div class="stamp" style="visibility:hidden"></div>';
+    const tick = () => { $('ptime').textContent = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }); };
+    tick(); setInterval(tick, 10000);
+
+    function steps(n) { [...$('steps').children].forEach((s, i) => s.classList.toggle('now', i === n)); }
+    function push(title, body) {
+      $('pushT').textContent = title; $('pushB').textContent = body;
+      $('push').classList.add('show'); clearTimeout(pushT);
+      pushT = setTimeout(() => $('push').classList.remove('show'), 2600);
+    }
+    function paint(popIndex) {
+      [...$('stamps').children].slice(0, N).forEach((d, i) => {
+        d.classList.toggle('on', i < stamps);
+        d.classList.remove('pop');
+        if (i === popIndex) { void d.offsetWidth; d.classList.add('pop'); }
+      });
+      $('cnt').textContent = stamps;
+      $('visits').textContent = visits;
+      $('badge').hidden = rewards < 1;
+      $('use').hidden = rewards < 1;
+      $('hint').textContent = rewards ? 'Premio pronto: toccalo davanti al personale' : 'Ogni 5 visite: una pizza margherita omaggio';
+      $('stampBtn').disabled = $('nfcBtn').disabled = rewards > 0;
+      $('k1').textContent = kpi.members; $('k2').textContent = kpi.back + '%'; $('k3').textContent = kpi.prizes;
+    }
+    function give(how) {
+      if (rewards) return;
+      stamps++; visits++;
+      if (visits === 2) kpi.back++;
+      if (stamps === N) {
+        rewards = 1; stamps = N;
+        paint(N - 1);
+        push('Premio sbloccato! 🎉', 'Una pizza margherita omaggio: mostra la tessera');
+        $('feed').textContent = '🎉 Giulia ha completato la tessera. Ora tocca a lei: "Usa il premio" sul suo telefono.';
+        steps(2);
+        return;
+      }
+      paint(stamps - 1);
+      const miss = N - stamps;
+      push('🍕 +1 timbro! Sei a ' + stamps + '/' + N, miss === 1 ? 'Ti manca 1 timbro per la pizza omaggio' : 'Ti mancano ' + miss + ' timbri per la pizza omaggio');
+      $('feed').textContent = (how === 'nfc' ? '📲 Timbro NFC: ' : '✔ ') + 'Giulia è a ' + stamps + '/' + N + '. La tessera nel suo telefono si è aggiornata da sola.';
+      steps(stamps >= N - 1 ? 1 : 0);
+    }
+    $('stampBtn').onclick = () => give('qr');
+    $('nfcBtn').onclick = (e) => {
+      if (rewards) return;
+      // il timbro "vola" verso il telefono del cliente
+      const fly = document.createElement('div'); fly.className = 'nfcfly'; fly.textContent = '📲';
+      const a = e.currentTarget.getBoundingClientRect(), b = $('phone').getBoundingClientRect();
+      fly.style.left = a.left + a.width / 2 - 18 + 'px'; fly.style.top = a.top + 'px';
+      document.body.appendChild(fly);
+      requestAnimationFrame(() => { fly.style.left = b.left + b.width / 2 - 18 + 'px'; fly.style.top = b.top + b.height / 2 + 'px'; fly.style.opacity = '.2'; });
+      setTimeout(() => { fly.remove(); give('nfc'); }, 720);
+    };
+    let clock;
+    $('use').onclick = () => {
+      rewards = 0; stamps = 0; kpi.prizes++;
+      $('valid').classList.add('show');
+      const t = () => { $('vclock').textContent = new Date().toLocaleTimeString('it-IT'); };
+      t(); clearInterval(clock); clock = setInterval(t, 1000);
+      $('feed').textContent = '🎁 Giulia ha usato il premio dal suo telefono: il cameriere guarda lo schermo e consegna. Niente da toccare.';
+      paint();
+    };
+    $('vdone').onclick = () => { $('valid').classList.remove('show'); clearInterval(clock); steps(0); $('feed').textContent = 'La tessera riparte da zero. Ogni visita, un passo verso il prossimo premio.'; };
+    $('reset').onclick = () => { stamps = visits = rewards = 0; kpi.members = 128; kpi.back = 41; kpi.prizes = 9; $('valid').classList.remove('show'); steps(0); $('feed').textContent = 'Tocca "+1 timbro": il cliente lo vede subito.'; paint(); };
+    paint();
+  })();
+
+  // ===================== Richiesta demo =====================
+  document.getElementById('lead').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target, msg = document.getElementById('leadMsg');
+    const body = Object.fromEntries(new FormData(f));
+    body.consent = f.consent.checked;
+    msg.className = 'msg'; msg.textContent = 'Invio…';
+    try {
+      const res = await fetch('/api/lead', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Invio non riuscito, riprova.');
+      f.reset();
+      msg.className = 'msg ok'; msg.textContent = 'Fatto! Ti ricontattiamo al più presto.';
+    } catch (err) { msg.className = 'msg err'; msg.textContent = err.message; }
+  });
+
+  // indirizzo /assistenza: si apre direttamente sulla sezione
+  if (location.pathname.replace(/\/$/, '') === '/assistenza') addEventListener('load', () => document.getElementById('assistenza').scrollIntoView());
+  </script>
 </body>
 </html>

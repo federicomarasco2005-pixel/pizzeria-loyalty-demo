@@ -61,6 +61,31 @@ app.get(['/', '/assistenza'], (req, res, next) => {
     .replace(/\{\{EMAIL\}\}/g, process.env.SUPPORT_EMAIL || ''));
 });
 
+// Modulo "Richiedi una demo" della pagina principale: la richiesta arriva sul bot Telegram e resta salvata.
+// Anti-spam: campo nascosto (i robot lo compilano) e al massimo 3 richieste all'ora per indirizzo.
+const leadHits = new Map(); // ip -> orari delle ultime richieste
+app.post('/api/lead', wrap(async (req, res) => {
+  if (req.body.website) return res.json({ ok: true }); // campo trappola compilato: robot, si ignora in silenzio
+  const now = Date.now();
+  const hits = (leadHits.get(req.ip) || []).filter((t) => now - t < 3600e3);
+  if (hits.length >= 3) return res.status(429).json({ error: 'Hai già inviato alcune richieste: ti ricontattiamo presto.' });
+  const f = (k, max) => String(req.body[k] || '').trim().slice(0, max);
+  const lead = { locale: f('locale', 80), nome: f('nome', 60), contatto: f('contatto', 100), messaggio: f('messaggio', 500), at: new Date().toISOString() };
+  if (lead.locale.length < 2 || lead.nome.length < 2 || lead.contatto.length < 5) {
+    return res.status(400).json({ error: 'Scrivi il tuo nome, il nome del locale e un telefono o un\'email.' });
+  }
+  if (req.body.consent !== true) return res.status(400).json({ error: 'Serve il consenso per essere ricontattato.' });
+  hits.push(now);
+  leadHits.set(req.ip, hits);
+  if (leadHits.size > 5000) leadHits.delete(leadHits.keys().next().value);
+  const leads = (await db.loadKey('leads')) || [];
+  leads.push(lead);
+  db.saveKey('leads', leads.slice(-500));
+  bot.alert(`📩 Nuova richiesta dal sito\n🏪 ${lead.locale}\n👤 ${lead.nome}\n📞 ${lead.contatto}${lead.messaggio ? `\n💬 ${lead.messaggio}` : ''}`, `lead|${lead.at}`, 0);
+  console.log(`[sito] nuova richiesta di demo: ${lead.locale}`);
+  res.json({ ok: true });
+}));
+
 // ---------- Vecchi indirizzi (prima che ci fossero più locali) ----------
 // Le tessere già nel Wallet, le icone già installate e il timbro NFC già scritto usano ancora questi link.
 
