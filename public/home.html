@@ -444,10 +444,12 @@
     const STARS = Array.from({ length: innerWidth < 860 ? 140 : 300 }, () => ({ x: Math.random(), y: Math.random(), s: rnd(.5, 1.6), t: rnd(0, 6.283), v: rnd(.0006, .002) }));
 
     // ---- il mouse (o il dito) spinge via le particelle ----
-    let tx = -1e4, ty = -1e4, cxp = -1e4, cyp = -1e4, active = false, mx = 0, my = 0;
+    // posizione del mouse senza ritardo; a ogni fotogramma si usa tutto il tratto percorso (anche se veloce)
+    let tx = -1e4, ty = -1e4, lx = -1e4, ly = -1e4, active = false, mx = 0, my = 0;
     function move(e) {
-      tx = e.clientX; ty = e.clientY; active = true;
-      if (cxp < -1e3) { cxp = tx; cyp = ty; }
+      tx = e.clientX; ty = e.clientY;
+      if (!active) { lx = tx * DPR; ly = ty * DPR; }
+      active = true;
       mx = e.clientX / innerWidth - .5; my = e.clientY / innerHeight - .5;
     }
     addEventListener('pointermove', move, { passive: true });
@@ -466,9 +468,12 @@
       g.clearRect(0, 0, W, H);
       g.globalCompositeOperation = 'lighter';
 
-      // cursore morbido
-      cxp += (tx - cxp) * .22; cyp += (ty - cyp) * .22;
-      const pxc = cxp * DPR, pyc = cyp * DPR, R = (mobile ? 48 : 70) * DPR, R2 = R * R, PUSH = (mobile ? 1.6 : 2) * DPR;
+      // tratto percorso dal mouse in questo fotogramma (da a a b) e sua velocità
+      const bx = tx * DPR, by = ty * DPR, ax = lx, ay = ly;
+      const sx0 = bx - ax, sy0 = by - ay, seg2 = sx0 * sx0 + sy0 * sy0 || 1;
+      const speed = Math.min(Math.sqrt(seg2), 90 * DPR), dirx = sx0 / Math.sqrt(seg2), diry = sy0 / Math.sqrt(seg2);
+      const R = (mobile ? 64 : 95) * DPR, R2 = R * R;
+      const PUSH = (mobile ? 2.4 : 3) * DPR + speed * .07;   // più veloce il mouse, più forte la spinta
 
       // stelle
       g.fillStyle = '#dfe7ff';
@@ -479,7 +484,8 @@
       }
 
       // oggetto
-      const ry = (reduce ? -.35 : Math.sin(t * .00045) * .75 - .25) + mx * .5, rx = -.12 + (reduce ? 0 : Math.sin(t * .0003) * .12) + my * .25;
+      // l'oggetto segue il mouse solo di pochissimo: non deve "spostarsi" quando il mouse corre
+      const ry = (reduce ? -.35 : Math.sin(t * .00045) * .75 - .25) + mx * .12, rx = -.12 + (reduce ? 0 : Math.sin(t * .0003) * .12) + my * .06;
       const cy = Math.cos(ry), sy = Math.sin(ry), cx = Math.cos(rx), sx = Math.sin(rx);
       const T = SHAPES[target].pts;
       const medium = !mobile && innerWidth < 1200;
@@ -496,24 +502,31 @@
         const f = 3 / (3 + z2);
         let X = ox + x1 * S * f, Y = oy - y1 * S * f;
 
-        // spinta del mouse: forza graduale (forte vicino, quasi nulla al bordo) e ritorno con inerzia,
-        // come particelle che galleggiano: niente buco netto
-        const dx = X - pxc, dy = Y - pyc, d2 = dx * dx + dy * dy;
-        if (active && d2 < R2) {
-          const d = Math.sqrt(d2) || 1, fall = 1 - d / R;
-          const force = fall * fall * PUSH * (.8 + .4 * Math.abs(Math.sin(p.j)));
-          p.vx += dx / d * force; p.vy += dy / d * force;
+        // spinta del mouse: distanza dal tratto percorso (un passaggio veloce lascia la scia), forza graduale
+        // (forte vicino, quasi nulla al bordo), un po' di trascinamento nella direzione del movimento, ritorno con inerzia
+        if (active) {
+          const u = Math.max(0, Math.min(1, ((X - ax) * sx0 + (Y - ay) * sy0) / seg2));
+          const dx = X - (ax + sx0 * u), dy = Y - (ay + sy0 * u), d2 = dx * dx + dy * dy;
+          if (d2 < R2) {
+            const d = Math.sqrt(d2) || 1, fall = 1 - d / R;
+            const force = fall * fall * PUSH * (.8 + .4 * Math.abs(Math.sin(p.j)));
+            p.vx += dx / d * force + dirx * fall * speed * .05;
+            p.vy += dy / d * force + diry * fall * speed * .05;
+          }
         }
-        p.vx = (p.vx - p.ox * .045) * .86; p.vy = (p.vy - p.oy * .045) * .86;
+        p.vx = (p.vx - p.ox * .06) * .84; p.vy = (p.vy - p.oy * .06) * .84;
         p.ox += p.vx; p.oy += p.vy;
         X += p.ox; Y += p.oy;
 
-        const r = p.s * DPR * f;
+        // le particelle spostate dal mouse si ingrandiscono e si illuminano un po': la scia si vede meglio
+        const moved = Math.min(1, (Math.abs(p.ox) + Math.abs(p.oy)) / (40 * DPR));
+        const r = p.s * DPR * f * (1 + moved * .7);
         if (p.c !== lastC) { g.fillStyle = PALETTE[p.c]; lastC = p.c; }
-        g.globalAlpha = Math.max(.14, Math.min(1, (f - .6) * 1.8)) * (mobile ? .8 : .95);
+        g.globalAlpha = Math.min(1, Math.max(.14, Math.min(1, (f - .6) * 1.8)) * (mobile ? .8 : .95) + moved * .35);
         g.fillRect(X, Y, r, r);
       }
       g.globalAlpha = 1;
+      lx = bx; ly = by;
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
