@@ -422,7 +422,7 @@
 
     // particelle: idx = punto della forma da raggiungere; ordinate per colore (meno cambi di colore = più veloce)
     let P = Array.from({ length: N }, (_, i) => ({
-      idx: i, x: rnd(-5, 5), y: rnd(-5, 5), z: rnd(-5, 5), ox: 0, oy: 0,
+      idx: i, x: rnd(-5, 5), y: rnd(-5, 5), z: rnd(-5, 5), ox: 0, oy: 0, vx: 0, vy: 0,
       s: rnd(.8, 2.1), j: rnd(0, 6.283), k: rnd(.03, .075), c: 0,
     }));
     let target = null;
@@ -468,7 +468,7 @@
 
       // cursore morbido
       cxp += (tx - cxp) * .22; cyp += (ty - cyp) * .22;
-      const pxc = cxp * DPR, pyc = cyp * DPR, R = (mobile ? 64 : 105) * DPR, R2 = R * R;
+      const pxc = cxp * DPR, pyc = cyp * DPR, R = (mobile ? 48 : 70) * DPR, R2 = R * R, PUSH = (mobile ? 1.6 : 2) * DPR;
 
       // stelle
       g.fillStyle = '#dfe7ff';
@@ -496,12 +496,16 @@
         const f = 3 / (3 + z2);
         let X = ox + x1 * S * f, Y = oy - y1 * S * f;
 
-        // spinta del cursore: le particelle vicine vanno sul bordo del cerchio, poi tornano come molle
+        // spinta del mouse: forza graduale (forte vicino, quasi nulla al bordo) e ritorno con inerzia,
+        // come particelle che galleggiano: niente buco netto
         const dx = X - pxc, dy = Y - pyc, d2 = dx * dx + dy * dy;
         if (active && d2 < R2) {
-          const d = Math.sqrt(d2) || 1, push = (R - d) * (1.05 + .25 * Math.sin(p.j));
-          p.ox += (dx / d * push - p.ox) * .3; p.oy += (dy / d * push - p.oy) * .3;
-        } else { p.ox *= .9; p.oy *= .9; }
+          const d = Math.sqrt(d2) || 1, fall = 1 - d / R;
+          const force = fall * fall * PUSH * (.8 + .4 * Math.abs(Math.sin(p.j)));
+          p.vx += dx / d * force; p.vy += dy / d * force;
+        }
+        p.vx = (p.vx - p.ox * .045) * .86; p.vy = (p.vy - p.oy * .045) * .86;
+        p.ox += p.vx; p.oy += p.vy;
         X += p.ox; Y += p.oy;
 
         const r = p.s * DPR * f;
