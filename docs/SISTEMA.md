@@ -66,6 +66,7 @@ Tutti e tre sono esclusi da `.gitignore`.
 - **Messaggi automatici** (ogni giorno dalle 11, max 1 al giorno per cliente, nella tessera Wallet e web): "Ti manca 1 timbro", richiesta di recensione dopo la 3ª visita (serve il link recensioni), "Ci manchi" dopo 21 giorni (solo con consenso). Accesi di default, si spengono dal bot.
 - **Kit di lancio PDF** (QR da tavolo, adesivi, istruzioni personale, testi social) mandato dal bot alla creazione di un locale.
 - **Report mensile PDF** il 1° del mese a proprietario e gestori.
+- **Dashboard dei locali (14 ottobre 2026, versione demo)**: nuova grafica (barra laterale, colori F5M). Panoramica con solo iscritti, clienti e ultime operazioni; Notifiche "In arrivo"; Impostazioni senza timbro NFC; tolto "Azzera dati demo". Le API del server sono rimaste tutte: si possono riattivare.
 - **"Usa il premio" dalla tessera del cliente**: schermata PREMIO VALIDO animata con orologio (anti-screenshot), premio segnato come consegnato (`by: 'customer'`), annullabile 10 minuti dalla tessera o dalla Cassa. Acceso di default, interruttore nel bot (scheda locale).
 - **Auto-deploy** vero dopo i test (app Render installata su GitHub; `autoDeployTrigger: checksPass` nel Blueprint).
 - **Database**: strumento di copia verificata `tools/copia-database.ps1` pronto per passare a Neon (gratis) prima della scadenza del Postgres Render (~31 ottobre).
