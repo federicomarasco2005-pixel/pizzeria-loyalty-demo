@@ -154,6 +154,58 @@
     footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
     .reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s, transform .8s; }
     .reveal.in { opacity: 1; transform: none; }
+    .hero-visual { display: none; }
+
+    /* ===== Solo telefono: demo in una schermata, particelle dentro la prima sezione, testi e spazi compatti ===== */
+    @media (max-width: 640px) {
+      .block { padding: 64px 0; }
+      .hero { min-height: auto; padding: 36px 0 8px; }
+      .hero p { margin: 16px 0 22px; }
+      .scrollhint { display: none; }
+      .hero-visual { display: flex; align-items: flex-end; justify-content: center; height: 320px; margin-top: 8px; }
+      .hero-visual span { font-size: .7rem; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); opacity: .7; }
+      .strip div { padding: 18px 20px; }
+      .block h2 { font-size: clamp(2.4rem, 12vw, 3.2rem); }
+      .lead { font-size: 1rem; margin-top: 12px; }
+      #demoBox { scroll-margin-top: 72px; }
+
+      /* demo: telefono compatto e pulsanti della cassa subito sotto, tutto in una schermata */
+      .demo { margin-top: 22px; gap: 12px; }
+      .demo .label, .steps, .cust { display: none; }
+      .phone { width: 250px; height: 440px; border-radius: 38px; padding: 9px; }
+      .screen { border-radius: 30px; }
+      .notch { width: 76px; height: 20px; top: 8px; }
+      .status { padding: 11px 20px 0; font-size: .66rem; }
+      .app { padding: 10px 12px; gap: 8px; }
+      .hello { font-size: .78rem; margin: 2px 2px 0; }
+      .card { padding: 12px; border-radius: 18px; }
+      .card .top { font-size: .84rem; gap: 8px; }
+      .card .top i { width: 24px; height: 24px; }
+      .stamps { gap: 8px; margin: 10px 0 8px; }
+      .stamp { font-size: 1.25rem; }
+      .card .count { font-size: 1.2rem; }
+      .badge { font-size: .66rem; padding: 4px 8px; }
+      .use { padding: 11px; font-size: .9rem; border-radius: 14px; }
+      .hint { font-size: .7rem; }
+      .push { top: 30px; left: 9px; right: 9px; padding: 8px 10px; font-size: .7rem; border-radius: 14px; }
+      .push .ico { width: 28px; height: 28px; }
+      .push b { font-size: .74rem; }
+      .valid { gap: 6px; padding: 14px; }
+      .valid .tick { width: 62px; height: 62px; line-height: 62px; font-size: 34px; }
+      .valid h3 { font-size: 1.25rem; }
+      .valid .clock { font-size: 1.7rem; }
+      .side { gap: 12px; }
+      .side .panel { padding: 12px; border-radius: 18px; }
+      .actions { margin-top: 0; gap: 8px; }
+      .act { padding: 13px 6px; font-size: .95rem; border-radius: 14px; }
+      .act small { font-size: .66rem; }
+      .feed { margin-top: 8px; font-size: .78rem; min-height: 2.5em; line-height: 1.35; }
+      .kpi { padding: 10px; }
+      .kpi b { font-size: 1.5rem; }
+      .kpi span { font-size: .68rem; }
+      .grid, .how { margin-top: 28px; }
+      .feat { padding: 18px; }
+    }
     @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } html { scroll-behavior: auto; } }
   </style>
 </head>
@@ -179,9 +231,10 @@
       <h1 class="display" style="margin-top:18px">I tuoi clienti <span class="grad">tornano.</span></h1>
       <p>La tessera fedeltà che vive nel telefono dei clienti: niente app da scaricare, niente carta da perdere. Un timbro a ogni visita, il premio arriva da solo e tu sai finalmente chi torna.</p>
       <div class="buttons">
-        <a class="cta" href="#demo">Prova la demo ↓</a>
+        <a class="cta" href="#demo" id="tryDemo">Prova la demo ↓</a>
         <a class="cta ghost" href="#contatti">Parliamone</a>
       </div>
+      <div class="hero-visual" id="heroVisual" aria-hidden="true"><span>Tocca le particelle</span></div>
     </div>
     <div class="scrollhint">Scorri</div>
   </header>
@@ -199,7 +252,7 @@
       <h2 class="display reveal" style="margin-top:14px">Sei tu il <span class="grad">cameriere.</span></h2>
       <p class="lead reveal">A sinistra il telefono del cliente, a destra la cassa del tuo locale. Dai qualche timbro e guarda cosa vede il cliente: è esattamente così, ogni giorno.</p>
 
-      <div class="demo">
+      <div class="demo" id="demoBox">
         <div>
           <p class="label">Il telefono del cliente</p>
           <div class="phone" id="phone">
@@ -348,11 +401,12 @@
     const cv = document.getElementById('fx');
     const g = cv.getContext('2d');
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let W, H, DPR, mobile;
+    let W, H, DPR, mobile, small;
     function size() {
       DPR = Math.min(2, devicePixelRatio || 1);
       W = cv.width = innerWidth * DPR; H = cv.height = innerHeight * DPR;
       mobile = innerWidth < 860;
+      small = innerWidth <= 640; // telefono: l'oggetto vive nella prima sezione, non resta fisso sopra i testi
     }
     size(); addEventListener('resize', size);
     const N = innerWidth < 860 ? 1700 : 3400;
@@ -452,14 +506,21 @@
       active = true;
       mx = e.clientX / innerWidth - .5; my = e.clientY / innerHeight - .5;
     }
+    let burst = null; // { x, y, k }
     addEventListener('pointermove', move, { passive: true });
-    addEventListener('pointerdown', move, { passive: true });
+    addEventListener('pointerdown', (e) => {
+      move(e);
+      if (e.pointerType !== 'mouse') burst = { x: e.clientX * DPR, y: e.clientY * DPR, k: 1 };
+    }, { passive: true });
+    const heroVisual = document.getElementById('heroVisual');
+    const tryDemo = document.getElementById('tryDemo');
+    if (tryDemo && innerWidth <= 640) tryDemo.href = '#demoBox'; // su telefono si arriva dritti alla demo
     addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') active = false; });
     document.addEventListener('pointerleave', () => { active = false; });
     addEventListener('blur', () => { active = false; });
 
     const io = new IntersectionObserver((entries) => {
-      entries.forEach((e) => { if (e.isIntersecting && e.intersectionRatio > .35) setTarget(e.target.dataset.shape); });
+      entries.forEach((e) => { if (!small && e.isIntersecting && e.intersectionRatio > .35) setTarget(e.target.dataset.shape); });
     }, { threshold: [.35, .6] });
     document.querySelectorAll('[data-shape]').forEach((el) => io.observe(el));
 
@@ -489,8 +550,15 @@
       const cy = Math.cos(ry), sy = Math.sin(ry), cx = Math.cos(rx), sx = Math.sin(rx);
       const T = SHAPES[target].pts;
       const medium = !mobile && innerWidth < 1200;
-      const S = Math.min(W, H) * (mobile ? .26 : medium ? .3 : .36);
-      const ox = W * (mobile ? .5 : medium ? .8 : .72), oy = H * (mobile ? .8 : .52);
+      let S = Math.min(W, H) * (mobile ? .26 : medium ? .3 : .36);
+      let ox = W * (mobile ? .5 : medium ? .8 : .72), oy = H * (mobile ? .8 : .52), fade = 1;
+      if (small && heroVisual) {
+        // telefono: l'oggetto sta nello spazio sotto i pulsanti e scorre via con la pagina
+        const rc = heroVisual.getBoundingClientRect();
+        if (rc.bottom < -40) { g.globalAlpha = 1; lx = tx * DPR; ly = ty * DPR; requestAnimationFrame(frame); return; }
+        S = rc.height * .44 * DPR; ox = (rc.left + rc.width / 2) * DPR; oy = (rc.top + rc.height * .46) * DPR;
+        fade = Math.max(0, Math.min(1, rc.bottom / rc.height));
+      }
       let lastC = -1;
       for (let i = 0; i < N; i++) {
         const p = P[i], q = T[p.idx], k = reduce ? .25 : p.k;
@@ -514,6 +582,10 @@
             p.vy += dy / d * force + diry * fall * speed * .05;
           }
         }
+        if (burst) {
+          const bdx = X - burst.x, bdy = Y - burst.y, bd2 = bdx * bdx + bdy * bdy, BR = R * 1.9;
+          if (bd2 < BR * BR) { const bd = Math.sqrt(bd2) || 1, bf = (1 - bd / BR) * 9 * DPR * burst.k; p.vx += bdx / bd * bf; p.vy += bdy / bd * bf; }
+        }
         p.vx = (p.vx - p.ox * .06) * .84; p.vy = (p.vy - p.oy * .06) * .84;
         p.ox += p.vx; p.oy += p.vy;
         X += p.ox; Y += p.oy;
@@ -522,11 +594,12 @@
         const moved = Math.min(1, (Math.abs(p.ox) + Math.abs(p.oy)) / (40 * DPR));
         const r = p.s * DPR * f * (1 + moved * .7);
         if (p.c !== lastC) { g.fillStyle = PALETTE[p.c]; lastC = p.c; }
-        g.globalAlpha = Math.min(1, Math.max(.14, Math.min(1, (f - .6) * 1.8)) * (mobile ? .8 : .95) + moved * .35);
+        g.globalAlpha = Math.min(1, Math.max(.14, Math.min(1, (f - .6) * 1.8)) * (mobile ? .9 : .95) + moved * .35) * fade;
         g.fillRect(X, Y, r, r);
       }
       g.globalAlpha = 1;
       lx = bx; ly = by;
+      if (burst) { burst.k *= .55; if (burst.k < .05) burst = null; }
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
