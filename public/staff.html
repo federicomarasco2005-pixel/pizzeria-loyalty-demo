@@ -3,63 +3,132 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#b3261e">
+  <meta name="theme-color" content="#070910">
   <link rel="manifest" href="manifest.json">
-  <title>Cassa — Staff</title>
-  <link rel="stylesheet" href="/style.css">
+  <title>Cassa</title>
+  <link rel="preconnect" href="https://fonts.bunny.net">
+  <link href="https://fonts.bunny.net/css?family=anton:400|inter:400,500,600,700,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/f5m.css">
   <style>
-    #reader { border-radius: 16px; overflow: hidden; background: #000; min-height: 260px; }
-    #reader video { width: 100% !important; }
-    .who { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-    .result { cursor: pointer; padding: 12px; border-bottom: 1px solid var(--line); }
-    .result:hover { background: var(--cream); }
+    /* Cassa del locale: stile F5M (regole comuni in /f5m.css), pensata per il telefono o il tablet al bancone */
+    .wrap { max-width: 560px; margin: 0 auto; padding: 14px 14px 30px; display: flex; flex-direction: column; gap: 14px; }
+    .bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 18px; }
+    .bar .brand { font-size: 1.35rem; }
+    .bar .shop { color: var(--muted); font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .bar .right { margin-left: auto; display: flex; gap: 6px; align-items: center; flex: none; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 11px; border-radius: 999px; font-size: .8rem; font-weight: 700; text-decoration: none;
+      background: var(--panel2); border: 1px solid var(--line2); color: var(--ink); cursor: pointer; }
+    .chip.me { background: rgba(255,210,94,.14); border-color: transparent; color: var(--yellow); }
+    .card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+    .card h2 { margin: 0; font-size: 1.1rem; }
+    .sub { color: var(--muted); font-size: .86rem; margin: -8px 0 0; }
+
+    /* fotocamera con cornice sfumata */
+    .cam { padding: 2px; border-radius: 20px; background: var(--grad); }
+    #reader { border-radius: 18px; overflow: hidden; background: #000; min-height: 260px; }
+    #reader video { width: 100% !important; display: block; }
+    #reader img[alt="Info icon"], #reader img[alt="Camera based scan"] { display: none; }
+    .search { position: relative; }
+    .search input { padding-left: 40px; border-radius: 999px; }
+    .search::before { content: "⌕"; position: absolute; left: 15px; top: 50%; transform: translateY(-52%); color: var(--muted); font-size: 1.15rem; }
+    .results { display: flex; flex-direction: column; }
+    .result { display: flex; align-items: center; gap: 12px; padding: 11px 6px; border-top: 1px solid var(--line); cursor: pointer; border-radius: 12px; }
+    .result:first-child { border-top: 0; }
+    .result:hover { background: var(--panel2); }
+    .result b { display: block; font-size: .95rem; }
+    .result span { font-size: .78rem; color: var(--muted); }
+
+    /* cliente */
+    .who { display: flex; align-items: center; gap: 12px; }
+    .who b { display: block; font-size: 1.15rem; }
+    .who span { color: var(--muted); font-size: .84rem; }
+    .gift { margin-left: auto; font-size: .76rem; font-weight: 800; color: #070910; background: var(--yellow); padding: 5px 10px; border-radius: 999px; white-space: nowrap; }
+    .count { display: flex; align-items: baseline; gap: 10px; }
+    .count .big { font-family: var(--display); font-size: 3.6rem; line-height: .95; display: inline-block; padding-right: .05em; }
+    .count small { color: var(--muted); font-size: .86rem; }
+    /* timbri: icona del locale accesa / spenta */
+    .stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 10px; }
+    .stamp { position: relative; aspect-ratio: 1; border-radius: 50%; color: transparent;
+      background: var(--stamp-off) center / contain no-repeat; opacity: .55; }
+    .stamp.on { background-image: var(--stamp-on); opacity: 1; }
+    .stamp.new { animation: stampIn .7s cubic-bezier(.2, 1.6, .4, 1) both; z-index: 1; }
+    .stamp.new::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 3px solid var(--yellow); animation: burst .8s ease-out .15s both; }
+    @keyframes stampIn { 0% { transform: scale(2.4) rotate(-200deg); opacity: 0; } 60% { transform: scale(.85) rotate(10deg); opacity: 1; } 100% { transform: none; } }
+    @keyframes burst { from { transform: scale(.6); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
+    .stamp.gone { animation: stampOut .4s ease-in both; }
+    @keyframes stampOut { to { transform: scale(0) rotate(90deg); opacity: 0; } }
+    .stamp-btn { padding: 20px; font-size: 1.25rem; border-radius: 18px; }
+    .pulse { animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(52,196,124,.18); } }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* timbri arrivati con il timbro NFC */
+    .nfc-row { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-top: 1px solid var(--line); }
+    .nfc-row:first-child { border-top: 0; }
+    .nfc-row .info { flex: 1; min-width: 0; }
+    .nfc-row b { display: block; font-size: .92rem; }
+    .nfc-row span { font-size: .78rem; color: var(--muted); }
+    .nfc-row.voided b { text-decoration: line-through; opacity: .6; }
   </style>
 </head>
 <body>
-  <main class="wrap stack">
-    <div class="who"><h1>Cassa</h1><span class="muted small" data-cfg="pizzeriaName"></span></div>
+  <!-- Accesso -->
+  <section id="login" class="login hidden">
+    <div class="glass">
+      <div class="brand">F5M<span>.</span></div>
+      <h1>Cassa</h1>
+      <p data-cfg="pizzeriaName"></p>
+      <input id="pin" class="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="PIN della cassa">
+      <button class="btn full" id="loginBtn">Entra</button>
+      <p class="error" id="loginErr" role="alert"></p>
+    </div>
+  </section>
 
-    <!-- Login -->
-    <section id="login" class="panel hidden">
-      <label for="pin">PIN staff</label>
-      <input id="pin" type="password" inputmode="numeric" autocomplete="off">
-      <button class="btn" id="loginBtn" style="margin-top:14px"><span class="ico">🔓</span> Entra</button>
-      <p class="error" id="loginErr"></p>
-    </section>
+  <main class="wrap hidden" id="app">
+    <header class="glass bar">
+      <span class="brand">F5M<span>.</span></span>
+      <span class="shop" data-cfg="pizzeriaName"></span>
+      <div class="right">
+        <span class="chip me hidden" id="whoami"></span>
+        <a class="chip" href="admin" id="dashLink">▦ Dashboard</a>
+        <button class="chip" id="logout">Esci</button>
+      </div>
+    </header>
 
     <!-- Scanner -->
-    <section id="scan" class="panel stack hidden">
-      <div id="reader"></div>
-      <p class="muted small" id="camMsg">Inquadra il QR della tessera del cliente.</p>
-      <input id="q" type="search" autocapitalize="characters" placeholder="Codice cliente (es. PZ-AB12C), nome o email">
-      <div id="results"></div>
+    <section id="scan" class="glass card hidden">
+      <h2>Inquadra la tessera del cliente</h2>
+      <p class="sub" id="camMsg">Il QR è nella tessera del cliente, nel Wallet o nella pagina web.</p>
+      <div class="cam" id="cam"><div id="reader"></div></div>
+      <div class="search"><input id="q" type="search" autocapitalize="characters" placeholder="Oppure cerca: nome o codice (PZ-…)" aria-label="Cerca cliente"></div>
+      <div class="results" id="results"></div>
     </section>
 
     <!-- Cliente -->
-    <section id="cust" class="panel stack hidden">
-      <div class="who"><h2 id="cName"></h2><span class="muted small" id="cCode"></span></div>
-      <div id="cReward" class="hidden"><span class="badge">🎁 <span id="cRewardsN"></span> premio disponibile</span></div>
-      <div class="small">Timbri: <strong id="cCount"></strong> · Visite totali: <strong id="cVisits"></strong></div>
+    <section id="cust" class="glass card hidden">
+      <div class="who">
+        <div class="initial" id="cInitial"></div>
+        <div><b id="cName"></b><span id="cCode"></span></div>
+        <span class="gift hidden" id="cReward">🎁 <span id="cRewardsN"></span> premio</span>
+      </div>
+      <div class="count">
+        <span class="big grad" id="cCount"></span>
+        <small>timbri · <span id="cVisits"></span> visite in totale</small>
+      </div>
       <div class="stamps" id="cStamps"></div>
-      <button class="btn big" id="stampBtn"><span class="ico">🍕</span> +1 timbro</button>
-      <button class="btn ok big pulse hidden" id="redeemBtn"><span class="ico">🎁</span> Consegna premio</button>
-      <div class="row">
-        <button class="btn ghost" id="undoBtn"><span class="ico">↩️</span> Annulla</button>
-        <button class="btn ghost" id="nextBtn"><span class="ico">📷</span> Nuovo cliente</button>
+      <button class="btn stamp-btn" id="stampBtn">🍕 +1 timbro</button>
+      <button class="btn ok stamp-btn pulse hidden" id="redeemBtn">🎁 Consegna premio</button>
+      <div class="two">
+        <button class="btn ghost" id="undoBtn">↩ Annulla ultima</button>
+        <button class="btn ghost" id="nextBtn">⌕ Nuovo cliente</button>
       </div>
     </section>
 
-    <!-- Timbri arrivati dall'adesivo NFC: avviso live con possibilità di annullare -->
-    <section id="nfcFeed" class="panel stack hidden">
+    <!-- Timbri arrivati dal timbro NFC: avviso live con possibilità di annullare -->
+    <section id="nfcFeed" class="glass card hidden">
       <h2>📲 Timbri con NFC</h2>
       <div id="nfcList"></div>
     </section>
-
-    <nav class="nav">
-      <a class="chip" href="admin" id="dashLink">📊 Dashboard</a>
-      <span class="chip" id="whoami" style="pointer-events:none"></span>
-      <button class="chip danger" id="logout">🚪 Esci</button>
-    </nav>
   </main>
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -72,9 +141,14 @@
     let busy = false;
 
     applyBrand();
+    const COLORS = ['#5b8cff', '#58d6ff', '#ffd25e', '#ff8a3d', '#ff5e7a', '#34c47c'];
+    const colorOf = (s) => COLORS[[...s].reduce((n, ch) => n + ch.charCodeAt(0), 0) % COLORS.length];
+    const initialOf = (box, name) => { box.textContent = name.trim().charAt(0).toUpperCase(); box.style.background = colorOf(name) + '33'; box.style.color = colorOf(name); };
 
     function show(section) {
-      ['login', 'scan', 'cust'].forEach((s) => $(s).classList.toggle('hidden', s !== section));
+      $('login').classList.toggle('hidden', section !== 'login');
+      $('app').classList.toggle('hidden', section === 'login');
+      ['scan', 'cust'].forEach((s) => $(s).classList.toggle('hidden', s !== section));
     }
 
     async function tryLogin(p) {
@@ -83,7 +157,8 @@
         pin = p; setPin(p);
         // PIN di un dipendente: solo cassa; il suo nome resta nello storico dei timbri
         $('dashLink').classList.toggle('hidden', me.role !== 'manager');
-        $('whoami').textContent = me.role === 'manager' ? '' : '👤 ' + me.name;
+        $('whoami').classList.toggle('hidden', me.role === 'manager');
+        $('whoami').textContent = '👤 ' + me.name;
         connectStaffStream();
         startScan();
       } catch (err) {
@@ -98,12 +173,14 @@
     async function startScan() {
       show('scan');
       $('q').value = ''; $('results').innerHTML = '';
-      if (!window.Html5Qrcode) { $('camMsg').textContent = 'Scanner non disponibile: usa la ricerca.'; return; }
+      $('cam').classList.remove('hidden');
+      if (!window.Html5Qrcode) { $('cam').classList.add('hidden'); $('camMsg').textContent = 'Scanner non disponibile: cerca il cliente qui sotto.'; return; }
       try {
         scanner = scanner || new Html5Qrcode('reader');
         await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 230 }, onScan, () => {});
       } catch (err) {
-        $('camMsg').textContent = 'Fotocamera non disponibile (serve HTTPS e il permesso): usa la ricerca.';
+        $('cam').classList.add('hidden'); // niente riquadro nero vuoto
+        $('camMsg').textContent = 'Fotocamera non disponibile (serve il permesso): cerca il cliente qui sotto.';
       }
     }
 
@@ -137,12 +214,16 @@
         if (c.rewardEarned) { plusOne('🎉'); confetti(); vibrate([80, 60, 200]); }
         else if (c.stamps > prev.stamps) { plusOne('+1'); vibrate(60); }
       }
+      initialOf($('cInitial'), c.name);
       $('cName').textContent = c.name;
       $('cCode').textContent = c.code;
       $('cCount').textContent = c.stamps + ' / ' + c.stampsForReward;
       $('cVisits').textContent = c.visits;
       if (!prev) delete $('cStamps').dataset.filled; // nuovo cliente: niente animazione iniziale
       renderStamps($('cStamps'), c.stamps, c.stampsForReward, { animate });
+      // file regolari: fino a 6 timbri su una riga, oltre su due righe uguali (8 → 4+4, 10 → 5+5)
+      const n = c.stampsForReward;
+      $('cStamps').style.gridTemplateColumns = 'repeat(' + Math.ceil(n / Math.ceil(n / 6)) + ', 1fr)';
       $('cReward').classList.toggle('hidden', c.rewards < 1);
       $('cRewardsN').textContent = c.rewards;
       $('redeemBtn').classList.toggle('hidden', c.rewards < 1);
@@ -181,14 +262,19 @@
         list.forEach((c) => {
           const d = document.createElement('div');
           d.className = 'result';
-          d.textContent = c.name + ' · ' + c.email + ' · ' + c.code;
+          const ini = document.createElement('div'); ini.className = 'initial'; initialOf(ini, c.name);
+          const txt = document.createElement('div');
+          const b = document.createElement('b'); b.textContent = c.name;
+          const s = document.createElement('span'); s.textContent = c.code + ' · ' + c.stamps + '/' + c.stampsForReward + ' timbri' + (c.rewards ? ' · 🎁 premio pronto' : '');
+          txt.append(b, s);
+          d.append(ini, txt);
           d.onclick = async () => { await stopScan(); openCustomer(c.token); };
           $('results').appendChild(d);
         });
       }, 250);
     };
 
-    // ---------- Avvisi live: timbri con adesivo NFC ----------
+    // ---------- Avvisi live: timbri con il timbro NFC, premi ritirati dal cliente ----------
     let staffStream = null;
     function connectStaffStream() {
       if (staffStream || !window.EventSource) return;
@@ -209,28 +295,27 @@
     function addNfcItem(ev) {
       $('nfcFeed').classList.remove('hidden');
       const row = document.createElement('div');
-      row.className = 'row';
-      row.style.alignItems = 'center';
-      const info = document.createElement('div');
-      info.style.flex = '2';
-      const name = document.createElement('strong'); name.textContent = ev.name + ' · ' + ev.code;
-      const meta = document.createElement('div'); meta.className = 'small muted';
+      row.className = 'nfc-row';
+      const ini = document.createElement('div'); ini.className = 'initial'; initialOf(ini, ev.name);
+      const info = document.createElement('div'); info.className = 'info';
+      const name = document.createElement('b'); name.textContent = ev.name + ' · ' + ev.code;
+      const meta = document.createElement('span');
       meta.textContent = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) +
-        ' · timbri ' + ev.stamps + (ev.isNew ? ' · 🆕 nuovo iscritto' : '') + (ev.rewardEarned ? ' · premio sbloccato' : '');
+        ' · timbri ' + ev.stamps + (ev.isNew ? ' · nuovo iscritto' : '') + (ev.rewardEarned ? ' · premio sbloccato' : '');
       info.append(name, meta);
       const undo = document.createElement('button');
-      undo.className = 'chip danger';
-      undo.textContent = '↩️ Annulla';
+      undo.className = 'chip';
+      undo.textContent = '↩ Annulla';
       undo.onclick = async () => {
         if (!confirm('Annullare il timbro NFC di ' + ev.name + '?')) return;
         try {
           await api('api/staff/undo', { method: 'POST', pin, body: { token: ev.token } });
           meta.textContent += ' · annullato';
-          name.style.textDecoration = 'line-through';
+          row.classList.add('voided');
           undo.remove();
         } catch (err) { toast(err.message); }
       };
-      row.append(info, undo);
+      row.append(ini, info, undo);
       $('nfcList').prepend(row);
       while ($('nfcList').children.length > 5) $('nfcList').lastChild.remove();
     }

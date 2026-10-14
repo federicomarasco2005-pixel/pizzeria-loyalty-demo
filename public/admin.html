@@ -6,50 +6,9 @@
   <title>Dashboard</title>
   <link rel="preconnect" href="https://fonts.bunny.net">
   <link href="https://fonts.bunny.net/css?family=anton:400|inter:400,500,600,700,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/f5m.css">
   <style>
-    /* Dashboard del locale (versione demo): struttura a barra laterale e schede "vetro", colori F5M */
-    :root {
-      --bg: #070910; --panel: rgba(20,24,38,.72); --panel2: rgba(255,255,255,.04); --line: rgba(255,255,255,.08); --line2: rgba(255,255,255,.14);
-      --ink: #f3f5fb; --muted: #9ba4ba; --soft: #c9d0e0;
-      --blue: #5b8cff; --cyan: #58d6ff; --yellow: #ffd25e; --orange: #ff8a3d; --pink: #ff5e7a; --green: #34c47c;
-      --grad: linear-gradient(92deg, var(--blue), var(--cyan) 35%, var(--yellow) 68%, var(--orange));
-      --display: "Anton", "Impact", "Arial Narrow", sans-serif;
-      --body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      --r: 22px;
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; font-family: var(--body); color: var(--ink); background: var(--bg); font-size: 15px; line-height: 1.5; }
-    /* bagliori di colore sullo sfondo, come le sfere della seconda immagine */
-    body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-      background:
-        radial-gradient(520px 380px at 88% 8%, rgba(91,140,255,.22), transparent 70%),
-        radial-gradient(460px 360px at 8% 92%, rgba(255,138,61,.16), transparent 70%),
-        radial-gradient(380px 300px at 55% 55%, rgba(88,214,255,.08), transparent 70%); }
-    a { color: inherit; }
-    button { font-family: inherit; }
-    .hidden { display: none !important; }
-    .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
-    .glass { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-      box-shadow: 0 20px 50px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05); }
-
-    /* ---------- accesso ---------- */
-    .login { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
-    .login .glass { width: 100%; max-width: 400px; padding: 32px 28px; text-align: center; }
-    .brand { font-family: var(--display); font-size: 1.7rem; letter-spacing: .04em; }
-    .brand span { color: var(--orange); }
-    .login h1 { font-size: 1.35rem; margin: 18px 0 4px; }
-    .login p { color: var(--muted); margin: 0 0 22px; }
-    input[type=password], input[type=text], input[type=url], input[type=search] {
-      width: 100%; background: var(--panel2); border: 1px solid var(--line2); color: var(--ink); border-radius: 14px; padding: 13px 14px; font: inherit; font-size: 1rem; }
-    input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 4px rgba(88,214,255,.12); }
-    .pin { text-align: center; letter-spacing: .5em; font-size: 1.3rem !important; }
-    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 14px; padding: 13px 18px; font-weight: 700; font-size: .98rem;
-      cursor: pointer; color: #070910; background: var(--grad); text-decoration: none; }
-    .btn.ghost { background: var(--panel2); color: var(--ink); border: 1px solid var(--line2); }
-    .btn:disabled { opacity: .5; cursor: default; }
-    .btn.full { width: 100%; margin-top: 14px; }
-    .error { color: var(--pink); font-weight: 600; min-height: 1.3em; margin: 12px 0 0; font-size: .92rem; }
-
+    /* Dashboard del locale (versione demo): le regole comuni (colori, vetro, pulsanti, accesso) sono in /f5m.css */
     /* ---------- struttura ---------- */
     .app { display: grid; grid-template-columns: 250px 1fr; gap: 22px; padding: 22px; max-width: 1400px; margin: 0 auto; }
     .side { position: sticky; top: 22px; align-self: start; display: flex; flex-direction: column; gap: 16px; }
@@ -138,9 +97,6 @@
     .soon-card h2 { margin: 10px 0 6px; font-size: 1.4rem; }
     .soon-card p { margin: 0; color: var(--muted); }
 
-    .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(140%); background: #f3f5fb; color: #070910; font-weight: 700;
-      padding: 12px 18px; border-radius: 14px; box-shadow: 0 12px 30px rgba(0,0,0,.4); transition: transform .3s; z-index: 50; max-width: calc(100% - 32px); text-align: center; }
-    .toast.show { transform: translateX(-50%); }
 
     /* ---------- tablet e telefono ---------- */
     @media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } }

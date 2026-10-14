@@ -30,7 +30,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 // ---------- Sottodomini dei locali (SHOP_DOMAIN, es. da-mario.f5m.it) ----------
 // Una richiesta a <slug>.f5m.it diventa internamente /<slug>/…: pagine e API sono le stesse dell'indirizzo con il percorso.
 // I file comuni (/style.css, /common.js…) restano comuni. Un indirizzo vecchio (locale rinominato) porta al nuovo.
-const GLOBAL_FILES = new Set(['/style.css', '/common.js', '/sw.js', '/wallet-button-it.svg', '/robots.txt']);
+const GLOBAL_FILES = new Set(['/style.css', '/f5m.css', '/common.js', '/sw.js', '/wallet-button-it.svg', '/robots.txt']);
 app.use((req, res, next) => {
   const domain = shops.shopDomain();
   const host = String(req.hostname || '').toLowerCase();

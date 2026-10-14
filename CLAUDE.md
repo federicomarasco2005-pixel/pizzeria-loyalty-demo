@@ -9,7 +9,7 @@ Federico non è uno sviluppatore: rispondigli in italiano semplice e fai tu il l
 - **Mai cambiare `classSuffix`, `slug` o segreto NFC** di un locale esistente: le tessere nei Wallet e i chip NFC già scritti smetterebbero di funzionare.
 - Il locale legacy `da-mario` usa archivio `db`, classe `pizzeria_demo_v1` e PIN da `STAFF_PIN`: non è eliminabile.
 - **Segreti mai nel repository** (il repo è pubblico): `service-account.json`, `.env`, token del bot, PIN, `DATABASE_URL`. Stanno su Render.
-- Nelle pagine di `public/` usa indirizzi **relativi** (`api/...`), per via di `<base href="/slug/">`. Unici assoluti voluti: `/style.css`, `/common.js`, `/sw.js`, `/wallet-button-it.svg`.
+- Nelle pagine di `public/` usa indirizzi **relativi** (`api/...`), per via di `<base href="/slug/">`. Unici assoluti voluti: `/style.css`, `/f5m.css` (stile F5M di dashboard, cassa e QR), `/common.js`, `/sw.js`, `/wallet-button-it.svg`.
 - Il saldo dei timbri non si salva mai: si ricalcola dal ledger degli eventi (`db.js`).
 
 ## Pubblicare

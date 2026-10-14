@@ -1,0 +1,68 @@
+/* Stile F5M delle pagine del locale (dashboard, cassa, QR da tavolo): fondo scuro, schede "vetro",
+   sfumatura blu → azzurro → giallo → arancio. Le pagine aggiungono solo le regole loro. */
+:root {
+  --bg: #070910; --panel: rgba(20,24,38,.72); --panel2: rgba(255,255,255,.04); --line: rgba(255,255,255,.08); --line2: rgba(255,255,255,.14);
+  --ink: #f3f5fb; --muted: #9ba4ba; --soft: #c9d0e0;
+  --blue: #5b8cff; --cyan: #58d6ff; --yellow: #ffd25e; --orange: #ff8a3d; --pink: #ff5e7a; --green: #34c47c;
+  --grad: linear-gradient(92deg, var(--blue), var(--cyan) 35%, var(--yellow) 68%, var(--orange));
+  --display: "Anton", "Impact", "Arial Narrow", sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --r: 22px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; font-family: var(--body); color: var(--ink); background: var(--bg); font-size: 15px; line-height: 1.5; }
+/* bagliori di colore sullo sfondo */
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(520px 380px at 88% 8%, rgba(91,140,255,.22), transparent 70%),
+    radial-gradient(460px 360px at 8% 92%, rgba(255,138,61,.16), transparent 70%),
+    radial-gradient(380px 300px at 55% 55%, rgba(88,214,255,.08), transparent 70%); }
+a { color: inherit; }
+button { font-family: inherit; }
+.hidden { display: none !important; }
+.grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.glass { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 20px 50px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05); }
+.brand { font-family: var(--display); font-size: 1.7rem; letter-spacing: .04em; }
+.brand span { color: var(--orange); }
+.pill { display: inline-flex; gap: 6px; align-items: center; font-size: .74rem; font-weight: 700; padding: 6px 11px; border-radius: 999px;
+  background: rgba(91,140,255,.16); color: #b9ccff; letter-spacing: .02em; }
+
+/* accesso con PIN */
+.login { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+.login .glass { width: 100%; max-width: 400px; padding: 32px 28px; text-align: center; }
+.login h1 { font-size: 1.35rem; margin: 18px 0 4px; }
+.login p { color: var(--muted); margin: 0 0 22px; }
+
+/* campi e pulsanti */
+input[type=password], input[type=text], input[type=url], input[type=search] {
+  width: 100%; background: var(--panel2); border: 1px solid var(--line2); color: var(--ink); border-radius: 14px; padding: 13px 14px; font: inherit; font-size: 1rem; }
+input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 4px rgba(88,214,255,.12); }
+.pin { text-align: center; letter-spacing: .5em; font-size: 1.3rem !important; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 14px; padding: 13px 18px; font-weight: 700; font-size: .98rem;
+  cursor: pointer; color: #070910; background: var(--grad); text-decoration: none; }
+.btn.ghost { background: var(--panel2); color: var(--ink); border: 1px solid var(--line2); }
+.btn.ok { background: var(--green); color: #04130b; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.full { width: 100%; margin-top: 14px; }
+.error { color: var(--pink); font-weight: 600; min-height: 1.3em; margin: 12px 0 0; font-size: .92rem; }
+
+/* liste di clienti */
+.initial { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; flex: none; font-size: .95rem; }
+.empty { color: var(--muted); text-align: center; padding: 26px 10px; font-size: .92rem; }
+
+/* avvisi in basso (toast di common.js) */
+.toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(140%); background: #f3f5fb; color: #070910; font-weight: 700;
+  padding: 12px 18px; border-radius: 14px; box-shadow: 0 12px 30px rgba(0,0,0,.4); transition: transform .3s; z-index: 70; max-width: calc(100% - 32px); text-align: center; pointer-events: none; }
+.toast.show { transform: translateX(-50%); }
+
+/* animazioni di common.js: "+1" che sale, coriandoli */
+.plus { position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%); z-index: 50; pointer-events: none;
+  font-family: var(--display); font-size: 5rem; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: plus 1.1s ease-out both; }
+@keyframes plus {
+  0% { transform: translate(-50%, -20%) scale(.3); opacity: 0; }
+  25% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  70% { transform: translate(-50%, -70%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -110%) scale(.9); opacity: 0; } }
+canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 60; }
