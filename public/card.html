@@ -31,6 +31,16 @@
     .valid .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; justify-content: center; }
     .valid button { border: 2px solid rgba(255,255,255,.85); background: transparent; color: #fff; border-radius: 14px; padding: 12px 16px; font-weight: 700; font-size: 1rem; }
     .valid button.solid { background: #fff; color: #1d1b19; border-color: #fff; }
+    /* Privacy e impostazioni: una riga discreta in fondo, il resto si apre al tocco */
+    .more { margin-top: 36px !important; text-align: center; }
+    .more summary { display: inline-block; list-style: none; cursor: pointer; color: var(--muted); opacity: .6; font-size: .78rem; padding: 6px 10px; }
+    .more summary::-webkit-details-marker { display: none; }
+    .more summary::after { content: " ›"; display: inline-block; transition: transform .2s; }
+    .more[open] summary::after { transform: rotate(90deg); }
+    .more-panel { display: flex; flex-direction: column; gap: 4px; text-align: left; background: var(--card); border-radius: 16px; padding: 6px 16px; margin-top: 6px; box-shadow: 0 6px 20px rgba(60, 30, 10, .06); }
+    .more-panel .check { margin: 8px 0; color: var(--ink); }
+    .more-panel a { color: var(--ink); text-decoration: none; font-size: .9rem; padding: 11px 0; border-top: 1px solid var(--line); }
+    .more-panel a.danger { color: var(--brand); }
   </style>
   <script>
     // manifest della singola tessera: l'icona installata riapre proprio questa tessera
@@ -119,15 +129,18 @@
         <h2>📣 Dal locale</h2>
         <div id="messages" class="stack"></div>
       </section>
-      <!-- I tuoi dati (privacy) -->
-      <p class="muted small center" style="margin:6px 0 0">
-        <a href="privacy">Privacy</a> ·
-        <a id="exportLink" download>Scarica i miei dati</a> ·
-        <a href="#" id="deleteLink">Elimina la tessera</a>
-      </p>
-      <label class="check small muted" style="justify-content:center;margin:0">
-        <input type="checkbox" id="consent"> <span>Voglio ricevere offerte e novità dal locale</span>
-      </label>
+      <!-- I tuoi dati (privacy): chiusi in fondo, si aprono solo se servono -->
+      <details class="more">
+        <summary>Privacy e impostazioni</summary>
+        <div class="more-panel">
+          <label class="check small">
+            <input type="checkbox" id="consent"> <span>Voglio ricevere offerte e novità dal locale</span>
+          </label>
+          <a href="privacy">Informativa privacy</a>
+          <a id="exportLink" download>Scarica i miei dati</a>
+          <a href="#" id="deleteLink" class="danger">Elimina la tessera</a>
+        </div>
+      </details>
     </div>
 
     <div id="valid" class="valid hidden" role="dialog" aria-modal="true" aria-labelledby="validTitle">
