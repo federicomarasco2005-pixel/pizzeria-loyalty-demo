@@ -1,6 +1,7 @@
 # Tessere fedeltà F5M — istruzioni per Claude
 
 Servizio di tessere fedeltà digitali per locali (web + Google Wallet + timbro NFC + bot Telegram), online su https://f5m.it.
+**All'inizio di ogni sessione leggi `docs/HANDOFF.md`**: stato attuale, cosa fare adesso, problemi già risolti.
 **Prima di modifiche importanti leggi `docs/SISTEMA.md`**: architettura, dati, Wallet, NFC, bot, variabili d'ambiente, limiti noti.
 
 Federico non è uno sviluppatore: rispondigli in italiano semplice e fai tu il lavoro tecnico. Login, pagamenti e DNS su Aruba li fa lui.
@@ -14,6 +15,7 @@ Federico non è uno sviluppatore: rispondigli in italiano semplice e fai tu il l
 
 ## Pubblicare
 - **`npm test` deve passare** prima di ogni pubblicazione.
+- **Prima di pubblicare mostra a Federico l'anteprima** e aspetta il suo "pubblica".
 - Ogni push su `main` va online: GitHub lancia i test e, se passano, Render pubblica da solo in 1–2 minuti. Su `main` pubblica solo con l'ok di Federico; altrimenti lavora su un ramo o una pull request.
 - Su Render **mai "Deploy a specific commit"**: spegne l'auto-deploy. Per pubblicare a mano: "Deploy latest commit".
 - Dopo la pubblicazione controlla che il sito risponda: `curl https://f5m.it/api/config`.
