@@ -106,6 +106,25 @@ test('tessera veloce: dati già nella pagina, nuovo saldo nell\'avviso in tempo 
   assert.ok(ev.v > card.v, 'la versione cresce a ogni operazione');
 });
 
+test('tessera: ultime visite, senza le operazioni annullate', async () => {
+  await api(`${S}/api/staff/stamp`, { method: 'POST', pin: PIN, body: { token: anna, requestId: 'r-hist' } });
+  await api(`${S}/api/staff/undo`, { method: 'POST', pin: PIN, body: { token: anna } });
+  const { data } = await api(`${S}/api/card/${anna}`);
+  assert.strictEqual(data.history.length, 2);
+  assert.ok(data.history.every((h) => h.type === 'stamp' && !h.reward));
+  assert.ok(data.history[0].at >= data.history[1].at, 'dalla più recente');
+});
+
+test('logo largo del Wallet: file per il locale legacy, generato per gli altri', async () => {
+  const legacy = await fetch(`${B}${S}/wide-logo.png`);
+  assert.strictEqual(legacy.status, 200);
+  assert.strictEqual(legacy.headers.get('content-type'), 'image/png');
+  const images = require('../images');
+  const img = await images.get({ slug: 'prova', name: 'Bar Pasticceria Il Lungo Nome', theme: 'caffe', brandColor: '#123456', stampsForReward: 8 }, 'wide-logo.png');
+  assert.strictEqual(img.type, 'image/png');
+  assert.deepStrictEqual([img.buf.readUInt32BE(16), img.buf.readUInt32BE(20)], [1280, 400]);
+});
+
 test('premio ritirato dal telefono del cliente, annullabile', async () => {
   const gino = (await api(`${S}/api/signup`, { method: 'POST', body: { name: 'Gino', email: 'gino@x.it', acceptTerms: true } })).data.token;
   assert.strictEqual((await api(`${S}/api/card/${gino}/redeem`, { method: 'POST', body: {} })).status, 400, 'niente premio, niente ritiro');
@@ -116,7 +135,8 @@ test('premio ritirato dal telefono del cliente, annullabile', async () => {
 
   const r = await api(`${S}/api/card/${gino}/redeem`, { method: 'POST', body: { requestId: 'gr1' } });
   assert.strictEqual(r.status, 200);
-  assert.ok(r.data.redeem.id && r.data.redeem.undoUntil);
+  assert.ok(r.data.redeem.id);
+  assert.strictEqual(Date.parse(r.data.redeem.undoUntil) - Date.parse(r.data.redeem.at), 5 * 60000, 'annullabile per 5 minuti');
   card = (await api(`${S}/api/card/${gino}`)).data;
   assert.strictEqual(card.rewards, 0);
   assert.strictEqual(card.lastRedeem.id, r.data.redeem.id, 'ricaricando la pagina la schermata PREMIO VALIDO torna');
@@ -129,6 +149,14 @@ test('premio ritirato dal telefono del cliente, annullabile', async () => {
   card = (await api(`${S}/api/card/${gino}`)).data;
   assert.strictEqual(card.rewards, 1, 'annullato: il premio è di nuovo disponibile');
   assert.strictEqual(card.lastRedeem, null);
+
+  // "Fatto": il ritiro è definitivo, il premio non si può più riavere
+  const r2 = await api(`${S}/api/card/${gino}/redeem`, { method: 'POST', body: { requestId: 'gr3' } });
+  assert.strictEqual((await api(`${S}/api/card/${gino}/redeem/close`, { method: 'POST', body: { id: r2.data.redeem.id } })).status, 200);
+  assert.strictEqual((await api(`${S}/api/card/${gino}/redeem/undo`, { method: 'POST', body: { id: r2.data.redeem.id } })).status, 400, 'dopo "Fatto" niente annullo');
+  card = (await api(`${S}/api/card/${gino}`)).data;
+  assert.strictEqual(card.rewards, 0);
+  assert.strictEqual(card.lastRedeem, null, 'ricaricando la schermata non torna');
 });
 
 test('timbro NFC: nuovo cliente iscritto sul momento, poi pausa', async () => {

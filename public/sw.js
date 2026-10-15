@@ -1,6 +1,8 @@
-// Service worker minimo: rende la tessera installabile come app e, senza rete,
-// mostra l'ultima versione già vista invece di una pagina di errore.
-const CACHE = 'tessera-v2';
+// Service worker: rende la tessera installabile come app e la apre subito.
+// La pagina della tessera si mostra dalla copia salvata (anche se il server gratuito sta dormendo,
+// ~50 s al risveglio) e intanto si scarica quella nuova; i dati veri arrivano poi dalla pagina stessa
+// (api/card e aggiornamenti live). Senza rete resta l'ultima versione vista.
+const CACHE = 'tessera-v3';
 const SHELL = ['/style.css', '/common.js'];
 
 self.addEventListener('install', (e) => {
@@ -15,20 +17,27 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Prima la rete (dati sempre aggiornati), la copia salvata solo se offline.
+const isCardPage = (url) => /\/card\/[^/]+$/.test(url.pathname);
+const cacheable = (url) => isCardPage(url) || /\/(logo\.png|stamps\/|icons\/)/.test(url.pathname) || SHELL.includes(url.pathname);
+
 // Le API e gli aggiornamenti live non passano mai dalla cache.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.includes('/api/')) return;
-  e.respondWith(
-    fetch(e.request)
-      .then((res) => {
-        if (res.ok && (url.pathname.includes('/card/') || /\/(logo\.png|stamps\/|icons\/)/.test(url.pathname) || SHELL.includes(url.pathname))) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
-        }
-        return res;
-      })
-      .catch(() => caches.match(e.request)),
-  );
+  const fresh = fetch(e.request).then((res) => {
+    if (res.ok && cacheable(url)) {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(e.request, copy));
+    }
+    return res;
+  });
+  // Arrivo dal timbro NFC o dall'iscrizione (?from=, ?welcome): serve la pagina appena generata
+  if (isCardPage(url) && !url.searchParams.has('from') && !url.searchParams.has('welcome')) {
+    // Tessera: subito la copia salvata (se c'è), intanto si aggiorna per la prossima apertura
+    e.waitUntil(fresh.catch(() => {}));
+    e.respondWith(caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fresh));
+    return;
+  }
+  // Tutto il resto: prima la rete (sempre aggiornato), la copia salvata solo se offline
+  e.respondWith(fresh.catch(() => caches.match(e.request)));
 });

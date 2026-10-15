@@ -7,7 +7,12 @@
 //   logo.png                    logo del programma (caricato dal gestore oppure generato)
 // Prima erano script PowerShell da lanciare a mano (tools/); ora ogni nuovo locale ha le sue in automatico.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const path = require('path');
+const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
+
+// Font inclusi nel progetto (il server di Render non ha font di sistema): Inter, licenza OFL (fonts/OFL.txt)
+GlobalFonts.registerFromPath(path.join(__dirname, 'fonts', 'Inter-ExtraBold.ttf'), 'F5M Inter XB');
+GlobalFonts.registerFromPath(path.join(__dirname, 'fonts', 'Inter-SemiBold.ttf'), 'F5M Inter SB');
 const { GIFEncoder, quantize, applyPalette } = require('gifenc');
 
 // ---------- Temi del timbro ----------
@@ -285,6 +290,7 @@ async function render(shop, file) {
     g.drawImage(s.canvas, (size - s.canvas.width) / 2, (size - s.canvas.height) / 2);
     return png(c);
   }
+  if (file === 'wide-logo.png') return png(await wideLogo(shop, draw));
   if (file === 'logo.png') {
     const logo = await logoImage(shop);
     if (logo && shop.logoFile) return png(toCanvas(logo));
@@ -301,6 +307,51 @@ async function render(shop, file) {
     return png(c);
   }
   return null;
+}
+
+// Logo largo per l'intestazione Google Wallet (1280x400, trasparente): timbro del locale a sinistra,
+// nome in bianco e "TESSERA FEDELTÀ" in oro. Un nome lungo va su due righe.
+async function wideLogo(shop, draw) {
+  const WL = 1280, HL = 400;
+  const c = createCanvas(WL, HL); const g = c.getContext('2d');
+  const s = stampSprite(draw, 260, false);
+  g.drawImage(s.canvas, 30 + 140 - s.canvas.width / 2, HL / 2 - s.canvas.height / 2);
+  const x = 345, maxW = WL - x - 30;
+  const name = String(shop.name || '').trim();
+  const fit = (text, size) => { g.font = `${size}px "F5M Inter XB"`; return g.measureText(text).width <= maxW; };
+  // una riga se ci sta a una dimensione leggibile, altrimenti due righe divise alla parola più centrale
+  let lines = [name], size = 130;
+  while (size > 84 && !fit(name, size)) size -= 4;
+  const words = name.split(/\s+/);
+  if (!fit(name, size) && words.length > 1) {
+    let best = null;
+    for (let i = 1; i < words.length; i++) {
+      const pair = [words.slice(0, i).join(' '), words.slice(i).join(' ')];
+      g.font = '100px "F5M Inter XB"';
+      const w = Math.max(...pair.map((t) => g.measureText(t).width));
+      if (!best || w < best.w) best = { pair, w };
+    }
+    lines = best.pair; size = 100;
+    while (size > 40 && !lines.every((t) => fit(t, size))) size -= 4;
+  } else {
+    while (size > 40 && !fit(name, size)) size -= 4;
+  }
+  const tagSize = Math.round(Math.min(size, 100) * 0.4);
+  const lineH = size * 1.08, gap = size * 0.22;
+  const block = lines.length * lineH + gap + tagSize;
+  let y = (HL - block) / 2;
+  g.textBaseline = 'top';
+  g.font = `${size}px "F5M Inter XB"`;
+  for (const t of lines) {
+    g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillText(t, x + 4, y + 5);
+    g.fillStyle = '#ffffff'; g.fillText(t, x, y);
+    y += lineH;
+  }
+  g.font = `${tagSize}px "F5M Inter SB"`;
+  g.fillStyle = '#ffcf4a';
+  if ('letterSpacing' in g) g.letterSpacing = `${Math.round(tagSize * 0.12)}px`;
+  g.fillText('TESSERA FEDELTÀ', x + 3, y + gap);
+  return c;
 }
 
 function toCanvas(img) {
@@ -453,7 +504,7 @@ async function prepareLogo(buffer) {
 // gifs: anche le animazioni del Wallet, così al momento del timbro sono già pronte.
 async function warm(shop, { gifs = false } = {}) {
   const N = shop.stampsForReward;
-  const files = ['logo.png', 'stamps/icon.png', 'stamps/icon-empty.png'];
+  const files = ['logo.png', 'wide-logo.png', 'stamps/icon.png', 'stamps/icon-empty.png'];
   for (let k = 0; k <= N; k++) files.push(`stamps/grid-${N}-${k}.png`);
   for (const f of files) await get(shop, f);
   if (gifs) {

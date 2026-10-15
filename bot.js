@@ -387,7 +387,7 @@ async function onButton(chat, data, msg) {
     const on = !M.selfRedeem(ctx);
     M.setSelfRedeem(arg, on);
     await send(chat, on
-      ? '🎁 <b>Ritiro del premio dal telefono del cliente: acceso.</b>\nQuando il premio è pronto, il cliente tocca "Usa il premio" davanti al personale: compare la schermata PREMIO VALIDO (animata, con l\'orologio) e il premio risulta consegnato. Errori: si annulla entro 10 minuti dalla tessera o dalla Cassa.'
+      ? '🎁 <b>Ritiro del premio dal telefono del cliente: acceso.</b>\nQuando il premio è pronto, il cliente tocca "Usa il premio" davanti al personale: compare la schermata PREMIO VALIDO (animata, con l\'orologio) e il premio risulta consegnato. Errori: il cliente annulla dalla tessera entro 5 minuti, finché non tocca "Fatto"; dopo si annulla dalla Cassa.'
       : '🎁 <b>Ritiro del premio dal telefono del cliente: spento.</b>\nIl premio si consegna solo dalla Cassa ("Consegna premio").');
     return showShop(chat, arg);
   }

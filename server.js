@@ -180,10 +180,11 @@ async function sendImage(req, res, file) {
 shop.get('/logo.png', wrap((req, res) => sendImage(req, res, 'logo.png')));
 shop.get('/stamps/:file', wrap((req, res) => sendImage(req, res, `stamps/${req.params.file}`)));
 shop.get('/icons/:file', wrap((req, res) => sendImage(req, res, `icons/${req.params.file}`)));
-shop.get('/wide-logo.png', (req, res) => {
-  if (!req.ctx.shop.legacy) return res.status(404).end();
-  res.sendFile(path.join(PUBLIC_DIR, 'wide-logo.png'));
-});
+// Logo largo dell'intestazione Wallet: il locale legacy ha il suo file, gli altri lo hanno generato
+shop.get('/wide-logo.png', wrap(async (req, res) => {
+  if (req.ctx.shop.legacy) return res.sendFile(path.join(PUBLIC_DIR, 'wide-logo.png'));
+  return sendImage(req, res, 'wide-logo.png');
+}));
 
 // App "Cassa" installabile sul telefono del locale
 shop.get('/manifest.json', (req, res) => {
@@ -236,6 +237,7 @@ function publicConfig(cfg) {
     pizzeriaName: cfg.pizzeriaName,
     programName: cfg.programName,
     rewardText: cfg.rewardText,
+    rewardShort: cfg.rewardShort,
     stampsForReward: cfg.stampsForReward,
     brandColor: cfg.brandColor,
     emoji: cfg.emoji,
@@ -311,17 +313,20 @@ shop.post('/api/card/:token/consent', (req, res) => {
 // ---------- Premio ritirato dal telefono del cliente ----------
 // Per i locali dove il personale non usa la Cassa: il cliente tocca "Usa il premio" davanti al cameriere,
 // la tessera mostra una schermata "PREMIO VALIDO" animata con l'orologio che scorre (uno screenshot non basta)
-// e il premio risulta già consegnato. Errore? Si annulla dalla tessera entro 10 minuti (o dalla Cassa).
+// e il premio risulta già consegnato.
+// Tocco sbagliato? Il cliente annulla dalla tessera entro 5 minuti, ma solo finché non tocca "Fatto":
+// "Fatto" chiude il ritiro sul server (customer.redeemClosed), così la schermata non torna più e il premio
+// non si può riavere, nemmeno ricaricando o da un altro telefono. Dopo, l'annullo si fa solo dalla Cassa.
 // Attivo di default; il locale lo può spegnere dal bot.
-const SELF_UNDO_MS = 10 * 60 * 1000;
+const SELF_UNDO_MS = 5 * 60 * 1000;
 const selfRedeemOn = (ctx) => ctx.db.getSettings().selfRedeem !== false;
 
-// ultimo ritiro fatto dal cliente, se è ancora annullabile
+// ultimo ritiro fatto dal cliente, se è ancora aperto (non chiuso con "Fatto" e nei 5 minuti)
 function recentSelfRedeem(ctx, customer) {
   const evs = ctx.db.eventsOf(customer.id);
   const voided = new Set(evs.filter((e) => e.type === 'void').map((e) => e.ref));
   const e = evs.filter((x) => x.type === 'redeem' && x.by === 'customer' && !voided.has(x.id)).pop();
-  if (!e || Date.now() - Date.parse(e.at) > SELF_UNDO_MS) return null;
+  if (!e || customer.redeemClosed === e.id || Date.now() - Date.parse(e.at) > SELF_UNDO_MS) return null;
   return { id: e.id, at: e.at, undoUntil: new Date(Date.parse(e.at) + SELF_UNDO_MS).toISOString() };
 }
 
@@ -350,6 +355,16 @@ shop.post('/api/card/:token/redeem/undo', (req, res) => {
   broadcast(ctx, customer, 'undo');
   staffBroadcast(ctx, { type: 'redeem-undo', name: customer.name, code: customer.code });
   syncWallet(ctx, customer);
+  res.json({ ok: true });
+});
+
+// "Fatto" sulla schermata PREMIO VALIDO: il ritiro è definitivo, non si annulla più dalla tessera
+shop.post('/api/card/:token/redeem/close', (req, res) => {
+  const { ctx } = req;
+  const customer = ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  const r = recentSelfRedeem(ctx, customer);
+  if (r && r.id === req.body.id) ctx.db.updateCustomer(customer.id, { redeemClosed: r.id });
   res.json({ ok: true });
 });
 
@@ -421,7 +436,31 @@ async function cardData(ctx, customer) {
     selfRedeem: selfRedeemOn(ctx),
     lastRedeem: recentSelfRedeem(ctx, customer),
     rewardText: ctx.cfg.rewardText,
+    history: historyOf(ctx, customer),
+    servedAt: Date.now(), // la pagina capisce se arriva dalla copia salvata nel telefono (sw.js)
   };
+}
+
+// Ultime operazioni della tessera, dalla più recente: timbri (con il premio sbloccato) e premi ritirati.
+// Le operazioni annullate non compaiono.
+function historyOf(ctx, customer, limit = 8) {
+  const evs = ctx.db.eventsOf(customer.id);
+  const voided = new Set(evs.filter((e) => e.type === 'void').map((e) => e.ref));
+  const n = ctx.cfg.stampsForReward;
+  const out = [];
+  let stamps = 0;
+  for (const e of evs) {
+    if (voided.has(e.id)) continue;
+    if (e.type === 'stamp') {
+      stamps++;
+      const reward = stamps >= n;
+      if (reward) stamps -= n;
+      out.push({ type: 'stamp', at: e.at, reward });
+    } else if (e.type === 'redeem') {
+      out.push({ type: 'redeem', at: e.at });
+    }
+  }
+  return out.slice(-limit).reverse();
 }
 
 // Aggiornamenti in tempo reale per la tessera web (Server-Sent Events).
@@ -1211,7 +1250,9 @@ function monthNumbers(ctx, monthsAgo = 1) {
 const classReady = new Set(); // slug dei locali con la classe Google già creata/aggiornata
 async function ensureClass(ctx, { force = false } = {}) {
   if (!wallet.enabled() || (classReady.has(ctx.shop.slug) && !force)) return;
-  await images.get(shops.imageSpec(ctx.shop), 'logo.png'); // pronto prima che Google lo scarichi
+  // loghi pronti prima che Google li scarichi
+  await images.get(shops.imageSpec(ctx.shop), 'logo.png');
+  if (!ctx.shop.legacy) await images.get(shops.imageSpec(ctx.shop), 'wide-logo.png');
   await wallet.ensureClass(ctx.cfg);
   classReady.add(ctx.shop.slug);
 }

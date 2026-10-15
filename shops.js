@@ -81,7 +81,8 @@ function cfgOf(shop) {
     baseUrl,
     // logo del primo locale: per compatibilità può restare su un indirizzo esterno (LOGO_URL)
     logoUrl: (shop.legacy && process.env.LOGO_URL) || `${baseUrl}/logo.png?v=${v}`,
-    wideLogoUrl: shop.legacy && process.env.WIDE_LOGO_URL !== 'off' ? `${baseUrl}/wide-logo.png` : '',
+    // logo largo dell'intestazione Wallet: file fisso per il locale legacy, generato per gli altri (images.js)
+    wideLogoUrl: process.env.WIDE_LOGO_URL === 'off' ? '' : `${baseUrl}/wide-logo.png${shop.legacy ? '' : `?v=${v}`}`,
     stampsImageBase: `${baseUrl}/stamps`,
     imgVersion: v,
     walletQr: process.env.WALLET_QR === 'on',
@@ -91,7 +92,7 @@ function cfgOf(shop) {
 // Dati per generare le immagini (vedi images.js)
 function imageSpec(shop) {
   return {
-    slug: shop.slug, theme: shop.theme, stampsForReward: shop.stampsForReward, brandColor: shop.brandColor,
+    slug: shop.slug, name: shop.name, theme: shop.theme, stampsForReward: shop.stampsForReward, brandColor: shop.brandColor,
     imgVersion: shop.imgVersion || 1, logo: shop.logo || null,
     logoFile: shop.legacy && !shop.logo ? path.join(__dirname, 'public', 'logo.png') : null,
   };
@@ -225,7 +226,7 @@ async function create(input) {
 }
 
 // Campi che cambiano l'aspetto delle immagini: le immagini prendono una nuova versione
-const VISUAL = ['theme', 'brandColor', 'stampsForReward', 'logo'];
+const VISUAL = ['theme', 'brandColor', 'stampsForReward', 'logo', 'name'];
 
 function update(slug, input) {
   const ctx = get(slug);

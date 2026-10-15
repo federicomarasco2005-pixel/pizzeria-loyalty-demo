@@ -67,7 +67,7 @@ Tutti e tre sono esclusi da `.gitignore`.
 - **Kit di lancio PDF** (QR da tavolo, adesivi, istruzioni personale, testi social) mandato dal bot alla creazione di un locale.
 - **Report mensile PDF** il 1° del mese a proprietario e gestori.
 - **Dashboard dei locali (14 ottobre 2026, versione demo)**: nuova grafica (barra laterale, colori F5M). Panoramica con solo iscritti, clienti e ultime operazioni; Notifiche "In arrivo"; Impostazioni senza timbro NFC; tolto "Azzera dati demo". Le API del server sono rimaste tutte: si possono riattivare.
-- **"Usa il premio" dalla tessera del cliente**: schermata PREMIO VALIDO animata con orologio (anti-screenshot), premio segnato come consegnato (`by: 'customer'`), annullabile 10 minuti dalla tessera o dalla Cassa. Acceso di default, interruttore nel bot (scheda locale).
+- **"Usa il premio" dalla tessera del cliente**: schermata PREMIO VALIDO animata con orologio (anti-screenshot), premio segnato come consegnato (`by: 'customer'`), annullabile dalla tessera per 5 minuti finché il cliente non tocca "Fatto" (poi solo dalla Cassa): "Fatto" chiude il ritiro sul server (`customer.redeemClosed`), la schermata non torna più. Acceso di default, interruttore nel bot (scheda locale).
 - **Auto-deploy** vero dopo i test (app Render installata su GitHub; `autoDeployTrigger: checksPass` nel Blueprint).
 - **Database**: strumento di copia verificata `tools/copia-database.ps1` pronto per passare a Neon (gratis) prima della scadenza del Postgres Render (~31 ottobre).
 
@@ -160,6 +160,9 @@ render.yaml  Blueprint Render (servizio + database)
   - aggiornato con **PUT completo**, senza leggerlo prima;
   - i messaggi del pass li decide il server: resta solo l'ultimo messaggio attivo, con scadenza;
   - QR del Wallet spento di default (`WALLET_QR=on` per riaccenderlo).
+  - Testi anche in inglese (`localizedHeader/Body`, `localizedLabel`, `localizedDescription`): Google mostra la lingua del telefono. Il testo del premio resta quello scritto dal locale.
+  - **Buono premio**: con un premio da ritirare la tessera ha collegato un'offerta Google (`linkedOfferIds`, classe `<classSuffix>_premio`, oggetto `c_<id>_premio`); ritirato il premio il buono diventa `COMPLETED`.
+  - Ripieghi automatici su un rifiuto di Google (400), fino al riavvio: prima la GIF, poi il buono collegato, poi le traduzioni. La tessera si aggiorna comunque.
 - **Immagine principale**: striscia 3:1 (1032×336) con i timbri.
   - Subito dopo un timbro c'è una **GIF animata**: il timbro entra girando con il "+1". Si riproduce una volta sola e l'ultimo fotogramma dura circa 11 minuti.
   - Dopo `WALLET_ANIM_MINUTES` (default 2) il server rimette il **PNG fisso**.
@@ -173,7 +176,7 @@ render.yaml  Blueprint Render (servizio + database)
 
 ### 4.5 Immagini (images.js)
 - Generate al volo, tenute in memoria (fino a circa 400 file) e preparate in anticipo prima di passarle a Google. Generarne un set richiede circa 0,3 s.
-- Indirizzi per locale: `stamps/grid-N-k.png`, `stamps/anim-N-k.gif`, `stamps/anim-N-reward.gif`, `stamps/icon(-empty).png`, `icons/icon-192|512|apple-touch-icon.png`, `logo.png`.
+- Indirizzi per locale: `stamps/grid-N-k.png`, `stamps/anim-N-k.gif`, `stamps/anim-N-reward.gif`, `stamps/icon(-empty).png`, `icons/icon-192|512|apple-touch-icon.png`, `logo.png`, `wide-logo.png` (logo largo del Wallet: timbro + nome in Inter, font in `fonts/`; il locale legacy usa il file `public/wide-logo.png`).
 - 6 temi disegnati come forme vettoriali, senza font né emoji sul server. Il tema "logo" usa il logo caricato.
 - I timbri "spenti" sono la versione in grigio scuro di quelli pieni.
 - Il "+1" è disegnato come forma: il server non ha bisogno di font.
@@ -195,7 +198,7 @@ render.yaml  Blueprint Render (servizio + database)
 | Pagina | Indirizzo | Cosa fa |
 |---|---|---|
 | index.html | `/<slug>/` | Iscrizione (nome, email, consenso al regolamento obbligatorio, marketing facoltativo). Email già usata: modulo di recupero con codice ed email. |
-| card.html | `/<slug>/card/<token>` | Tessera animata, aggiornata in tempo reale. Contiene: pulsante "Aggiungi a Google Wallet" (nascosto su iPhone o se già salvata), "📲 Salva sul telefono" (guida passo passo per iPhone, installazione per Android), QR per la cassa, recensione Google, messaggi del locale, privacy, scarica i miei dati, elimina la tessera, consenso alle offerte. Ogni tessera ha il suo manifest, così l'icona sulla Home riapre proprio quella tessera. |
+| card.html | `/<slug>/card/<token>` | Tessera animata, aggiornata in tempo reale. Contiene: pulsante "Aggiungi a Google Wallet" (nascosto su iPhone o se già salvata), "📲 Salva sul telefono" (guida passo passo per iPhone, installazione per Android), fronte con timbri, barra di avanzamento, premio e codice; retro con il QR (si gira toccando la tessera o "Mostra il QR in cassa"), QR a tutto schermo con lo schermo sempre acceso (si apre da solo con `?qr=1`), riflesso lucido che segue dito/inclinazione, recensione Google, messaggi del locale, ultime visite, "Privacy e impostazioni" chiuso in fondo (consenso, privacy, scarica i miei dati, elimina la tessera). Modalità scura automatica; inglese se il telefono non è in italiano (`?lang=en|it` per forzarla). Il service worker la apre subito dalla copia salvata (anche col server addormentato) e la pagina si aggiorna appena il server risponde; la rilettura ogni 15 s solo se la connessione live è caduta. Ogni tessera ha il suo manifest, così l'icona sulla Home riapre proprio quella tessera. |
 | tap.html | `/<slug>/tap/<segreto>` | Timbro NFC (vedi 4.6). |
 | staff.html | `/<slug>/staff` | Cassa: PIN, scanner QR, ricerca (il codice completo apre subito la tessera), +1 timbro, consegna premio, annulla, feed live dei timbri NFC. I dipendenti non vedono il link alla dashboard. |
 | admin.html | `/<slug>/admin` | Dashboard, **solo con il PIN del gestore**. **Panoramica**: numeri, clienti (con 🗑️ per cancellarli), storico con chi ha timbrato. **Notifiche**: segmenti, consenso, durata del messaggio (1/3/7/14 giorni), programmazione, storico, annulla, "elimina dalle tessere". **Impostazioni**: link recensione, Maps, telefono, NFC. |
@@ -313,7 +316,7 @@ render.yaml  Blueprint Render (servizio + database)
 11. **Scalabilità**: tutti i dati di tutti i locali vengono caricati in memoria all'avvio. Va bene fino a decine di migliaia di clienti. Oltre servono query su database invece della memoria.
     - `findByRequestId` scorre tutti gli eventi: va bene oggi, da indicizzare in futuro.
 12. **Accesso dei gestori**: login solo con PIN, nessun account con password o email. Il PIN resta nel browser del dispositivo della cassa.
-13. **Locali nuovi**: nel Wallet non hanno il logo largo (serve un font sul server). Mostrano logo tondo e nome.
+13. **Logo largo dei locali nuovi**: generato dal server con il font Inter (`fonts/`, licenza OFL). Cambiando il nome del locale si rigenera.
 14. **Nessun pagamento** (abbonamenti, Stripe) e **nessun report via email**: solo Telegram.
 
 ---

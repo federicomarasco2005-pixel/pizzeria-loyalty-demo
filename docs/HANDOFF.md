@@ -53,7 +53,7 @@
 - Progetto spostato sul nuovo PC, Node 24 + Git installati, cartella collegata a GitHub.
 - **Tessera web istantanea** (dati nella pagina, saldo nell'avviso live, niente attese di Google) e **Wallet più veloce** (GIF in un thread separato e preparate all'avvio, aggiornamenti in coda).
 - Bot: avviso solo per **nuova versione** (non a ogni risveglio), **kit di lancio PDF**, **report mensile PDF**, **messaggi automatici** ("Ti manca 1 timbro", recensione dopo la 3ª visita, "Ci manchi" a 21 giorni con consenso), scontrino medio, cambio indirizzo del locale, interruttore "premio dal telefono del cliente".
-- **"Usa il premio"** dalla tessera: schermata PREMIO VALIDO animata (anti-screenshot), annullabile 10 minuti.
+- **"Usa il premio"** dalla tessera: schermata PREMIO VALIDO animata (anti-screenshot); il cliente annulla entro 5 minuti ma non dopo aver toccato "Fatto"; poi solo la Cassa.
 - Dominio **f5m.it** comprato su Aruba, collegato a Render, sito ufficiale F5M, sottodomini pronti.
 - Nuova grafica per **dashboard, Cassa, QR da tavolo**.
 - Strumento di **copia verificata del database** (`tools/copia-database.js` + `.ps1`).

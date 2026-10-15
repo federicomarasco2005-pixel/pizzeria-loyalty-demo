@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/style.css">
   <!-- Tessera installabile sul telefono (icona sulla schermata Home, si apre come un'app) -->
   <meta name="theme-color" content="#b3261e">
+  <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -14,7 +15,69 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="manifest" id="manifest">
   <style>
-    /* Schermata "PREMIO VALIDO": colori in movimento e orologio coi secondi, così uno screenshot non basta */
+    /* ---------- Modalità scura (segue il telefono) ---------- */
+    @media (prefers-color-scheme: dark) {
+      :root { --cream: #15110f; --ink: #f2ebe5; --muted: #a8998f; --line: #3a302a; --card: #221c19; }
+      .install, .sheet-panel { background: var(--card); border-color: var(--line); }
+      .btn.ghost { background: var(--card); }
+      .btn.dark { --bg: #3a3634; }
+      .toast { background: #f2ebe5; color: #15110f; }
+      .passcard { box-shadow: 0 14px 34px rgba(0,0,0,.45); }
+    }
+
+    /* ---------- Tessera con fronte e retro ---------- */
+    .flip { perspective: 1400px; cursor: pointer; -webkit-user-select: none; user-select: none; }
+    .flip-inner {
+      display: grid; transform-style: preserve-3d; transition: transform .7s cubic-bezier(.3, 1.3, .5, 1);
+      transform: rotateX(var(--rx, 0deg)) rotateY(calc(var(--ry, 0deg) + var(--turn, 0deg)));
+    }
+    .flip.moving .flip-inner { transition: transform .15s ease-out; } /* inclinazione col dito: segue subito */
+    .flip.flipped { --turn: 180deg; }
+    .face { grid-area: 1 / 1; position: relative; -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+    .face.back { transform: rotateY(180deg); display: flex; flex-direction: column; }
+    /* Riflesso lucido: segue il dito o l'inclinazione del telefono */
+    .shine {
+      position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2;
+      background:
+        radial-gradient(circle at var(--mx, 20%) var(--my, 0%), rgba(255,255,255,.2), rgba(255,255,255,0) 42%),
+        linear-gradient(calc(105deg + var(--sx, 0deg)), rgba(255,255,255,0) 38%, rgba(255,255,255,.09) 48%, rgba(255,255,255,0) 58%);
+      mix-blend-mode: soft-light; transition: opacity .3s;
+    }
+    .passcard .top { position: relative; z-index: 3; }
+    .pass-reward { text-align: right; min-width: 0; }
+    .pass-reward .pass-value { font-size: 1rem; line-height: 1.25; }
+    .progress { margin: 2px 0 14px; height: 8px; background: rgba(255,255,255,.22); }
+    .pass-foot .code { font-variant-numeric: tabular-nums; letter-spacing: .12em; }
+    .back .qrbox { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; margin-top: 14px; }
+    .back .qrwhite { background: #fff; border-radius: 18px; padding: 12px; box-shadow: 0 8px 22px rgba(0,0,0,.25); }
+    .back .qrwhite img { display: block; width: 190px; height: 190px; }
+    .back .bigcode { font-size: 1.5rem; font-weight: 800; letter-spacing: .12em; }
+    .back .hint { font-size: .8rem; opacity: .85; }
+    .back .fullbtn { margin-top: 8px; background: rgba(255,255,255,.18); color: #fff; border: 1.5px solid rgba(255,255,255,.6); border-radius: 999px;
+      padding: 9px 16px; font: inherit; font-weight: 700; font-size: .9rem; cursor: pointer; }
+    .turn-hint { font-size: .75rem; opacity: .8; }
+
+    /* ---------- QR a tutto schermo per la cassa ---------- */
+    .qrfull { position: fixed; inset: 0; z-index: 90; background: #fff; color: #1d1b19; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; animation: fadeIn .2s ease-out both; }
+    @keyframes fadeIn { from { opacity: 0; } }
+    .qrfull img { width: min(78vw, 380px); height: min(78vw, 380px); image-rendering: pixelated; }
+    .qrfull .bigcode { font-size: 2rem; font-weight: 900; letter-spacing: .14em; }
+    .qrfull .who { font-weight: 700; color: #555; }
+    .qrfull .close { color: #777; font-size: .9rem; }
+
+    /* ---------- Ultime visite ---------- */
+    .visits summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 700; }
+    .visits summary::-webkit-details-marker { display: none; }
+    .visits summary::after { content: "›"; font-size: 1.4rem; color: var(--muted); transition: transform .2s; }
+    .visits[open] summary::after { transform: rotate(90deg); }
+    .visits ul { list-style: none; margin: 12px 0 0; padding: 0; }
+    .visits li { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+    .visits li .dot { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center;
+      background: color-mix(in srgb, var(--brand) 14%, transparent); font-size: 1.05rem; }
+    .visits li .when { margin-left: auto; color: var(--muted); font-size: .85rem; white-space: nowrap; }
+
+    /* ---------- Schermata "PREMIO VALIDO": colori in movimento e orologio coi secondi, così uno screenshot non basta ---------- */
     .valid { position: fixed; inset: 0; z-index: 60; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;
       text-align: center; padding: 24px 16px; gap: 10px;
       background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 55%, #000), #1b5e20, var(--brand));
@@ -31,6 +94,7 @@
     .valid .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; justify-content: center; }
     .valid button { border: 2px solid rgba(255,255,255,.85); background: transparent; color: #fff; border-radius: 14px; padding: 12px 16px; font-weight: 700; font-size: 1rem; }
     .valid button.solid { background: #fff; color: #1d1b19; border-color: #fff; }
+
     /* Privacy e impostazioni: una riga discreta in fondo, il resto si apre al tocco */
     .more { margin-top: 36px !important; text-align: center; }
     .more summary { display: inline-block; list-style: none; cursor: pointer; color: var(--muted); opacity: .6; font-size: .78rem; padding: 6px 10px; }
@@ -41,6 +105,8 @@
     .more-panel .check { margin: 8px 0; color: var(--ink); }
     .more-panel a { color: var(--ink); text-decoration: none; font-size: .9rem; padding: 11px 0; border-top: 1px solid var(--line); }
     .more-panel a.danger { color: var(--brand); }
+
+    @media (prefers-reduced-motion: reduce) { .flip-inner { transition: none; } .shine { display: none; } }
   </style>
   <script>
     // manifest della singola tessera: l'icona installata riapre proprio questa tessera
@@ -50,117 +116,150 @@
 <body>
   <main class="wrap stack">
     <div id="notfound" class="panel hidden">
-      <h2>Tessera non trovata</h2>
-      <a class="btn" href="./"><span class="ico">🍕</span> Iscriviti</a>
+      <h2 data-t="notFound">Tessera non trovata</h2>
+      <a class="btn" href="./"><span class="ico">🍕</span> <span data-t="signUp">Iscriviti</span></a>
     </div>
 
     <div id="card" class="hidden stack">
-      <p class="muted" style="margin:0">Ciao <strong id="hello"></strong> 👋</p>
+      <p class="muted" style="margin:0"><span data-t="hello">Ciao</span> <strong id="hello"></strong> 👋</p>
 
-      <!-- Tessera: i timbri sono l'elemento principale -->
-      <section class="passcard" id="pass">
-        <div class="top">
-          <img src="logo.png" alt="">
-          <strong data-cfg="pizzeriaName" style="flex:1"></strong>
-          <span class="live" id="live">live</span>
+      <!-- Tessera: fronte con i timbri, retro con il QR per la cassa. Si gira toccandola. -->
+      <div class="flip" id="flip" role="button" tabindex="0" aria-label="Gira la tessera">
+        <div class="flip-inner">
+          <section class="passcard face front" id="pass">
+            <div class="shine"></div>
+            <div class="top">
+              <img src="logo.png" alt="">
+              <strong data-cfg="pizzeriaName" style="flex:1"></strong>
+              <span class="live" id="live">live</span>
+            </div>
+
+            <div class="stamps tiles" id="stamps"></div>
+            <div class="progress" aria-hidden="true"><div id="bar" style="width:0"></div></div>
+
+            <div class="pass-row">
+              <div>
+                <div class="pass-label" data-t="stamps">Timbri</div>
+                <div class="pass-value"><span id="count">0</span> / <span id="total"></span></div>
+              </div>
+              <div class="pass-reward" id="rewardInfo">
+                <div class="pass-label" data-t="reward">Premio</div>
+                <div class="pass-value" id="rewardName"></div>
+              </div>
+              <div id="reward" class="hidden"><span class="badge">🎁 <span id="rewardsN"></span> <span id="rewardsLabel"></span></span></div>
+            </div>
+
+            <div class="pass-foot">
+              <span class="code" id="footCode"></span>
+              <span id="missing"></span>
+            </div>
+          </section>
+
+          <section class="passcard face back" id="back" aria-hidden="true">
+            <div class="shine"></div>
+            <div class="top">
+              <img src="logo.png" alt="">
+              <strong data-cfg="pizzeriaName" style="flex:1"></strong>
+              <span class="turn-hint" data-t="tapToFlip">↺ Tocca per girare</span>
+            </div>
+            <div class="qrbox">
+              <div class="qrwhite"><img id="qr" alt="QR della tessera"></div>
+              <div class="hint" data-t="orSayCode">oppure di' il codice in cassa</div>
+              <div class="bigcode" id="code"></div>
+              <button class="fullbtn" id="fullBtn" type="button">⛶ <span data-t="fullScreen">Schermo intero</span></button>
+            </div>
+          </section>
         </div>
-
-        <div class="stamps tiles" id="stamps"></div>
-
-        <div class="pass-row">
-          <div>
-            <div class="pass-label">Timbri</div>
-            <div class="pass-value"><span id="count">0</span> / <span id="total"></span></div>
-          </div>
-          <div id="reward" class="hidden"><span class="badge">🎁 <span id="rewardsN"></span> premio da ritirare</span></div>
-        </div>
-
-        <div class="pass-foot">
-          <span data-cfg="pizzeriaName"></span>
-          <span id="missing"></span>
-        </div>
-      </section>
+      </div>
 
       <!-- Premio pronto: il cliente lo ritira da solo, davanti al personale -->
-      <button class="btn ok big pulse hidden" id="useReward"><span class="ico">🎁</span> Usa il premio</button>
+      <button class="btn ok big pulse hidden" id="useReward"><span class="ico">🎁</span> <span data-t="useReward">Usa il premio</span></button>
 
       <a id="save" class="gwallet hidden" target="_blank" rel="noopener" aria-label="Aggiungi a Google Wallet">
         <img src="/wallet-button-it.svg" alt="Aggiungi a Google Wallet">
       </a>
-      <p id="inwallet" class="muted small center hidden" style="margin:0">✓ Tessera già nel tuo Google Wallet</p>
-      <p id="nowallet" class="muted small hidden">Google Wallet non configurato su questo server: salva questa pagina tra i preferiti.</p>
+      <p id="inwallet" class="muted small center hidden" style="margin:0" data-t="inWallet">✓ Tessera già nel tuo Google Wallet</p>
+      <p id="nowallet" class="muted small hidden" data-t="noWallet">Google Wallet non configurato su questo server: salva questa pagina tra i preferiti.</p>
 
       <!-- Salva la tessera sul telefono (soprattutto iPhone, dove Google Wallet non c'è) -->
       <section id="install" class="install hidden">
         <div class="install-row">
           <img src="icons/icon-192.png" alt="" class="install-ico">
           <div>
-            <strong>Salva la tessera sul telefono</strong>
-            <div class="small muted" id="installSub">Un'icona sulla schermata Home: la apri con un tocco, come un'app. Niente da scaricare.</div>
+            <strong data-t="installTitle">Salva la tessera sul telefono</strong>
+            <div class="small muted" id="installSub"></div>
           </div>
         </div>
-        <button class="btn" id="installBtn"><span class="ico">📲</span> Salva sul telefono</button>
-        <button class="install-later small" id="installLater">Più tardi</button>
+        <button class="btn" id="installBtn"><span class="ico">📲</span> <span data-t="installBtn">Salva sul telefono</span></button>
+        <button class="install-later small" id="installLater" data-t="later">Più tardi</button>
       </section>
 
       <!-- Istruzioni passo passo (iPhone e telefoni senza installazione automatica) -->
       <div id="installSheet" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
         <div class="sheet-panel stack">
-          <h2 id="sheetTitle">Salva la tessera in 3 tocchi</h2>
+          <h2 id="sheetTitle" data-t="sheetTitle">Salva la tessera in 3 tocchi</h2>
           <ol class="steps" id="steps"></ol>
-          <button class="btn" id="sheetOk">Ho capito</button>
+          <button class="btn" id="sheetOk" data-t="gotIt">Ho capito</button>
         </div>
         <div class="sheet-arrow hidden" id="sheetArrow">⬇️</div>
       </div>
 
-      <!-- QR in secondo piano: si apre solo in cassa -->
-      <button class="btn dark" id="qrBtn"><span class="ico">▦</span> Mostra il QR in cassa</button>
-      <section id="qrPanel" class="panel center hidden">
-        <img id="qr" alt="QR della tessera" style="width:220px;height:220px">
-        <div class="muted">oppure di' il codice in cassa</div>
-        <div style="font-size:1.6rem;font-weight:800;letter-spacing:.08em" id="code"></div>
-      </section>
+      <!-- QR per la cassa: gira la tessera -->
+      <button class="btn dark" id="qrBtn"><span class="ico">▦</span> <span id="qrBtnText"></span></button>
 
       <a id="review" class="btn ghost hidden" target="_blank" rel="noopener">
-        <span class="ico">⭐</span> Lascia una recensione su Google
+        <span class="ico">⭐</span> <span data-t="review">Lascia una recensione su Google</span>
       </a>
 
       <section id="news" class="panel hidden">
-        <h2>📣 Dal locale</h2>
+        <h2>📣 <span data-t="news">Dal locale</span></h2>
         <div id="messages" class="stack"></div>
       </section>
+
+      <details class="panel visits hidden" id="visits">
+        <summary>🧾 <span data-t="visits" style="flex:1;margin-left:8px">Le tue visite</span></summary>
+        <ul id="visitList"></ul>
+      </details>
+
       <!-- I tuoi dati (privacy): chiusi in fondo, si aprono solo se servono -->
       <details class="more">
-        <summary>Privacy e impostazioni</summary>
+        <summary data-t="privacyMenu">Privacy e impostazioni</summary>
         <div class="more-panel">
           <label class="check small">
-            <input type="checkbox" id="consent"> <span>Voglio ricevere offerte e novità dal locale</span>
+            <input type="checkbox" id="consent"> <span data-t="consent">Voglio ricevere offerte e novità dal locale</span>
           </label>
-          <a href="privacy">Informativa privacy</a>
-          <a id="exportLink" download>Scarica i miei dati</a>
-          <a href="#" id="deleteLink" class="danger">Elimina la tessera</a>
+          <a href="privacy" data-t="privacy">Informativa privacy</a>
+          <a id="exportLink" download data-t="export">Scarica i miei dati</a>
+          <a href="#" id="deleteLink" class="danger" data-t="delete">Elimina la tessera</a>
         </div>
       </details>
     </div>
 
+    <div id="qrfull" class="qrfull hidden" role="dialog" aria-modal="true">
+      <div class="who" id="fullWho"></div>
+      <img id="qrBig" alt="QR della tessera">
+      <div class="bigcode" id="fullCode"></div>
+      <div class="close" data-t="tapToClose">Tocca per chiudere</div>
+    </div>
+
     <div id="valid" class="valid hidden" role="dialog" aria-modal="true" aria-labelledby="validTitle">
       <div class="tick">✓</div>
-      <h1 id="validTitle">PREMIO VALIDO</h1>
+      <h1 id="validTitle" data-t="validTitle">PREMIO VALIDO</h1>
       <div class="reward" id="validReward"></div>
       <div class="who" id="validWho"></div>
       <div class="clock" id="validClock"></div>
       <div class="small" id="validWhen"></div>
-      <div class="small">Mostra questo schermo al personale</div>
+      <div class="small" data-t="showStaff">Mostra questo schermo al personale</div>
       <div class="actions">
-        <button class="solid" id="validClose">Fatto</button>
-        <button id="validUndo">Annulla</button>
+        <button class="solid" id="validClose" data-t="done">Fatto</button>
+        <button id="validUndo"></button>
       </div>
     </div>
 
     <div id="deleted" class="panel hidden center">
-      <h2>Tessera eliminata</h2>
-      <p class="muted">I tuoi dati sono stati cancellati. Se l'avevi aggiunta a Google Wallet, lì risulta disattivata: puoi toglierla dal Wallet.</p>
-      <a class="btn" href="./"><span class="ico">🍕</span> Crea una nuova tessera</a>
+      <h2 data-t="deletedTitle">Tessera eliminata</h2>
+      <p class="muted" data-t="deletedText">I tuoi dati sono stati cancellati. Se l'avevi aggiunta a Google Wallet, lì risulta disattivata: puoi toglierla dal Wallet.</p>
+      <a class="btn" href="./"><span class="ico">🍕</span> <span data-t="newCard">Crea una nuova tessera</span></a>
     </div>
   </main>
 
@@ -171,36 +270,189 @@
     let cfg;
     let state = null; // { stamps, rewards }
 
+    // ---------- Lingua: italiano, oppure inglese se il telefono non è in italiano ----------
+    // ?lang=en / ?lang=it forza la lingua (per provarla, o per un link da dare ai turisti)
+    const LANG = new URLSearchParams(location.search).get('lang');
+    const EN = LANG ? LANG === 'en' : !/^it\b/i.test(navigator.language || 'it');
+    const LOCALE = EN ? 'en-GB' : 'it-IT';
+    const T = {
+      notFound: ['Tessera non trovata', 'Card not found'],
+      signUp: ['Iscriviti', 'Sign up'],
+      hello: ['Ciao', 'Hi'],
+      stamps: ['Timbri', 'Stamps'],
+      reward: ['Premio', 'Reward'],
+      rewardToCollect: ['premio da ritirare', 'reward to collect'],
+      rewardsToCollect: ['premi da ritirare', 'rewards to collect'],
+      missing1: ['Manca 1 timbro ›', '1 stamp to go ›'],
+      missingN: ['Mancano {n} timbri ›', '{n} stamps to go ›'],
+      tapToFlip: ['↺ Tocca per girare', '↺ Tap to flip'],
+      orSayCode: ["oppure di' il codice in cassa", 'or tell the staff your code'],
+      fullScreen: ['Schermo intero', 'Full screen'],
+      useReward: ['Usa il premio', 'Use your reward'],
+      inWallet: ['✓ Tessera già nel tuo Google Wallet', '✓ Card already in your Google Wallet'],
+      noWallet: ['Google Wallet non configurato su questo server: salva questa pagina tra i preferiti.', 'Google Wallet is not set up on this server: bookmark this page.'],
+      installTitle: ['Salva la tessera sul telefono', 'Save the card on your phone'],
+      installSub: ["Un'icona sulla schermata Home: la apri con un tocco, come un'app. Niente da scaricare.", 'An icon on your Home screen: open it with one tap, like an app. Nothing to download.'],
+      installSubIos: ["Su iPhone: un'icona sulla schermata Home che apre la tua tessera con un tocco, come un'app. Niente da scaricare.", 'On iPhone: a Home screen icon that opens your card with one tap, like an app. Nothing to download.'],
+      installBtn: ['Salva sul telefono', 'Save on phone'],
+      later: ['Più tardi', 'Later'],
+      sheetTitle: ['Salva la tessera in 3 tocchi', 'Save the card in 3 taps'],
+      gotIt: ['Ho capito', 'Got it'],
+      qrShow: ['Mostra il QR in cassa', 'Show QR at the till'],
+      qrHide: ['Torna alla tessera', 'Back to the card'],
+      review: ['Lascia una recensione su Google', 'Leave a Google review'],
+      news: ['Dal locale', 'News'],
+      visits: ['Le tue visite', 'Your visits'],
+      vStamp: ['Timbro', 'Stamp'],
+      vReward: ['Timbro · premio sbloccato!', 'Stamp · reward unlocked!'],
+      vRedeem: ['Premio ritirato', 'Reward collected'],
+      privacyMenu: ['Privacy e impostazioni', 'Privacy & settings'],
+      consent: ['Voglio ricevere offerte e novità dal locale', 'I want to receive offers and news'],
+      privacy: ['Informativa privacy', 'Privacy policy'],
+      export: ['Scarica i miei dati', 'Download my data'],
+      delete: ['Elimina la tessera', 'Delete the card'],
+      tapToClose: ['Tocca per chiudere', 'Tap to close'],
+      validTitle: ['PREMIO VALIDO', 'VALID REWARD'],
+      showStaff: ['Mostra questo schermo al personale', 'Show this screen to the staff'],
+      done: ['Fatto', 'Done'],
+      undo: ['Annulla', 'Undo'],
+      collectedAt: ['Ritirato alle {t}', 'Collected at {t}'],
+      confirmRedeem: ['Usare il premio adesso?\n\nFallo davanti al personale: mostra lo schermo che compare e il premio risulterà consegnato.', 'Use your reward now?\n\nDo it in front of the staff: show them the screen that appears and the reward will be marked as collected.'],
+      undone: ['Ritiro annullato: il premio è ancora tuo.', 'Cancelled: the reward is still yours.'],
+      rewardUnlocked: ['Premio sbloccato! ', 'Reward unlocked! '],
+      stampAdded: ['Timbro aggiunto! 🍕', 'Stamp added! 🍕'],
+      rewardGiven: ['Premio consegnato. Buon appetito! 🍕', 'Reward collected. Enjoy! 🍕'],
+      welcome: ['🎉 Benvenuto! Ecco il tuo primo timbro', '🎉 Welcome! Here is your first stamp'],
+      installed: ['✅ Tessera salvata sul telefono!', '✅ Card saved on your phone!'],
+      confirmDelete: ['Eliminare la tessera e tutti i tuoi dati (timbri e premi compresi)? Non si può annullare.', 'Delete the card and all your data (stamps and rewards included)? This cannot be undone.'],
+      consentOn: ['✅ Riceverai le offerte del locale', "✅ You'll receive our offers"],
+      consentOff: ['Non riceverai più offerte', "You won't receive offers anymore"],
+      deletedTitle: ['Tessera eliminata', 'Card deleted'],
+      deletedText: ["I tuoi dati sono stati cancellati. Se l'avevi aggiunta a Google Wallet, lì risulta disattivata: puoi toglierla dal Wallet.", 'Your data has been deleted. If you added the card to Google Wallet, it is now deactivated there: you can remove it.'],
+      newCard: ['Crea una nuova tessera', 'Create a new card'],
+    };
+    const t = (k, vars = {}) => (T[k] ? T[k][EN ? 1 : 0] : k).replace(/\{(\w+)\}/g, (_, v) => vars[v]);
+    if (EN) {
+      document.documentElement.lang = 'en';
+      document.title = 'My loyalty card';
+      document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = t(el.dataset.t); });
+    }
+    $('qrBtnText').textContent = t('qrShow');
+    $('installSub').textContent = t('installSub');
+    const fmtWhen = (iso) => new Date(iso).toLocaleString(LOCALE, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
     function paint(c, { animate = true } = {}) {
+      const n = c.stampsForReward;
       $('count').textContent = c.stamps;
-      $('total').textContent = c.stampsForReward;
-      renderStamps($('stamps'), c.stamps, c.stampsForReward, { animate });
-      const miss = c.stampsForReward - c.stamps;
-      $('missing').textContent = miss === 1 ? 'Manca 1 timbro ›' : 'Mancano ' + miss + ' timbri ›';
+      $('total').textContent = n;
+      renderStamps($('stamps'), c.stamps, n, { animate });
+      $('bar').style.width = (c.rewards > 0 && c.stamps === 0 ? 100 : Math.round((c.stamps / n) * 100)) + '%';
+      const miss = n - c.stamps;
+      $('missing').textContent = miss === 1 ? t('missing1') : t('missingN', { n: miss });
+      // premio pronto: al posto del nome del premio, il badge "da ritirare"
       $('reward').classList.toggle('hidden', c.rewards < 1);
+      $('rewardInfo').classList.toggle('hidden', c.rewards > 0);
       $('rewardsN').textContent = c.rewards;
+      $('rewardsLabel').textContent = t(c.rewards === 1 ? 'rewardToCollect' : 'rewardsToCollect');
       $('useReward').classList.toggle('hidden', !(selfRedeem && c.rewards > 0));
     }
 
+    // ---------- Fronte e retro ----------
+    function setFlipped(on) {
+      $('flip').classList.remove('moving'); // la rotazione usa l'animazione lenta
+      $('flip').classList.toggle('flipped', on);
+      $('back').setAttribute('aria-hidden', String(!on));
+      $('pass').setAttribute('aria-hidden', String(on));
+      $('qrBtnText').textContent = t(on ? 'qrHide' : 'qrShow');
+      on ? keepAwake() : releaseAwake();
+    }
+    $('flip').addEventListener('click', (e) => {
+      if (e.target.closest('#fullBtn')) return;
+      setFlipped(!$('flip').classList.contains('flipped'));
+    });
+    $('flip').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('flip').click(); } });
+    $('qrBtn').onclick = () => {
+      setFlipped(!$('flip').classList.contains('flipped'));
+      $('flip').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
+    // ---------- QR a tutto schermo (schermo sempre acceso finché è aperto) ----------
+    let wakeLock = null, wantAwake = false;
+    async function keepAwake() {
+      wantAwake = true;
+      try { if ('wakeLock' in navigator && !wakeLock) wakeLock = await navigator.wakeLock.request('screen'); wakeLock && wakeLock.addEventListener('release', () => { wakeLock = null; }); } catch {}
+    }
+    function releaseAwake() {
+      wantAwake = !$('qrfull').classList.contains('hidden') || $('flip').classList.contains('flipped');
+      if (!wantAwake && wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+    }
+    function openFullQr() {
+      $('qrfull').classList.remove('hidden');
+      keepAwake();
+    }
+    $('fullBtn').onclick = (e) => { e.stopPropagation(); openFullQr(); };
+    $('qrfull').onclick = () => { $('qrfull').classList.add('hidden'); releaseAwake(); };
+
+    // ---------- Riflesso lucido: dito sulla tessera o inclinazione del telefono ----------
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function tilt(px, py) { // px, py da 0 a 1
+      const s = $('flip').style;
+      s.setProperty('--mx', (px * 100).toFixed(1) + '%');
+      s.setProperty('--my', (py * 100).toFixed(1) + '%');
+      s.setProperty('--sx', ((px - 0.5) * 40).toFixed(1) + 'deg');
+      if (!still) {
+        s.setProperty('--rx', ((0.5 - py) * 8).toFixed(2) + 'deg');
+        s.setProperty('--ry', ((px - 0.5) * 10).toFixed(2) + 'deg');
+      }
+    }
+    function untilt() {
+      const s = $('flip').style;
+      $('flip').classList.remove('moving');
+      ['--rx', '--ry'].forEach((p) => s.removeProperty(p));
+    }
+    $('flip').addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch' && !e.isPrimary) return;
+      $('flip').classList.add('moving');
+      const r = $('flip').getBoundingClientRect();
+      tilt(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)));
+    });
+    $('flip').addEventListener('pointerleave', untilt);
+    $('flip').addEventListener('pointerup', (e) => { if (e.pointerType === 'touch') untilt(); });
+    // Android: l'inclinazione arriva senza permessi (su iPhone resta il riflesso col dito)
+    let tiltFrame = 0;
+    addEventListener('deviceorientation', (e) => {
+      if (e.beta === null || tiltFrame) return;
+      tiltFrame = requestAnimationFrame(() => {
+        tiltFrame = 0;
+        const px = Math.min(1, Math.max(0, 0.5 + (e.gamma || 0) / 60));
+        const py = Math.min(1, Math.max(0, 0.5 + ((e.beta || 45) - 45) / 60));
+        const s = $('flip').style;
+        s.setProperty('--mx', (px * 100).toFixed(1) + '%');
+        s.setProperty('--my', (py * 100).toFixed(1) + '%');
+        s.setProperty('--sx', ((px - 0.5) * 40).toFixed(1) + 'deg');
+      });
+    });
+
     // ---------- Ritiro del premio dal telefono del cliente ----------
     let selfRedeem = false, me = { name: '', rewardText: '' }, validTimer = null;
-    const closedValid = new Set(); // ritiri già chiusi dal cliente: la schermata non si riapre da sola
-    const hhmm = (d) => d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    // ritiri già chiusi con "Fatto": la schermata non si riapre, nemmeno ricaricando la pagina
+    const closedValid = new Set((() => { try { return JSON.parse(sessionStorage.getItem('closedValid') || '[]'); } catch { return []; } })());
+    const hhmm = (d) => d.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
 
     function openValid(r) {
       if (!r) return;
       $('validReward').textContent = me.rewardText;
       $('validWho').textContent = me.name + ' · ' + $('code').textContent;
-      $('validWhen').textContent = 'Ritirato alle ' + hhmm(new Date(r.at));
+      $('validWhen').textContent = t('collectedAt', { t: hhmm(new Date(r.at)) });
       $('valid').classList.remove('hidden');
       $('valid').dataset.id = r.id;
       clearInterval(validTimer);
       const tick = () => {
         const now = new Date();
-        $('validClock').textContent = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        $('validClock').textContent = now.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const left = Date.parse(r.undoUntil) - now;
         $('validUndo').classList.toggle('hidden', left <= 0);
-        if (left > 0) $('validUndo').textContent = 'Annulla (' + Math.floor(left / 60000) + ':' + String(Math.floor(left / 1000) % 60).padStart(2, '0') + ')';
+        if (left > 0) $('validUndo').textContent = t('undo') + ' (' + Math.floor(left / 60000) + ':' + String(Math.floor(left / 1000) % 60).padStart(2, '0') + ')';
       };
       tick();
       validTimer = setInterval(tick, 1000);
@@ -208,12 +460,13 @@
     }
     function closeValid() {
       closedValid.add($('valid').dataset.id);
+      try { sessionStorage.setItem('closedValid', JSON.stringify([...closedValid].slice(-20))); } catch {}
       $('valid').classList.add('hidden');
       clearInterval(validTimer);
     }
 
     $('useReward').onclick = async () => {
-      if (!confirm('Usare il premio adesso?\n\nFallo davanti al personale: mostra lo schermo che compare e il premio risulterà consegnato.')) return;
+      if (!confirm(t('confirmRedeem'))) return;
       $('useReward').disabled = true;
       try {
         const r = await api('api/card/' + encodeURIComponent(token) + '/redeem', { method: 'POST', body: { requestId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) } });
@@ -221,34 +474,41 @@
       } catch (err) { toast(err.message, 3500); }
       $('useReward').disabled = false;
     };
-    $('validClose').onclick = closeValid;
+    // "Fatto": il ritiro diventa definitivo anche sul server (niente più "Annulla", nemmeno ricaricando)
+    $('validClose').onclick = () => {
+      const id = $('valid').dataset.id;
+      closeValid();
+      api('api/card/' + encodeURIComponent(token) + '/redeem/close', { method: 'POST', body: { id } }).catch(() => {});
+    };
     $('validUndo').onclick = async () => {
       try {
         await api('api/card/' + encodeURIComponent(token) + '/redeem/undo', { method: 'POST', body: { id: $('valid').dataset.id } });
         closeValid();
-        toast('Ritiro annullato: il premio è ancora tuo.', 3500);
+        toast(t('undone'), 3500);
       } catch (err) { toast(err.message, 3500); }
     };
 
     function celebrate(prev, next) {
       const n = next.stampsForReward;
       if (next.rewards > prev.rewards) {
-        // Premio: si riempiono tutte le pizze, festa, poi si riparte da zero.
+        // Premio: si riempiono tutti i timbri, festa, poi si riparte da zero.
+        setFlipped(false);
         paint({ ...next, stamps: n, rewards: prev.rewards });
         plusOne('🎉'); confetti(); vibrate([80, 60, 80, 60, 200]);
-        toast('Premio sbloccato! ' + cfg.rewardText, 3500);
+        toast(t('rewardUnlocked') + cfg.rewardText, 3500);
         setTimeout(() => {
           [...$('stamps').children].forEach((d) => d.classList.add('gone'));
           setTimeout(() => paint(next, { animate: false }), 420);
         }, 1800);
       } else if (next.stamps > prev.stamps) {
+        setFlipped(false); // il timbro si vede sul fronte
         paint(next);
         plusOne('+' + (next.stamps - prev.stamps)); bump($('count')); vibrate(80);
         $('pass').classList.remove('flash'); void $('pass').offsetWidth; $('pass').classList.add('flash');
-        toast('Timbro aggiunto! 🍕');
+        toast(t('stampAdded'));
       } else if (next.rewards < prev.rewards && next.stamps === prev.stamps) {
         paint(next, { animate: false });
-        toast('Premio consegnato. Buon appetito! 🍕', 3000);
+        toast(t('rewardGiven'), 3000);
       } else {
         paint(next, { animate: false });
       }
@@ -260,11 +520,26 @@
       list.forEach((m) => {
         const d = document.createElement('div');
         d.className = 'msg';
-        const t = document.createElement('strong'); t.textContent = m.title;
+        const ti = document.createElement('strong'); ti.textContent = m.title;
         const b = document.createElement('div'); b.textContent = m.body;
-        const w = document.createElement('div'); w.className = 'small muted'; w.textContent = fmtDate(m.at);
-        d.append(t, b, w);
+        const w = document.createElement('div'); w.className = 'small muted'; w.textContent = fmtWhen(m.at);
+        d.append(ti, b, w);
         $('messages').appendChild(d);
+      });
+    }
+
+    function renderHistory(list) {
+      $('visits').classList.toggle('hidden', !list.length);
+      $('visitList').innerHTML = '';
+      list.forEach((h) => {
+        const li = document.createElement('li');
+        const dot = document.createElement('span'); dot.className = 'dot';
+        dot.textContent = h.type === 'redeem' ? '🎁' : h.reward ? '🎉' : '🍕';
+        const what = document.createElement('span');
+        what.textContent = t(h.type === 'redeem' ? 'vRedeem' : h.reward ? 'vReward' : 'vStamp');
+        const when = document.createElement('span'); when.className = 'when'; when.textContent = fmtWhen(h.at);
+        li.append(dot, what, when);
+        $('visitList').appendChild(li);
       });
     }
 
@@ -300,7 +575,7 @@
     }
     function updateInstall() {
       $('install').classList.toggle('hidden', !wantsInstall());
-      if (device.ios) $('installSub').textContent = 'Su iPhone: un\'icona sulla schermata Home che apre la tua tessera con un tocco, come un\'app. Niente da scaricare.';
+      if (device.ios) $('installSub').textContent = t('installSubIos');
     }
 
     const SHARE_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0a84ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>';
@@ -309,18 +584,29 @@
     function openSteps() {
       let steps;
       if (device.inApp) {
-        steps = [
+        steps = EN ? [
+          'Tap <strong>⋯</strong> (top or bottom) and choose <strong>"Open in browser"</strong> / <strong>"Open in Safari"</strong>.',
+          'On the page that opens, tap <strong>"Save on phone"</strong> again.',
+        ] : [
           'Tocca <strong>⋯</strong> (in alto o in basso) e scegli <strong>"Apri nel browser"</strong> / <strong>"Apri in Safari"</strong>.',
           'Nella pagina che si apre tocca di nuovo <strong>"Salva sul telefono"</strong>.',
         ];
       } else if (device.ios) {
-        steps = [
+        steps = EN ? [
+          'Tap ' + SHARE_ICON + ' <strong>Share</strong> ' + (device.iosOtherBrowser ? '(top right, in the address bar)' : '(bottom centre of the screen)') + '.',
+          'Scroll and tap ' + ADD_ICON + ' <strong>"Add to Home Screen"</strong>.',
+          'Tap <strong>"Add"</strong> at the top right. Done: you\'ll find the 🍕 icon among your apps!',
+        ] : [
           'Tocca ' + SHARE_ICON + ' <strong>Condividi</strong> ' + (device.iosOtherBrowser ? '(in alto a destra, nella barra dell\'indirizzo)' : '(in basso al centro dello schermo)') + '.',
           'Scorri e tocca ' + ADD_ICON + ' <strong>"Aggiungi alla schermata Home"</strong>.',
           'Tocca <strong>"Aggiungi"</strong> in alto a destra. Fatto: trovi l\'icona 🍕 tra le tue app!',
         ];
       } else {
-        steps = [
+        steps = EN ? [
+          'Tap the <strong>⋮</strong> menu at the top right of the browser.',
+          'Choose <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.',
+          'Confirm: you\'ll find the 🍕 icon among your apps!',
+        ] : [
           'Tocca il menu <strong>⋮</strong> in alto a destra del browser.',
           'Scegli <strong>"Installa app"</strong> oppure <strong>"Aggiungi a schermata Home"</strong>.',
           'Conferma: trovi l\'icona 🍕 tra le tue app!',
@@ -349,14 +635,20 @@
       $('install').classList.add('hidden');
     };
     addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; updateInstall(); });
-    addEventListener('appinstalled', () => { $('install').classList.add('hidden'); toast('✅ Tessera salvata sul telefono!', 3500); });
+    addEventListener('appinstalled', () => { $('install').classList.add('hidden'); toast(t('installed'), 3500); });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+    // Pagina aperta dalla copia salvata nel telefono (sw.js): i dati dentro possono essere vecchi.
+    // Il primo aggiornamento dal server allora li sostituisce senza festeggiare timbri già visti.
+    let fromCache = !!(window.CARD && window.CARD.servedAt && Date.now() - window.CARD.servedAt > 15000);
 
     async function load() {
       try {
-        show(await api('api/card/' + encodeURIComponent(token)));
+        const c = await api('api/card/' + encodeURIComponent(token));
+        show(c, { quiet: fromCache });
+        fromCache = false;
       } catch (err) {
-        if (err.status === 404 && !deleted) $('notfound').classList.remove('hidden');
+        if (err.status === 404 && !deleted) { $('card').classList.add('hidden'); $('notfound').classList.remove('hidden'); }
       }
     }
 
@@ -373,7 +665,7 @@
     }
 
     // Disegna la tessera con i dati completi (dalla pagina stessa o dal server)
-    function show(c) {
+    function show(c, { quiet = false } = {}) {
       selfRedeem = !!c.selfRedeem;
       me = { name: c.name, rewardText: c.rewardText || '' };
       // ritiro di pochi minuti fa (es. pagina ricaricata): la schermata "PREMIO VALIDO" torna visibile
@@ -382,8 +674,10 @@
       if (!state) {
         $('card').classList.remove('hidden');
         $('hello').textContent = c.name;
-        $('code').textContent = c.code;
-        $('qr').src = c.qr;
+        $('code').textContent = $('footCode').textContent = $('fullCode').textContent = c.code;
+        $('fullWho').textContent = c.name;
+        $('qr').src = $('qrBig').src = c.qr;
+        $('rewardName').textContent = cfg.rewardShort || cfg.rewardText;
         if (c.saveUrl) $('save').href = c.saveUrl;
         else $('nowallet').classList.remove('hidden');
         paintWallet(c);
@@ -400,7 +694,7 @@
           if (welcome) {
             // nuovo cliente iscritto al timbro: subito l'invito a salvare la tessera sul telefono
             setTimeout(() => {
-              toast('🎉 Benvenuto! Ecco il tuo primo timbro', 3500);
+              toast(t('welcome'), 3500);
               updateInstall();
               if (!$('install').classList.contains('hidden')) {
                 $('install').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -411,18 +705,20 @@
           state = next;
           if (c.reviewUrl) { $('review').href = c.reviewUrl; $('review').classList.remove('hidden'); }
           renderMessages(c.messages || []);
+          renderHistory(c.history || []);
           return;
         }
         paint(next, { animate: false });
         state = next;
-        // Arrivati dal link "Mostra il QR per la cassa" del Wallet: QR già aperto
-        if (params.has('qr')) $('qrBtn').click();
-      } else if (!applyState(c)) {
+        // Arrivati dal link "Mostra il QR per la cassa" del Wallet: QR subito a tutto schermo
+        if (params.has('qr')) { history.replaceState(null, '', location.pathname); openFullQr(); }
+      } else if (!applyState(c, { quiet })) {
         return; // risposta superata da un aggiornamento in tempo reale
       }
       if (c.reviewUrl) { $('review').href = c.reviewUrl; $('review').classList.remove('hidden'); }
       else $('review').classList.add('hidden');
       renderMessages(c.messages || []);
+      renderHistory(c.history || []);
       paintWallet(c);
       if (document.activeElement !== $('consent')) $('consent').checked = !!c.consentMarketing;
     }
@@ -430,7 +726,7 @@
     $('exportLink').href = 'api/card/' + encodeURIComponent(token) + '/export';
     $('deleteLink').onclick = async (e) => {
       e.preventDefault();
-      if (!confirm('Eliminare la tessera e tutti i tuoi dati (timbri e premi compresi)? Non si può annullare.')) return;
+      if (!confirm(t('confirmDelete'))) return;
       try {
         await api('api/card/' + encodeURIComponent(token) + '/delete', { method: 'POST', body: { confirm: true } });
         try { localStorage.removeItem('cardToken:' + SHOP.slug); if (SHOP.legacy) localStorage.removeItem('cardToken'); } catch {}
@@ -443,24 +739,20 @@
     $('consent').onchange = async () => {
       try {
         const r = await api('api/card/' + encodeURIComponent(token) + '/consent', { method: 'POST', body: { consentMarketing: $('consent').checked } });
-        toast(r.consentMarketing ? '✅ Riceverai le offerte del locale' : 'Non riceverai più offerte');
+        toast(t(r.consentMarketing ? 'consentOn' : 'consentOff'));
       } catch (err) { toast(err.message); }
-    };
-
-    $('qrBtn').onclick = () => {
-      const open = $('qrPanel').classList.toggle('hidden') === false;
-      $('qrBtn').lastChild.textContent = open ? ' Nascondi il QR' : ' Mostra il QR in cassa';
-      if (open) $('qrPanel').scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
 
     // Tempo reale: il server avvisa appena la cassa assegna un timbro o il locale manda un messaggio.
     // L'avviso contiene già il nuovo saldo: il timbro compare subito, senza altre richieste.
     // Solo messaggi e stato del Wallet richiedono di rileggere la tessera.
-    let reloadT;
+    let reloadT, es = null;
+    const liveOk = () => es && es.readyState === 1;
     function connect() {
       if (!window.EventSource) return;
-      const es = new EventSource('api/card/' + encodeURIComponent(token) + '/stream');
-      es.onopen = () => $('live').classList.remove('off');
+      es = new EventSource('api/card/' + encodeURIComponent(token) + '/stream');
+      // a ogni (ri)connessione si rilegge la tessera una volta: recupera ciò che è successo nel frattempo
+      es.onopen = () => { $('live').classList.remove('off'); load(); };
       es.onmessage = (e) => {
         let ev = {};
         try { ev = JSON.parse(e.data); } catch {}
@@ -477,8 +769,13 @@
       // dati della tessera già nella pagina (window.CARD): si disegna subito, senza attese
       if (window.CARD && window.CARD.code) { show(window.CARD); connect(); }
       else load().then(connect);
-      setInterval(load, 15000); // rete di sicurezza se la connessione live cade
-      document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+      // rete di sicurezza: si rilegge la tessera ogni 15 s solo se la connessione live è caduta
+      setInterval(() => { if (!document.hidden && !liveOk()) load(); }, 15000);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) return;
+        if (wantAwake) keepAwake(); // il blocco dello schermo si perde quando si cambia app
+        if (!liveOk()) load();
+      });
     });
   </script>
 </body>
