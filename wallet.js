@@ -222,7 +222,7 @@ async function upsertObject(c, customer, state, { notifyOnUpdate = false, messag
     }
   };
   // Buono premio collegato: se non si riesce a prepararlo la tessera si aggiorna comunque, senza buono
-  const offerId = await syncOffer(c, customer, state).catch((err) => {
+  const offerId = await syncOffer(c, customer, state, extras.selfRedeem !== false).catch((err) => {
     console.warn(`[wallet] buono premio non aggiornato: ${err.message}`);
     return null;
   });
@@ -296,7 +296,8 @@ async function ensureOfferClass(c) {
 }
 
 // Restituisce l'id del buono da collegare alla tessera (solo con un premio da ritirare), altrimenti null.
-async function syncOffer(c, customer, state) {
+// selfRedeem: il locale permette il ritiro del premio dal telefono del cliente (impostazione del locale)
+async function syncOffer(c, customer, state, selfRedeem = true) {
   if (!offersSupported) return null;
   const id = offerObjectId(customer);
   const active = state.rewards > 0;
@@ -312,6 +313,13 @@ async function syncOffer(c, customer, state) {
       },
       textModulesData: [textModule('premio', ['Premio', 'Reward'],
         [state.rewards > 1 ? `${c.rewardText} (×${state.rewards})` : c.rewardText], i18nSupported)],
+      // Link al ritiro: la tessera web chiede subito "Usare il premio adesso?" (o, se il locale ha spento
+      // il ritiro dal telefono, apre il QR a tutto schermo da mostrare in cassa). Vedi card.html (?premio=1).
+      linksModuleData: {
+        uris: [link('ritira', `${c.baseUrl}/card/${customer.token}?premio=1`, selfRedeem
+          ? ['🎁 Ritira il premio', '🎁 Collect your reward']
+          : ['🔳 Mostra il QR in cassa per ritirarlo', '🔳 Show the QR code at the till to collect it'], i18nSupported)],
+      },
     };
     try {
       await request('PUT', `${BASE}/offerObject/${id}`, body);

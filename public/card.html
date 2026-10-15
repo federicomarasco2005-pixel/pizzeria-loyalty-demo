@@ -712,6 +712,13 @@
         state = next;
         // Arrivati dal link "Mostra il QR per la cassa" del Wallet: QR subito a tutto schermo
         if (params.has('qr')) { history.replaceState(null, '', location.pathname); openFullQr(); }
+        // Arrivati dal link "Ritira il premio" del buono nel Wallet: subito la richiesta di ritiro
+        // (se il locale non permette il ritiro dal telefono, il QR da mostrare in cassa)
+        if (params.has('premio')) {
+          history.replaceState(null, '', location.pathname);
+          if (c.rewards > 0 && selfRedeem) setTimeout(() => $('useReward').click(), 400);
+          else if (c.rewards > 0) openFullQr();
+        }
       } else if (!applyState(c, { quiet })) {
         return; // risposta superata da un aggiornamento in tempo reale
       }

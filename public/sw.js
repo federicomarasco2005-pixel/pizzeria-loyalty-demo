@@ -31,8 +31,9 @@ self.addEventListener('fetch', (e) => {
     }
     return res;
   });
-  // Arrivo dal timbro NFC o dall'iscrizione (?from=, ?welcome): serve la pagina appena generata
-  if (isCardPage(url) && !url.searchParams.has('from') && !url.searchParams.has('welcome')) {
+  // Arrivo dal timbro NFC, dall'iscrizione o dal buono premio (?from=, ?welcome, ?premio): serve la pagina
+  // appena generata, con il saldo vero
+  if (isCardPage(url) && !['from', 'welcome', 'premio'].some((p) => url.searchParams.has(p))) {
     // Tessera: subito la copia salvata (se c'è), intanto si aggiorna per la prossima apertura
     e.waitUntil(fresh.catch(() => {}));
     e.respondWith(caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fresh));
