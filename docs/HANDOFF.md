@@ -1,6 +1,6 @@
 # Passaggio di consegne — F5M tessere fedeltà
 
-*Aggiornato il 15 ottobre 2026, a fine sessione. Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
+*Aggiornato il 16 ottobre 2026, a fine sessione. Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
 
 ---
 
@@ -13,7 +13,7 @@
 
 ---
 
-## 2. Dove stiamo (stato al 15/10/2026)
+## 2. Dove stiamo (stato al 16/10/2026)
 
 | Cosa | Stato |
 |---|---|
@@ -22,10 +22,11 @@
 | Sottodomini (`da-mario.f5m.it`) | Codice pronto e testato, DNS su Aruba fatto (`*`, `_acme-challenge`, `_cf-custom-hostname`), `*.f5m.it` aggiunto su Render. **Manca il certificato HTTPS di Render per `*.f5m.it`** (bloccato da giorni). Quando c'è: togliere il commento a `SHOP_DOMAIN` in `render.yaml` |
 | Dashboard locali | Nuova grafica F5M "versione demo": Panoramica (iscritti, clienti, ultime operazioni), Notifiche "In arrivo", Impostazioni (recensioni, contatti) |
 | Cassa e QR da tavolo | Nuova grafica F5M (stile comune in `public/f5m.css`). **Fotocamera della Cassa da provare su un telefono vero** |
-| Google Wallet | Ancora in **modalità demo** (solo account di prova possono salvare la tessera). Richiesta di pubblicazione non ancora inviata |
+| Google Wallet | **Richiesta di pubblicazione inviata il 16/10** (risposta via email in 2–3 giorni lavorativi; se dopo 3 giorni niente → contattare l'assistenza dalla console). Fino all'approvazione resta in modalità demo. Profilo attività completo: nome pubblico **F5M**, MCC 5734, sito, assistenza, email e telefono; profilo pagamenti "Privato" già esistente di Federico collegato. Logo F5M (`contesto/wallet-pubblicazione/logo-f5m-1024.png`) non risultava salvato: facoltativo, da ricaricare. Provato da Federico sul suo Android il 16/10: funziona. Novità 16/10: logo largo generato per tutti i locali (font Inter in `fonts/`), testi in inglese, **buono premio** collegato (Offer) con link "🎁 Ritira il premio" (`?premio=1`) |
+| Tessera web | Nuova (16/10): apertura immediata dalla copia salvata (service worker), premio + barra sul fronte, retro con QR (la carta si gira), QR a tutto schermo con schermo acceso, riflesso lucido, ultime visite, modalità scura, inglese (`?lang=en`), "Privacy e impostazioni" chiuso in fondo |
 | Database | **Postgres gratuito di Render: scade ~31 ottobre 2026**, cancellato ~14 novembre. Nessun backup automatico tranne quello settimanale sul bot |
-| Server | Render gratuito: si addormenta dopo 15 min (~50 s al risveglio). Federico ha deciso di rimandare le spese |
-| Test | 31 test, tutti verdi (`npm test`) |
+| Server | Render gratuito: si addormenta dopo 15 min e al risveglio Render mostra la sua pagina "SERVICE WAKING UP" (~30–50 s). Proposto un pinger gratuito (cron-job.org su `https://f5m.it/api/cron` ogni 10 min, 744 h/mese stanno nelle 750 gratuite) o Starter 7 $/mese: Federico il 16/10 ha detto **di no per ora** |
+| Test | 33 test, tutti verdi (`npm test`) |
 | Pubblicazione | `git push` da questo PC funziona; Render pubblica da solo dopo i test (app Render installata su GitHub) |
 
 ---
@@ -41,14 +42,15 @@
    - **Cassa carica `html5-qrcode` da unpkg senza controllo d'integrità** → copia locale in `public/` (o hash SRI).
    - **Blocco PIN solo in memoria** (si azzera a ogni riavvio, frequente sul piano gratuito) → salvarlo nel database + limite per locale. Verificare che `STAFF_PIN` su Render sia impostato (altrimenti da-mario ha PIN `1234`).
    - Minori: PIN nell'URL degli avvisi live della Cassa (`api/staff/stream?pin=`), mancano header di sicurezza (frame-ancestors, nosniff, referrer), `/api/cron` pubblico.
-3. **🟠 Pubblicazione Google Wallet.** Console Google Pay & Wallet (merchant "FEDELTA" → nome pubblico scelto **F5M**/"lossless": da confermare). Servono: profilo pagamenti (lo compila Federico, persona fisica), sito `https://f5m.it`, assistenza `https://f5m.it/assistenza`, email di assistenza (la Gmail di Federico), screenshot della tessera dal suo Android, poi "Request publishing access". Un solo issuer per tutti i locali va bene; le classi nuove vengono approvate da sole.
+3. **🟠 Pubblicazione Google Wallet — richiesta INVIATA il 16/10.** Aspettare l'email di Google (2–3 giorni lavorativi; possono chiedere screenshot o chiarimenti). All'approvazione tutte le classi "Attivo" vanno subito in produzione (da-mario `pizzeria_demo_v1`, eldorado, football + buoni `_premio`) e non si torna alla modalità demo. Dopo: controllare che un account qualsiasi (non di prova) salvi la tessera; i locali nuovi non richiedono altre richieste. Un solo issuer per tutti i locali.
 4. **🟡 Certificato `*.f5m.it`.** Se ancora assente: farsi mostrare da Federico lo stato del dominio nel pannello Render (a Claude la sezione domini non compare perché il servizio è gestito dal Blueprint) o scrivere al supporto Render.
-5. **🟡 Da verificare con Federico**: fotocamera della Cassa su telefono vero; effetto tocco delle particelle su telefono vero.
-6. **Più avanti** (quando c'è budget): server Render Starter ~7 $/mese (via l'attesa di 50 s), Apple Wallet, chip NFC NTAG 424 DNA, Stripe per gli abbonamenti, email automatiche (Brevo), prezzi sulla landing (non ancora decisi).
+5. **🟡 Da verificare con Federico**: fotocamera della Cassa su telefono vero; effetto tocco delle particelle su telefono vero. (Wallet su Android: provato il 16/10, ok.)
+6. **🟡 Timbro NFC fisico (prototipo 3D)**: in `timbro-3d/` sul PC (non nel repo, non pubblicato: Federico ha detto di non pubblicarlo). Sigillo classico manico legno + testa ottone con chip NTAG Ø 25 nella faccia, supporto rotondo con il nome. Si apre con la configurazione `timbro-3d` di `.claude/launch.json` (porta 3002) o `node timbro-3d/serve.js`. Pulsante "Kit di stampa" = ZIP con 3 STL + adesivo PNG. Prossimo passo: stampa di prova per confermare le misure.
+7. **Più avanti** (quando c'è budget): server Render Starter ~7 $/mese (via l'attesa di 50 s), Apple Wallet, chip NFC NTAG 424 DNA, Stripe per gli abbonamenti, email automatiche (Brevo), prezzi sulla landing (non ancora decisi).
 
 ---
 
-## 4. Cosa è stato fatto in queste sessioni (9–15 ottobre)
+## 4. Cosa è stato fatto in queste sessioni (9–16 ottobre)
 
 - Progetto spostato sul nuovo PC, Node 24 + Git installati, cartella collegata a GitHub.
 - **Tessera web istantanea** (dati nella pagina, saldo nell'avviso live, niente attese di Google) e **Wallet più veloce** (GIF in un thread separato e preparate all'avvio, aggiornamenti in coda).
@@ -57,6 +59,7 @@
 - Dominio **f5m.it** comprato su Aruba, collegato a Render, sito ufficiale F5M, sottodomini pronti.
 - Nuova grafica per **dashboard, Cassa, QR da tavolo**.
 - Strumento di **copia verificata del database** (`tools/copia-database.js` + `.ps1`).
+- 16/10: tessera web rifatta ("carta vera", vedi tabella), Wallet con logo largo per tutti, inglese e buono premio; premio dal telefono: "Fatto" lo rende definitivo (`customer.redeemClosed`); prototipo 3D del timbro NFC.
 
 ---
 
@@ -77,6 +80,10 @@
 | Messaggi di commit con virgolette rotti in PowerShell | Usare lo strumento Bash con heredoc (`git commit -F - <<'EOF'`) |
 | Inserimenti automatici nel codice con `\n` che diventavano a capo veri | Controllare sempre la sintassi dopo (`node -e "require('./bot')"`), meglio usare Edit/Read |
 | Il pacchetto `pg-mem` (test) non sa ricreare tabelle esistenti | Opzione `createSchema: false` nello strumento di copia |
+| Dopo modifiche alla tessera l'anteprima mostra la versione vecchia | Il service worker apre la tessera dalla copia salvata: nel browser di anteprima svuotare le cache (`caches.keys()` → `caches.delete`) prima di ricaricare |
+| Il browser di anteprima chiude da solo i `confirm()` | Normale: per provare "Usa il premio" sostituire `window.confirm` da JS |
+| 16/10 sera: i file del codice sul PC erano tornati alla versione del commit `4dd657c` (causa ignota, online tutto ok) | All'inizio di ogni sessione `git status` in `loyalty-demo/`: se ci sono modifiche che "tolgono" lavoro già pubblicato, confrontarle con i commit e ripristinare con `git checkout HEAD -- <file>` |
+| Pagine su claude.ai (artifact): niente download diretti né `fetch` esterni | Usare la capacità `downloads` (solo alcuni formati: STL no, ZIP sì) e includere i dati nella pagina |
 
 ---
 
