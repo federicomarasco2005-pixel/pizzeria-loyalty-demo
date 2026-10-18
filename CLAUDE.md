@@ -20,6 +20,14 @@ Federico non è uno sviluppatore: rispondigli in italiano semplice e fai tu il l
 - Su Render **mai "Deploy a specific commit"**: spegne l'auto-deploy. Per pubblicare a mano: "Deploy latest commit".
 - Dopo la pubblicazione controlla che il sito risponda: `curl https://f5m.it/api/config`.
 
+## Sessioni nel cloud: avvisa Federico a fine lavoro
+Federico spesso avvia il lavoro dal telefono e poi chiude l'app. Se la variabile d'ambiente `F5M_AVVISI_TOKEN` esiste (c'è solo nell'ambiente cloud), **alla fine di ogni lavoro** mandagli un messaggio su Telegram (bot @AggiornaF5M_bot). Fallo anche quando ti fermi perché serve una sua decisione o un suo ok.
+- Testo semplice, al massimo 6 righe: la prima dice ✅ fatto, ❓ serve una tua risposta oppure ⚠️ problema; poi cosa hai fatto, cosa resta da fare e la domanda, se c'è. Niente gergo.
+- Scrivi il testo in UTF-8 in un file temporaneo fuori dal repository e invialo così:
+  `curl -s -X POST "https://api.telegram.org/bot${F5M_AVVISI_TOKEN}/sendMessage" -d chat_id=8808507400 --data-urlencode text@/tmp/avviso.txt`
+- Non stampare né salvare mai il valore di `F5M_AVVISI_TOKEN`.
+- Eccezione: l'agente del mattino segue le sue istruzioni, che prevedono di scrivere solo quando serve.
+
 ## Comandi
 ```bash
 npm install

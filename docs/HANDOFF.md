@@ -28,6 +28,8 @@
 | Server | Render gratuito: si addormenta dopo 15 min e al risveglio Render mostra la sua pagina "SERVICE WAKING UP" (~30–50 s). Proposto un pinger gratuito (cron-job.org su `https://f5m.it/api/cron` ogni 10 min, 744 h/mese stanno nelle 750 gratuite) o Starter 7 $/mese: Federico il 16/10 ha detto **di no per ora** |
 | Test | 33 test, tutti verdi (`npm test`) |
 | Pubblicazione | `git push` da questo PC funziona; Render pubblica da solo dopo i test (app Render installata su GitHub) |
+| Plancia e agente (18/10) | **Plancia sul PC** (quella che usa Federico): icona "Plancia progetti" sul desktop → `plancia/plancia.html`, rigenerata ogni ora da `plancia/genera.js` (attività di Windows "Plancia progetti"). Le parti scritte a mano stanno in `plancia/dati.json`: **aggiornarle a fine sessione**. Copia online privata: https://claude.ai/artifact/WhL3toHeEeWei68vNqvoGd (separata dal sito). **Agente del mattino** nel cloud (routine `trig_01RVyQGptw7ZibaH4dZ5cVxc`, ogni giorno 06:00 UTC, solo lettura, mai push) che aggiorna la Plancia e scrive su Telegram (@AggiornaF5M_bot) solo se serve. Token del bot solo nella variabile `F5M_AVVISI_TOKEN` dell'ambiente cloud, mai nel repo |
+| Timbro 3D | La versione del 16/10 (kit di stampa, `serve.js`) è **persa** nel ripristino delle 20:05; resta una versione più vecchia in `timbro-3d/timbro.html` e la bozza dell'11/10 su claude.ai |
 
 ---
 
