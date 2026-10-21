@@ -12,6 +12,7 @@ Federico non è uno sviluppatore: rispondigli in italiano semplice e fai tu il l
 - **Segreti mai nel repository** (il repo è pubblico): `service-account.json`, `.env`, token del bot, PIN, `DATABASE_URL`. Stanno su Render.
 - Nelle pagine di `public/` usa indirizzi **relativi** (`api/...`), per via di `<base href="/slug/">`. Unici assoluti voluti: `/style.css`, `/f5m.css` (stile F5M di dashboard, cassa e QR), `/common.js`, `/sw.js`, `/wallet-button-it.svg`.
 - Il saldo dei timbri non si salva mai: si ricalcola dal ledger degli eventi (`db.js`).
+- **Niente funzioni nuove fuori dal documento di scope** (https://claude.ai/artifact/RBSZgKsgR2jffbS5eSSGnw, si legge con gli strumenti docs). Durante interviste e pilota si lavora solo su nucleo, database, sicurezza, privacy ed errori. Un'idea nuova va tra le "idee parcheggiate" del documento, con la prova che manca.
 
 ## Pubblicare
 - **`npm test` deve passare** prima di ogni pubblicazione.
