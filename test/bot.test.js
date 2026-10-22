@@ -112,6 +112,41 @@ test('backup: file compresso con tutti i locali', async () => {
   assert.deepStrictEqual(data.locali.map((l) => l.scheda.slug).sort(), ['bar-test-luna', 'da-mario']);
 });
 
+test('statistiche: link monouso solo per il proprietario, avviso a ogni accesso, uscita da tutti i dispositivi', async () => {
+  const B = `http://localhost:${PORT}`;
+  await msg(MANAGER, '/statistiche');
+  assert.doesNotMatch(last(2).text, /statistiche\/entra/, 'il gestore non riceve il link');
+  await msg(STRANGER, '/statistiche');
+  assert.match(last(3).text, /privato/);
+  assert.strictEqual((await fetch(`${B}/statistiche`)).status, 401, 'senza link la pagina è chiusa');
+
+  await msg(OWNER, '/statistiche');
+  const ticket = (last(1).text.match(/statistiche\/entra#t=([\w-]+)/) || [])[1];
+  assert.ok(ticket, 'link nel messaggio, con il codice dopo "#"');
+  const entra = (t) => fetch(`${B}/statistiche/entra`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket: t }) });
+  const before = sent.length;
+  const ok = await entra(ticket);
+  assert.strictEqual(ok.status, 200);
+  const cookie = ok.headers.get('set-cookie').split(';')[0];
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(sent.slice(before).some((m) => m.chat === 1 && /Statistiche aperte/.test(m.text)), 'avviso al proprietario');
+  const page = await fetch(`${B}/statistiche`, { headers: { cookie } });
+  assert.strictEqual(page.status, 200);
+  assert.match(await page.text(), /window\.STATS = \{.*"bar-test-luna"/);
+  assert.strictEqual((await entra(ticket)).status, 403, 'il link vale una volta sola');
+  assert.strictEqual((await entra('inventato')).status, 403);
+
+  await msg(OWNER, '/statistiche_esci');
+  assert.strictEqual((await fetch(`${B}/statistiche`, { headers: { cookie } })).status, 401, 'chiuse su tutti i dispositivi');
+
+  // pulsante "Esci da tutti i dispositivi" della pagina
+  await msg(OWNER, '/statistiche');
+  const again = await entra(last(1).text.match(/#t=([\w-]+)/)[1]);
+  const cookie2 = again.headers.get('set-cookie').split(';')[0];
+  assert.strictEqual((await fetch(`${B}/statistiche/esci`, { method: 'POST', headers: { cookie: cookie2 } })).status, 200);
+  assert.strictEqual((await fetch(`${B}/statistiche`, { headers: { cookie: cookie2 } })).status, 401);
+});
+
 test('avvisi: lo stesso avviso non si ripete subito', async () => {
   const before = sent.length;
   bot.alert('prova', 'k1');

@@ -55,6 +55,12 @@ services:
       # Bot Telegram per creare e gestire i locali (token di @BotFather)
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      # Proprietario del bot fissato (numero Telegram): solo lui crea locali e apre le statistiche
+      - key: TELEGRAM_OWNER_ID
+        sync: false
+      # Chiave di sola lettura delle statistiche (/api/statistiche), usata solo da Claude. Senza, l'entrata è chiusa
+      - key: STATS_KEY
+        sync: false
 
 databases:
   - name: pizzeria-loyalty-db

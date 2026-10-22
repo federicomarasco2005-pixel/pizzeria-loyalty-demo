@@ -9,6 +9,7 @@ const { spawn } = require('child_process');
 const PORT = 3900 + Math.floor(Math.random() * 90);
 const B = `http://localhost:${PORT}`;
 const PIN = '246810';
+const STATS_KEY = 'chiave-di-prova-delle-statistiche-0123456789';
 let server;
 
 async function api(p, { method = 'GET', body, pin, cookie } = {}) {
@@ -25,7 +26,7 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tessere-srv-'));
 // Avvia il server (anche di nuovo, sulla stessa cartella dati: serve a provare cosa sopravvive a un riavvio)
 async function startServer() {
   server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, STAFF_PIN: PIN, DATABASE_URL: '', GOOGLE_ISSUER_ID: '', TELEGRAM_BOT_TOKEN: '', PUBLIC_URL: B },
+    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, STAFF_PIN: PIN, DATABASE_URL: '', GOOGLE_ISSUER_ID: '', TELEGRAM_BOT_TOKEN: '', PUBLIC_URL: B, STATS_KEY },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let log = '';
@@ -218,6 +219,24 @@ test('avvisi live della Cassa: biglietto valido una volta, mai il PIN nell\'indi
   assert.strictEqual(ok.status, 200);
   ctrl.abort();
   assert.strictEqual((await fetch(`${B}${S}/api/staff/stream?t=${ticket}`)).status, 401, 'lo stesso biglietto non vale due volte');
+});
+
+test('statistiche per Claude: solo con la chiave, solo numeri', async () => {
+  const get = (key) => fetch(`${B}/api/statistiche`, { headers: key ? { authorization: `Bearer ${key}` } : {} });
+  assert.strictEqual((await get()).status, 404, 'senza chiave non esiste');
+  assert.strictEqual((await get('sbagliata')).status, 404);
+  const r = await get(STATS_KEY);
+  assert.strictEqual(r.status, 200);
+  const text = await r.text();
+  const data = JSON.parse(text);
+  assert.deepStrictEqual(data.shops.map((s) => s.slug), ['da-mario']);
+  assert.ok(data.shops[0].members >= 1);
+  for (const personal of ['Anna', 'anna@x.it', anna]) assert.ok(!text.includes(personal), `niente dati dei clienti (${personal})`);
+  // la pagina senza il link del bot è chiusa e non contiene numeri
+  const page = await api('/statistiche');
+  assert.strictEqual(page.status, 401);
+  assert.match(page.text, /window\.STATS = null/);
+  assert.match(page.headers.get('x-robots-tag'), /noindex/);
 });
 
 test('PIN sbagliato 5 volte: blocco', async () => {

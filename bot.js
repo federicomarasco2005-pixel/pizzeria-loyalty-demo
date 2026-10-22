@@ -82,6 +82,7 @@ async function start(manager, { api, username } = {}) {
         { command: 'locali', description: 'I tuoi locali: link, numeri, modifiche' },
         { command: 'report', description: 'Report della settimana di tutti i locali' },
         { command: 'backup', description: 'Copia completa dei dati, subito' },
+        { command: 'statistiche', description: 'Statistiche di tutti i locali (link monouso)' },
         { command: 'annulla', description: 'Interrompi l\'operazione in corso' },
         { command: 'aiuto', description: 'Cosa sa fare il bot' },
       ],
@@ -287,6 +288,11 @@ async function onCommand(chat, cmd) {
   if (cmd === '/locali') return listShops(chat);
   if (cmd === '/backup') return sendBackup('💾 Backup su richiesta', chat);
   if (cmd === '/report') return sendReport(chat, M.all());
+  if (cmd === '/statistiche') return sendStatsLink(chat);
+  if (cmd === '/statistiche_esci') {
+    M.statsCloseAll();
+    return send(chat, '🔒 Statistiche chiuse su tutti i dispositivi. I link non ancora usati non valgono più.');
+  }
   if (cmd === '/annulla') {
     sessions.delete(chat);
     return send(chat, '👌 Operazione annullata.', kb([[btn('🏠 Menu', 'menu')]]));
@@ -300,7 +306,16 @@ function menu(chat) {
     '➕ <b>Nuova tessera</b>: rispondi a qualche domanda e il locale ha subito pagina di iscrizione, cassa, dashboard, timbro NFC e tessera Google Wallet.\n' +
     '📋 <b>I miei locali</b>: link, PIN della cassa, numeri, modifiche.\n\n' +
     'In ogni momento: /annulla',
-    kb([[btn('➕ Nuova tessera', 'new'), btn('📋 I miei locali', 'list')], [btn('📈 Report settimana', 'report'), btn('💾 Backup ora', 'backup')]]));
+    kb([[btn('➕ Nuova tessera', 'new'), btn('📋 I miei locali', 'list')], [btn('📈 Report settimana', 'report'), btn('💾 Backup ora', 'backup')], [btn('📊 Statistiche', 'stats')]]));
+}
+
+// Link monouso alla pagina delle statistiche di tutti i locali (solo il proprietario arriva qui).
+// Niente anteprima del link: un'anteprima di Telegram non deve poterlo aprire al posto suo.
+function sendStatsLink(chat) {
+  return send(chat,
+    `📊 <b>Statistiche di tutti i locali</b>\n\n<a href="${esc(M.statsLink())}">Apri le statistiche</a>\n\n` +
+    'Il link vale 10 minuti e una volta sola: non inoltrarlo. A ogni accesso ti arriva un avviso qui.\n' +
+    'Per chiudere su tutti i dispositivi: /statistiche_esci');
 }
 
 function startCreate(chat) {
@@ -376,6 +391,7 @@ async function onButton(chat, data, msg) {
   if (action === 'menu') return menu(chat);
   if (action === 'report') return sendReport(chat, M.all());
   if (action === 'backup') return sendBackup('💾 Backup su richiesta', chat);
+  if (action === 'stats') return sendStatsLink(chat);
   if (action === 'rep1') { const ctx = M.get(arg); return ctx && sendReport(chat, [ctx]); }
   if (action === 'kit') { const ctx = M.get(arg); return ctx && sendKit(chat, ctx); }
   if (action === 'mpdf') { const ctx = M.get(arg); return ctx && sendMonthPdf(chat, ctx, 0); }

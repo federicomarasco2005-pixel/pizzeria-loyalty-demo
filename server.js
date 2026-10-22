@@ -10,6 +10,7 @@ const images = require('./images');
 const wallet = require('./wallet');
 const pdf = require('./pdf');
 const bot = require('./bot');
+const statistiche = require('./statistiche');
 
 const PORT = Number(process.env.PORT) || 3000;
 // Su Render RENDER_EXTERNAL_URL è impostata automaticamente.
@@ -129,6 +130,8 @@ app.get('/api/cron', wrap(async (req, res) => {
 }));
 
 bot.mount(app);
+// Statistiche di tutti i locali: solo per il proprietario (link dal bot) e per Claude (chiave di sola lettura)
+statistiche.mount(app, { all: () => shops.all(), alert: (...a) => bot.alert(...a) });
 // Scanner QR della Cassa: la libreria si serve da qui (node_modules), non da un sito esterno
 app.get('/vendor/html5-qrcode.min.js', (req, res) => {
   res.set('Cache-Control', 'public, max-age=86400').sendFile(path.join(__dirname, 'node_modules', 'html5-qrcode', 'html5-qrcode.min.js'));
@@ -1415,6 +1418,9 @@ const manager = {
   all: () => shops.all(),
   get: (slug) => shops.get(slug),
   stats: (ctx) => stats(ctx).kpi,
+  // Statistiche di tutti i locali: link monouso per il proprietario, uscita da tutti i dispositivi
+  statsLink: () => statistiche.newLink(PUBLIC_URL),
+  statsCloseAll: () => statistiche.closeAll(),
   links(ctx) {
     const b = ctx.cfg.baseUrl;
     return { signup: `${b}/`, staff: `${b}/staff`, admin: `${b}/admin`, poster: `${b}/poster`, nfc: nfcUrl(ctx) };
@@ -1613,6 +1619,8 @@ const ready = (async () => {
     console.log(`  Locale:        http://localhost:${PORT}`);
     console.log(`  URL pubblico:  ${PUBLIC_URL}`);
     for (const ctx of shops.all()) console.log(`  ${ctx.cfg.pizzeriaName.padEnd(28)} ${ctx.cfg.baseUrl}/  (cassa: /staff, dashboard: /admin)`);
+    const statsDev = statistiche.devLink(`http://localhost:${PORT}`);
+    if (statsDev) console.log(`  Statistiche (link di prova, 10 minuti): ${statsDev}`);
     console.log('');
     bot.start(manager).then(announceDeploy).catch((err) => console.error(`[bot] ${err.message}`));
     resolve();

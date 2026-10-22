@@ -11,7 +11,7 @@ const REGISTRY_KEY = 'shops';
 // (anche sottodomini usati per altro: www, posta…)
 const RESERVED = new Set(['api', 'card', 'tap', 'stamps', 'icons', 'telegram', 'admin', 'staff', 'poster', 'static', 'public',
   'sw.js', 'style.css', 'common.js', 'logo.png', 'manifest.json', 'favicon.ico', 'index.html', 'robots.txt',
-  'www', 'mail', 'smtp', 'pop', 'imap', 'ftp', 'webmail', 'app', 'assistenza', 'privacy', 'info', 'help', 'blog', 'dashboard', 'localhost', 'mx']);
+  'www', 'mail', 'smtp', 'pop', 'imap', 'ftp', 'webmail', 'app', 'assistenza', 'privacy', 'info', 'help', 'blog', 'dashboard', 'localhost', 'mx', 'statistiche']);
 
 let publicUrl = '';
 // Dominio dei locali (SHOP_DOMAIN, es. f5m.it): ogni locale ha il suo sottodominio, es. https://da-mario.f5m.it.

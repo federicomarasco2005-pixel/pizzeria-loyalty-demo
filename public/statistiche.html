@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Statistiche F5M</title>
+  <link rel="preconnect" href="https://fonts.bunny.net">
+  <link href="https://fonts.bunny.net/css?family=anton:400|inter:400,500,600,700,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/f5m.css">
+  <style>
+    /* Statistiche di tutti i locali: solo per il proprietario (vedi statistiche.js). Le regole comuni sono in /f5m.css */
+    :root { --series: #3987e5; --good: #0ca30c; --warn: #fab219; --bad: #d03b3b; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 22px 16px 60px; display: flex; flex-direction: column; gap: 18px; }
+    .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .top h1 { margin: 0; font-size: 1.25rem; }
+    .top .when { color: var(--muted); font-size: .85rem; }
+    .top .acts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+    .top .btn { padding: 9px 14px; font-size: .88rem; }
+    h2 { margin: 0 0 12px; font-size: 1.05rem; }
+    .sub { color: var(--muted); font-size: .82rem; margin: -6px 0 12px; }
+    .card { padding: 18px; min-width: 0; }
+
+    /* numeri */
+    .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
+    .tile { background: var(--panel2); border: 1px solid var(--line); border-radius: 16px; padding: 13px 14px; }
+    .tile b { display: block; font-size: 1.55rem; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }
+    .tile span { font-size: .78rem; color: var(--muted); }
+    .tile small { display: block; font-size: .74rem; color: var(--soft); margin-top: 2px; }
+    .hero b { font-family: var(--display); font-weight: 400; font-size: 2.3rem; letter-spacing: .01em; }
+
+    /* barre (una sola serie: un solo colore) */
+    .chart { display: flex; flex-direction: column; gap: 6px; }
+    .bars { display: flex; align-items: flex-end; gap: 2px; height: 110px; border-bottom: 1px solid var(--line2); }
+    .bars.small { height: 70px; }
+    .bars i { flex: 1; min-width: 4px; background: var(--series); border-radius: 4px 4px 0 0; position: relative; }
+    .bars i.zero { background: transparent; }
+    .bars i:hover { filter: brightness(1.25); }
+    .bars i em { position: absolute; bottom: 100%; left: 50%; transform: translate(-50%, -3px); font-style: normal; font-size: .7rem; color: var(--soft); white-space: nowrap; }
+    .axis { display: flex; gap: 2px; font-size: .68rem; color: var(--muted); }
+    .axis span { flex: 1; text-align: center; min-width: 4px; white-space: nowrap; display: flex; justify-content: center; }
+    .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .charts h3 { margin: 0 0 18px; font-size: .86rem; color: var(--soft); font-weight: 600; }
+    .tip { position: fixed; z-index: 80; pointer-events: none; background: #f3f5fb; color: #070910; font-size: .8rem; font-weight: 600; padding: 6px 9px; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.4); display: none; }
+
+    /* elenco dei locali */
+    .shops { display: flex; flex-direction: column; gap: 12px; }
+    details.shop { padding: 0; }
+    details.shop > summary { list-style: none; cursor: pointer; padding: 16px 18px; display: grid; grid-template-columns: minmax(160px, 1.4fr) repeat(6, minmax(70px, 1fr)) 26px; gap: 10px; align-items: center; }
+    details.shop > summary::-webkit-details-marker { display: none; }
+    details.shop > summary .chev { color: var(--muted); transition: transform .2s; text-align: right; }
+    details.shop[open] > summary .chev { transform: rotate(90deg); }
+    .sname b { display: block; font-size: 1rem; }
+    .sname span { font-size: .76rem; color: var(--muted); }
+    .cell b { display: block; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+    .cell span { font-size: .7rem; color: var(--muted); }
+    .badge { display: inline-block; font-size: .66rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,.08); color: var(--soft); margin-left: 6px; vertical-align: 2px; }
+    .body { padding: 4px 18px 20px; display: flex; flex-direction: column; gap: 18px; border-top: 1px solid var(--line); }
+    .body h3 { margin: 14px 0 10px; font-size: .95rem; }
+
+    /* stato rispetto alle soglie del pilota: icona + parola, mai solo colore */
+    .st { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 600; color: var(--ink); }
+    .st::before { content: attr(data-icon); width: 18px; height: 18px; border-radius: 50%; display: inline-grid; place-items: center; font-size: .7rem; color: #070910; font-weight: 800; }
+    .st.good::before { background: var(--good); color: #fff; }
+    .st.warn::before { background: var(--warn); }
+    .st.bad::before { background: var(--bad); color: #fff; }
+    .weeks { display: flex; gap: 6px; flex-wrap: wrap; }
+    .wk { font-size: .74rem; padding: 4px 8px; border-radius: 10px; border: 1px solid var(--line2); color: var(--soft); }
+    .wk.on { border-color: var(--good); }
+    .wk.off { border-color: var(--bad); }
+    .pilot { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+    .pilot > div { background: var(--panel2); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+    .pilot small { color: var(--muted); font-size: .76rem; }
+    .note { color: var(--muted); font-size: .8rem; line-height: 1.55; }
+    .warnbox { background: rgba(250,178,25,.08); border: 1px solid rgba(250,178,25,.3); border-radius: 14px; padding: 10px 12px; font-size: .82rem; color: var(--soft); }
+    table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+    th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 600; font-size: .76rem; border-top: 0; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* entrata e pagina chiusa */
+    .gate { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+    .gate .glass { max-width: 420px; padding: 30px 26px; text-align: center; }
+    .gate h1 { font-size: 1.25rem; margin: 16px 0 6px; }
+    .gate p { color: var(--muted); margin: 0; }
+    .gate code { background: rgba(255,255,255,.08); padding: 1px 7px; border-radius: 6px; color: var(--ink); }
+
+    @media (max-width: 860px) {
+      details.shop > summary { grid-template-columns: 1fr 1fr 1fr 26px; }
+      details.shop > summary .sname { grid-column: 1 / 4; grid-row: 1; }
+      details.shop > summary .hide-m { display: none; }
+      details.shop > summary .chev { grid-row: 1; grid-column: 4; }
+      .hero b { font-size: 1.9rem; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Entrata con il link del bot, oppure pagina chiusa -->
+  <section class="gate hidden" id="gate">
+    <div class="glass">
+      <div class="brand">F5M<span>.</span></div>
+      <h1 id="gateTitle">🔒 Pagina riservata</h1>
+      <p id="gateText">Per entrare scrivi <code>/statistiche</code> al bot Telegram e apri il link che ti manda.</p>
+    </div>
+  </section>
+
+  <main class="wrap hidden" id="app">
+    <header class="top">
+      <span class="brand">F5M<span>.</span></span>
+      <div>
+        <h1>Statistiche di tutti i locali</h1>
+        <div class="when" id="when"></div>
+      </div>
+      <div class="acts">
+        <button class="btn ghost" id="reload">↻ Aggiorna</button>
+        <button class="btn ghost" id="logout">Esci da tutti i dispositivi</button>
+      </div>
+    </header>
+
+    <section class="glass card">
+      <h2>Tutti i locali insieme</h2>
+      <p class="sub" id="totalsNote"></p>
+      <div class="tiles" id="totals"></div>
+    </section>
+
+    <section class="glass card">
+      <div class="charts" id="totalCharts"></div>
+    </section>
+
+    <section>
+      <h2 style="padding:0 4px">Locale per locale</h2>
+      <p class="sub" style="padding:0 4px">Tocca un locale per vedere pilota, visite, premi, messaggi, soldi e controlli.</p>
+      <div class="shops" id="shops"></div>
+    </section>
+
+    <section class="glass card">
+      <h2>Ultimi accessi</h2>
+      <p class="sub">Chi ha aperto queste statistiche: tu con il link del bot, Claude con la sua chiave di sola lettura.</p>
+      <div id="log"></div>
+    </section>
+
+    <p class="note">Solo numeri: nessun nome, email o codice dei clienti. I totali non contano il locale demo originale.
+      "Tornati" = iscritti che hanno ricevuto un timbro in un giorno diverso da quello dell'iscrizione, entro 7 o 30 giorni.
+      Le soglie sono quelle decise per il pilota (bar: 30% a 7 giorni e 50% a 30 giorni; pizzerie: 30% a 30 giorni).</p>
+  </main>
+  <div class="tip" id="tip"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const num = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('it-IT'));
+    const pct = (r) => (r && r.pct !== null ? r.pct + '%' : '—');
+    const frac = (r) => (r && r.d ? `${r.n} su ${r.d}` : 'ancora nessuno da contare');
+    const dateTime = (iso) => new Date(iso).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const tile = (value, label, small = '') => `<div class="tile"><b>${value}</b><span>${esc(label)}</span>${small ? `<small>${esc(small)}</small>` : ''}</div>`;
+    // stato: ok (raggiunto), bad (sotto), warn (in attesa); sempre con icona e parola
+    const status = (kind, text) => `<span class="st ${kind}" data-icon="${kind === 'good' ? '✓' : kind === 'bad' ? '✕' : '…'}">${esc(text)}</span>`;
+    const versus = (r, target) => {
+      if (target === null) return status('warn', 'nessuna soglia');
+      if (!r || !r.d) return status('warn', 'in attesa di dati');
+      return r.pct >= target ? status('good', `raggiunto (soglia ${target}%)`) : status('bad', `sotto la soglia del ${target}%`);
+    };
+
+    // Barre di una sola serie: altezza dal valore, etichetta solo sul valore più alto, valore al passaggio del dito
+    // labels: testo al passaggio del dito; axis: scritte sotto le barre (vuote dove non servono)
+    function bars(values, labels, { axis = labels, small = false, title = '' } = {}) {
+      const max = Math.max(...values, 0);
+      const peak = values.indexOf(max);
+      const cols = values.map((v, i) => {
+        const h = max ? Math.max(Math.round((v / max) * 100), v ? 4 : 0) : 0;
+        const tip = `${labels[i]}: ${v}`;
+        return `<i class="${v ? '' : 'zero'}" style="height:${h}%" data-tip="${esc(tip)}" aria-label="${esc(tip)}">${i === peak && max ? `<em>${v}</em>` : ''}</i>`;
+      }).join('');
+      return `<div class="chart"><h3>${esc(title)}</h3><div class="bars${small ? ' small' : ''}" role="img" aria-label="${esc(title)}">${cols}</div>` +
+        `<div class="axis">${axis.map((a) => `<span>${esc(a)}</span>`).join('')}</div></div>`;
+    }
+    // settimane di 7 giorni contate all'indietro da oggi: "ora" sono gli ultimi 7 giorni
+    const WEEKS = ['-7', '-6', '-5', '-4', '-3', '-2', '-1', 'ora'];
+    const WEEK_TIPS = WEEKS.map((w, i) => (i === 7 ? 'ultimi 7 giorni' : i === 6 ? 'la settimana prima' : `${w.slice(1)} settimane prima`));
+    const DAYS = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom'];
+    const HOURS = Array.from({ length: 24 }, (_, h) => `${h}:00`);
+    const HOUR_AXIS = HOURS.map((h, i) => (i % 3 ? '' : String(i)));
+
+    function renderTotals(S) {
+      const t = S.totals;
+      $('when').textContent = 'Aggiornate ' + dateTime(S.generatedAt);
+      $('totalsNote').textContent = `${t.shops} ${t.shops === 1 ? 'locale' : 'locali'}, senza il locale demo.`;
+      $('totals').innerHTML = [
+        `<div class="tile hero"><b>${num(t.members)}</b><span>iscritti</span></div>`,
+        tile(num(t.newMembers7), 'nuovi in 7 giorni'),
+        tile(num(t.stamps7), 'timbri in 7 giorni', `${num(t.stamps30)} in 30 giorni`),
+        tile(pct(t.returned7), 'tornati entro 7 giorni', frac(t.returned7)),
+        tile(pct(t.returned30), 'tornati entro 30 giorni', frac(t.returned30)),
+        tile(num(t.rewardsRedeemed), 'premi consegnati'),
+        tile(num(t.dormant), 'non tornano da 30+ giorni'),
+        tile(num(t.wallet), 'tessere nel Wallet'),
+      ].join('');
+      $('totalCharts').innerHTML = bars(t.weeklyStamps, WEEK_TIPS, { axis: WEEKS, title: 'Timbri per settimana, tutti i locali (ultime 8, "ora" = ultimi 7 giorni)' });
+    }
+
+    function pilotBox(s) {
+      const p = s.pilot;
+      const act = p.activated === null ? status('warn', `in corso: ${p.signups7} iscritti nei primi giorni`) : p.activated ? status('good', `sì, ${p.signups7} iscritti in 7 giorni`) : status('bad', `no, ${p.signups7} iscritti in 7 giorni (soglia 20)`);
+      const weeks = p.weeks.map((w) => `<span class="wk ${w.complete ? (w.active ? 'on' : 'off') : ''}" title="${w.stamps} timbri">${w.complete ? (w.active ? '✓' : '✕') : '…'} S${w.n}</span>`).join('') || '<span class="note">nessuna settimana ancora</span>';
+      return `<div class="pilot">
+        <div><small>Locale attivato (20 iscritti nei primi 7 giorni)</small>${act}</div>
+        <div><small>Ritorno a 7 giorni: ${pct(s.returned7)} (${frac(s.returned7)})</small>${versus(s.returned7, p.target7)}</div>
+        <div><small>Ritorno a 30 giorni: ${pct(s.returned30)} (${frac(s.returned30)})</small>${versus(s.returned30, p.target30)}</div>
+        <div><small>Settimane attive (15 timbri in 4 giorni diversi)</small><div class="weeks">${weeks}</div></div>
+      </div>`;
+    }
+
+    function shopBody(s) {
+      const m = s.messages;
+      const share = s.top3Share;
+      const warns = [];
+      if (share !== null && share >= 40) warns.push(`I 3 clienti con più timbri ne hanno il ${share}% negli ultimi 30 giorni: controlla che non siano personale o amici.`);
+      if (s.nfcNight30) warns.push(`${s.nfcNight30} timbri NFC dati di notte (22–6) negli ultimi 30 giorni: possibile link del chip copiato.`);
+      if (s.rewards.backAfter.d && s.rewards.backAfter.pct < 50) warns.push(`Solo ${s.rewards.backAfter.pct}% di chi ha ritirato un premio è tornato entro 30 giorni.`);
+      const staffRows = s.staff.map((x) => `<tr><td>${esc(x.who)}</td><td class="num">${x.stamps}</td></tr>`).join('') || '<tr><td colspan="2" class="note">Nessun timbro negli ultimi 30 giorni.</td></tr>';
+      return `<div class="body">
+        <div><h3>Pilota · giorno ${s.pilot.day}</h3>${pilotBox(s)}</div>
+        <div><h3>Iscritti</h3><div class="tiles">
+          ${tile(num(s.members), 'iscritti')}
+          ${tile(num(s.newMembers7), 'nuovi in 7 giorni', `${num(s.newMembers30)} in 30 giorni`)}
+          ${tile(s.members ? Math.round(s.consent / s.members * 100) + '%' : '—', 'con consenso alle offerte', `${s.consent} clienti`)}
+          ${tile(s.members ? Math.round(s.wallet / s.members * 100) + '%' : '—', 'con la tessera nel Wallet', `${s.wallet} clienti`)}
+          ${tile(num(s.fromNfc), 'iscritti dal timbro NFC')}
+        </div></div>
+        <div><h3>Visite</h3><div class="tiles">
+          ${tile(num(s.stamps7), 'timbri in 7 giorni', `in ${s.activeDays7} giorni diversi`)}
+          ${tile(num(s.stamps30), 'timbri in 30 giorni')}
+          ${tile(num(s.visitsPerMember30), 'visite al mese per iscritto')}
+          ${tile(s.avgGapDays === null ? '—' : s.avgGapDays + ' gg', 'tra una visita e l\'altra')}
+          ${tile(num(s.regulars), 'abituali', '4+ giorni di visita in 30 giorni')}
+          ${tile(num(s.dormant), 'non tornano da 30+ giorni')}
+          ${tile(num(s.neverBack), 'mai tornati dopo l\'iscrizione', 'iscritti da più di 30 giorni')}
+        </div></div>
+        <div class="charts">
+          ${bars(s.weeklyStamps, WEEK_TIPS, { axis: WEEKS, small: true, title: 'Timbri per settimana' })}
+          ${bars(s.weekday, DAYS, { small: true, title: 'Giorni della settimana (ultimi 60 giorni)' })}
+          ${bars(s.hours, HOURS, { axis: HOUR_AXIS, small: true, title: 'Orari (ultimi 60 giorni)' })}
+        </div>
+        <div><h3>Premi (ogni ${s.stampsForReward} timbri)</h3><div class="tiles">
+          ${tile(num(s.rewards.earned), 'premi maturati')}
+          ${tile(num(s.rewards.redeemed), 'premi consegnati')}
+          ${tile(s.rewards.avgDaysToFirst === null ? '—' : s.rewards.avgDaysToFirst + ' gg', 'per arrivare al primo premio')}
+          ${tile(pct(s.rewards.backAfter), 'tornati dopo il premio', frac(s.rewards.backAfter))}
+        </div></div>
+        <div><h3>Messaggi automatici (ultimi 30 giorni)</h3><div class="tiles">
+          ${tile(num(m.near), '"Ti manca 1 timbro"')}
+          ${tile(num(m.review), 'richieste di recensione')}
+          ${tile(num(m.inactive), '"Ci manchi"')}
+          ${tile(num(m.manual), 'messaggi del locale')}
+          ${tile(pct(s.missYouBack), 'tornati entro 7 giorni da "Ci manchi"', frac(s.missYouBack))}
+        </div></div>
+        <div><h3>Soldi</h3><div class="tiles">
+          ${tile(num(s.money.returnVisits30), 'visite di ritorno in 30 giorni')}
+          ${s.avgTicket ? tile(num(s.money.estimate30) + ' €', 'incasso delle visite di ritorno', `scontrino medio ${s.avgTicket} €`) : tile('—', 'scontrino medio non impostato', 'bot → Modifica → Scontrino medio')}
+        </div>
+        <p class="note">Non tutto merito della tessera: i primi a iscriversi sono i clienti affezionati, che sarebbero tornati comunque. Per l'effetto vero servono le chiusure di cassa del locale.</p></div>
+        <div><h3>Controlli</h3>
+          ${warns.length ? warns.map((w) => `<div class="warnbox">⚠️ ${esc(w)}</div>`).join('') : '<p class="note">Nessun segnale strano.</p>'}
+          <div class="tiles" style="margin-top:10px">
+            ${tile(num(s.nfc30), 'timbri NFC in 30 giorni', `${s.nfcNight30} di notte`)}
+            ${tile(share === null ? '—' : share + '%', 'timbri dei 3 clienti più assidui', 'servono almeno 20 timbri')}
+          </div>
+          <table style="margin-top:10px"><thead><tr><th>Chi ha dato i timbri (30 giorni)</th><th class="num">Timbri</th></tr></thead><tbody>${staffRows}</tbody></table>
+        </div>
+      </div>`;
+    }
+
+    function renderShops(S) {
+      const list = [...S.shops].sort((a, b) => (a.demo - b.demo) || (b.members - a.members));
+      $('shops').innerHTML = list.map((s) => `
+        <details class="glass shop">
+          <summary>
+            <div class="sname"><b>${esc(s.name)}${s.demo ? '<span class="badge">demo</span>' : ''}</b><span>${esc(s.slug)} · ${s.kind} · giorno ${s.pilot.day}</span></div>
+            <div class="cell"><b>${num(s.members)}</b><span>iscritti</span></div>
+            <div class="cell"><b>${num(s.stamps7)}</b><span>timbri 7 gg</span></div>
+            <div class="cell"><b>${pct(s.returned30)}</b><span>tornati 30 gg</span></div>
+            <div class="cell hide-m"><b>${pct(s.returned7)}</b><span>tornati 7 gg</span></div>
+            <div class="cell hide-m"><b>${num(s.dormant)}</b><span>dormienti</span></div>
+            <div class="cell hide-m"><b>${num(s.rewards.redeemed)}</b><span>premi</span></div>
+            <span class="chev" aria-hidden="true">›</span>
+          </summary>
+          ${shopBody(s)}
+        </details>`).join('') || '<p class="note">Nessun locale.</p>';
+    }
+
+    function renderLog(log) {
+      $('log').innerHTML = log.length
+        ? `<table><thead><tr><th>Quando</th><th>Chi</th><th>Dispositivo</th><th>Rete</th></tr></thead><tbody>${log.map((a) => `<tr><td>${dateTime(a.at)}</td><td>${esc(a.who)}</td><td>${esc(a.device)}</td><td>${esc(a.ip)}</td></tr>`).join('')}</tbody></table>`
+        : '<p class="note">Nessun accesso registrato.</p>';
+    }
+
+    // valore della barra al passaggio del dito o del mouse
+    document.addEventListener('pointerover', (e) => {
+      const t = e.target.closest('[data-tip]');
+      if (!t) { $('tip').style.display = 'none'; return; }
+      const r = t.getBoundingClientRect();
+      $('tip').textContent = t.dataset.tip;
+      $('tip').style.display = 'block';
+      $('tip').style.left = Math.min(window.innerWidth - $('tip').offsetWidth - 8, Math.max(8, r.left + r.width / 2 - $('tip').offsetWidth / 2)) + 'px';
+      $('tip').style.top = Math.max(8, r.top - 34) + 'px';
+    });
+
+    function gate(title, text) {
+      $('gateTitle').textContent = title;
+      if (text) $('gateText').textContent = text;
+      $('gate').classList.remove('hidden');
+    }
+
+    if (location.pathname.endsWith('/entra')) {
+      // link del bot: il codice è dopo "#", lo mandiamo con un POST e lo togliamo dall'indirizzo
+      const ticket = new URLSearchParams(location.hash.slice(1)).get('t') || '';
+      history.replaceState(null, '', location.pathname);
+      gate('Apro le statistiche…', ' ');
+      fetch('/statistiche/entra', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket }), credentials: 'same-origin' })
+        .then(async (r) => {
+          if (r.ok) return location.replace('/statistiche');
+          const d = await r.json().catch(() => ({}));
+          gate('⛔ Link non valido', d.error || 'Chiedi un nuovo link al bot con /statistiche.');
+        })
+        .catch(() => gate('Connessione assente', 'Riprova tra poco con un nuovo link dal bot.'));
+    } else if (!window.STATS) {
+      gate('🔒 Pagina riservata');
+    } else {
+      $('app').classList.remove('hidden');
+      renderTotals(window.STATS);
+      renderShops(window.STATS);
+      renderLog(window.ACCESSI || []);
+      $('reload').onclick = () => location.reload();
+      $('logout').onclick = async () => {
+        await fetch('/statistiche/esci', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+        location.replace('/statistiche');
+      };
+    }
+  </script>
+</body>
+</html>

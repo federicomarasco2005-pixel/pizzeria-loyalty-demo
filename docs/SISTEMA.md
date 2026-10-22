@@ -47,6 +47,7 @@ Un **solo server** ospita **tutti i locali**, ognuno con il suo indirizzo: `/<sl
 - `service-account.json`, la chiave Google: è sul PC; su Render sta nella variabile `GOOGLE_SA_JSON`.
 - `STAFF_PIN`: il PIN del primo locale, variabile su Render.
 - `TELEGRAM_BOT_TOKEN`: su Render come **Secret File**, non come variabile. `bot.js` lo legge da `/etc/secrets/`.
+- `STATS_KEY`: chiave di sola lettura delle statistiche, usata solo da Claude. Su Render come variabile; sul PC in `Clode/segreti/chiave-statistiche.txt` (fuori dal repository).
 
 Tutti e tre sono esclusi da `.gitignore`.
 
@@ -80,12 +81,13 @@ Tutti e tre sono esclusi da `.gitignore`.
 - **Plancia sul PC** e **agente del mattino** nel cloud con avvisi Telegram (18/10, fuori dal repository).
 - **Validazione** (21–22/10): documento di scope, niente funzioni nuove fino alla fine del pilota.
 - **Correzioni prima del pilota** (22/10): il QR del tavolo riapre la tessera a un telefono già iscritto; tolte le scritte "demo" dall'iscrizione e dalla dashboard; consenso alle offerte "nella tessera e nel Wallet".
+- **Statistiche di tutti i locali** (22/10): pagina solo per Federico (link monouso dal bot) e lettura per Claude (chiave), vedi 4.11.
 
 ## 3. Come si pubblica una modifica (IMPORTANTE)
 
 Dal 10 ottobre 2026 (nuovo PC) `loyalty-demo` è una copia git collegata a GitHub (`origin/main`). Node 24 e Git sono installati.
 
-1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 38.
+1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 42.
 2. Pubblica con git: `git add …`, `git commit`, `git push`.
    - Il login GitHub (account **federicomarasco2005-pixel**) è già salvato su questo PC: `git push` funziona.
    - Ripiego, se git non va: caricare i file dal browser su `github.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/upload/main/<cartella>` (una cartella per commit).
@@ -108,9 +110,10 @@ db.js        Archivio per locale: in memoria + Postgres (tabelle) o file JSON; l
 wallet.js    Google Wallet REST: una classe per locale, oggetti (tessere), messaggi/notifiche, link "Salva", disattivazione
 images.js    Genera sul server timbri, GIF animate, icone e logo per ogni locale (@napi-rs/canvas + gifenc)
 bot.js       Bot Telegram (webhook su Render, polling in locale)
+statistiche.js  Statistiche di tutti i locali: calcolo, pagina /statistiche (solo il proprietario, link dal bot) e /api/statistiche (solo Claude, chiave)
 public/      Pagine (uguali per tutti i locali): index, card, tap, staff, admin, poster, privacy + common.js, style.css, sw.js
 test/        db.test.js, server.test.js, bot.test.js (node:test; Postgres simulato con pg-mem)
-tools/       Vecchi script PowerShell per le immagini del primo locale (non più necessari: ora fa tutto images.js)
+tools/       Copia verificata del database (copia-database), dati di prova per l'anteprima delle statistiche (dati-prova-statistiche.js), vecchi script delle immagini
 render.yaml  Blueprint Render (servizio + database)
 ```
 
@@ -271,6 +274,17 @@ render.yaml  Blueprint Render (servizio + database)
 
 ---
 
+### 4.11 Statistiche di tutti i locali (dal 22/10/2026)
+- **Chi le vede: solo Federico e Claude.** I locali, i gestori su Telegram, i dipendenti e chi ha un PIN non hanno nessun accesso (decisione di Federico del 22/10/2026).
+- **Federico**: comando `/statistiche` del bot (o pulsante 📊 nel menu), solo per il proprietario. Il bot manda un link `…/statistiche/entra#t=<codice>` valido **10 minuti e una volta sola**; il codice sta dopo "#", quindi non arriva al server nell'indirizzo e non finisce nei registri: la pagina lo manda con un POST. Poi la sessione vale 8 ore su quel dispositivo (cookie `f5m_stat`, solo `/statistiche`). **Avviso su Telegram a ogni accesso** e anche quando qualcuno usa un link scaduto o già usato. `/statistiche_esci` (o il pulsante della pagina) chiude tutte le sessioni.
+- **Claude**: `GET /api/statistiche` con `Authorization: Bearer <STATS_KEY>`. Stessi numeri in JSON, sola lettura. Senza la variabile l'entrata è chiusa; con una chiave sbagliata risponde "non trovato" e avvisa su Telegram. Federico la revoca cancellando `STATS_KEY` su Render.
+- **Registro degli accessi** (chi, quando, dispositivo, rete abbreviata) in kv `statistiche`, visibile in fondo alla pagina.
+- **Solo numeri e nomi dei locali**, mai nomi, email o codici dei clienti (controllato dai test). I totali escludono il locale demo originale.
+- **Cosa calcola** (`statistiche.js`, dal registro degli eventi in memoria): iscritti (consenso, Wallet, da NFC), timbri per settimana, giorni e orari (fuso di Roma), ritorno a 7 e 30 giorni (timbro in un giorno diverso da quello dell'iscrizione), visite al mese, giorni tra le visite, abituali, dormienti, mai tornati, premi (tempo per il primo, ritorno dopo il premio), messaggi automatici e ritorno dopo "Ci manchi", visite di ritorno × scontrino medio (con l'avviso che non è tutto merito della tessera), timbri per dipendente, NFC di notte, peso dei 3 clienti più assidui, pilota (giorno, locale attivato, settimane attive, soglie del kit).
+- **Anteprima sul PC**: configurazione `statistiche-anteprima` di `.claude/launch.json` (porta 3002, dati finti creati da `tools/dati-prova-statistiche.js`); con `STATS_DEV_LINK=1` il server stampa un link di prova all'avvio. Su Render non succede mai (variabile `RENDER`).
+
+---
+
 ## 5. Variabili d'ambiente
 
 | Variabile | Uso |
@@ -281,7 +295,9 @@ render.yaml  Blueprint Render (servizio + database)
 | `GOOGLE_SA_JSON` / `GOOGLE_KEY_FILE` | Chiave della service account (contenuto JSON oppure file, di default `./service-account.json`) |
 | `STAFF_PIN` | PIN del gestore del locale legacy |
 | `TELEGRAM_BOT_TOKEN` | Token del bot (variabile **oppure** Secret File su Render) |
-| `TELEGRAM_OWNER_ID` | Facoltativa: fissa il proprietario del bot |
+| `TELEGRAM_OWNER_ID` | Fissa il proprietario del bot (il suo numero Telegram): solo lui crea locali e apre le statistiche. Senza, il proprietario è chi ha scritto `/start` per primo |
+| `STATS_KEY` | Chiave di sola lettura di `/api/statistiche` (solo Claude, almeno 32 caratteri). Senza, l'entrata è chiusa |
+| `STATS_DEV_LINK` | `1` solo nell'anteprima sul PC: stampa un link di prova alle statistiche. Ignorata su Render |
 | `PUBLIC_URL` | URL pubblico (su Render basta `RENDER_EXTERNAL_URL`, che è automatica) |
 | `PIZZERIA_NAME`, `PROGRAM_NAME`, `REWARD_TEXT`, `REWARD_SHORT`, `STAMPS_FOR_REWARD`, `BRAND_COLOR`, `GOOGLE_CLASS_SUFFIX`, `LEGACY_SLUG` | Usate **solo la prima volta** per creare il locale legacy. Dopo vale il registro `shops`. |
 | `LOGO_URL`, `WIDE_LOGO_URL` | Logo del locale legacy (`WIDE_LOGO_URL=off` per toglierlo) |
@@ -302,7 +318,7 @@ render.yaml  Blueprint Render (servizio + database)
 - Bot Telegram: online (webhook), creazione dei locali verificata dal vivo. Dipendenti, gestori, report, backup e avvisi sono coperti dai test, **non ancora provati dal vivo** da Federico.
 - Postgres a tabelle e migrazione: eseguiti dal vivo l'8 ottobre 2026, senza perdite.
 - Sicurezza (email già usata, blocco PIN e recupero) e privacy (export, cancellazione): coperti dai test e pubblicati.
-- 38 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
+- 42 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
 
 ---
 
