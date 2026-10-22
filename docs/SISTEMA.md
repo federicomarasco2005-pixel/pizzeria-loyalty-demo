@@ -294,7 +294,7 @@ render.yaml  Blueprint Render (servizio + database)
 ## 6. Cosa funziona (verificato)
 
 - Più locali sullo stesso server, creati dal bot. Eldorado è stato creato da Federico l'8 ottobre 2026.
-- Iscrizione, tessera web animata e in tempo reale, Cassa, dashboard, poster.
+- Iscrizione, tessera web animata e in tempo reale, Cassa, dashboard, poster. Scanner della Cassa con la fotocamera provato su telefono vero il 22/10/2026 con il nuovo QR (codice tessera).
 - Google Wallet (pubblicazione approvata il 19/10/2026): salvataggio, aggiornamento automatico, GIF una sola volta e poi immagine fissa, notifiche "+1", messaggi con scadenza, pulsante nascosto quando la tessera è già salvata. Provato sul telefono di Federico.
 - Timbro NFC: provato con il timbro fisico di Federico, valido per più clienti, iscrizione al momento, pausa di 3 ore, avviso in Cassa.
 - Tessera web installabile: prompt su Android verificato, guida per iPhone.
