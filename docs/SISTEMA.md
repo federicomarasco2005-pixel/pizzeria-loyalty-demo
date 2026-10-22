@@ -1,6 +1,6 @@
 # Tessere fedeltà digitali: come funziona tutto il sistema
 
-*Stato aggiornato al 9 ottobre 2026. Documento per riprendere il lavoro da zero: leggilo prima di toccare qualcosa.*
+*Stato aggiornato al 22 ottobre 2026. Documento per riprendere il lavoro da zero: leggilo prima di toccare qualcosa. Lo stato del giorno e le cose da fare sono in `HANDOFF.md`.*
 
 ---
 
@@ -33,13 +33,13 @@ Un **solo server** ospita **tutti i locali**, ognuno con il suo indirizzo: `/<sl
 | Codice sul PC | `C:\Users\feder\Desktop\Clode\Clode\loyalty-demo` (spostato dal vecchio PC `C:\Users\OEM\Desktop\Clode` il 10 ottobre 2026) |
 | Repository | GitHub `federicomarasco2005-pixel/pizzeria-loyalty-demo` (pubblico, ramo `main`) |
 | Hosting | Render, piano gratuito, servizio `pizzeria-loyalty-demo` (id `srv-dav3bnvpn0mc739u1bng`), regione Frankfurt |
-| Sito live | https://pizzeria-loyalty-demo.onrender.com (resta sempre attivo) |
-| Dominio proprio | **f5m.it**, comprato su Aruba il 10/10/2026 (scade 10/10/2027, rinnovo automatico, solo dominio + DNS). Aggiunto a Render tramite `render.yaml` (`domains:`). DNS da impostare su Aruba: A `@` → `216.24.57.1`, CNAME `www` → `pizzeria-loyalty-demo.onrender.com`. Poi `PUBLIC_URL=https://f5m.it`. |
-| Google Wallet console | Nome pubblico scelto: **lossless** (da confermare se diventa F5M). Profilo aziendale incompleto: servono profilo pagamenti (persona fisica), sito e URL assistenza su f5m.it, email assistenza Gmail. Poi "Request publishing access". |
-| Database | Postgres gratuito di Render (`pizzeria-loyalty-db`), collegato con `DATABASE_URL` |
+| Sito live | **https://f5m.it** (indirizzo principale dal 10/10/2026). https://pizzeria-loyalty-demo.onrender.com resta attivo: lo usano chip NFC, QR e tessere già emessi |
+| Dominio proprio | **f5m.it**, comprato su Aruba il 10/10/2026 (scade 10/10/2027, rinnovo automatico, solo dominio + DNS). Aggiunto a Render tramite `render.yaml` (`domains:`). DNS su Aruba fatti: A `@` → `216.24.57.1`, CNAME `www` → `pizzeria-loyalty-demo.onrender.com`, più `*`, `_acme-challenge` e `_cf-custom-hostname` per i sottodomini. `PUBLIC_URL=https://f5m.it`. Manca ancora il certificato di Render per `*.f5m.it` (verificato il 22/10). |
+| Google Wallet console | **Pubblicazione approvata da Google il 19/10/2026** (pratica 05701322). Nome pubblico **F5M**, profilo attività completo (MCC 5734, sito, assistenza, email e telefono), profilo pagamenti "Privato" collegato. Qualsiasi account Android può salvare la tessera. |
+| Database | Postgres gratuito di Render (`pizzeria-loyalty-db`), collegato con `DATABASE_URL`. **Scade il 31/10/2026**: spostamento su Neon fissato entro il 28–29/10 (`tools/copia-database.ps1`) |
 | Bot Telegram | **@GestioneFedelta_bot** (proprietario: Federico, il primo che ha scritto `/start`) |
 | Google Wallet | Issuer ID `3388000000023194584`, service account `wallet-issuer@pizzeria-loyalty-demo.iam.gserviceaccount.com` |
-| Keepalive | GitHub Actions `.github/workflows/keepalive.yml`: ogni 10 minuti chiama `/api/cron`, così il server gratuito non si addormenta |
+| Keepalive | GitHub Actions `.github/workflows/keepalive.yml` chiama `/api/cron`: è programmato ogni 10 minuti, ma GitHub lo esegue solo ogni qualche ora, quindi il server gratuito si addormenta comunque |
 | Test automatici | GitHub Actions `.github/workflows/test.yml`: a ogni modifica su `main` |
 | Documento strategico | Solo sul PC di Federico (`contesto\analisi-web-wallet-punchpass.md`), non nel repository: web al centro, Wallet come promemoria, NFC sicuro |
 
@@ -56,6 +56,7 @@ Tutti e tre sono esclusi da `.gitignore`.
 | `da-mario` | Pizzeria Da Mario | Locale demo originale ("legacy"). Classe Wallet `pizzeria_demo_v1`, archivio `db`, PIN da `STAFF_PIN`, logo e logo largo da file, non eliminabile. Ci sono 3 clienti di prova ("Test Claude" è la tessera salvata nel Wallet di Federico, più "Federico" e "Francesco"). |
 | `eldorado` | Eldorado | Creato da Federico con il bot l'8 ottobre 2026. |
 | `football` | (da completare) | Visto nei log di Render il 10 ottobre 2026, creato con il bot. |
+| ? | (da verificare) | Dal 21/10/2026 `/api/config` conta 4 locali: il quarto non è noto, chiedere a Federico. |
 
 ---
 
@@ -71,13 +72,21 @@ Tutti e tre sono esclusi da `.gitignore`.
 - **Auto-deploy** vero dopo i test (app Render installata su GitHub; `autoDeployTrigger: checksPass` nel Blueprint).
 - **Database**: strumento di copia verificata `tools/copia-database.ps1` pronto per passare a Neon (gratis) prima della scadenza del Postgres Render (~31 ottobre).
 
+### Novità del 13–22 ottobre 2026
+- **Sito f5m.it** con particelle 3D, demo interattiva, modulo "Richiedi una demo" (arriva sul bot) e assistenza.
+- **Nuova grafica F5M** per dashboard, Cassa e QR da tavolo (stile comune in `public/f5m.css`).
+- **Tessera web "carta vera"** e **Wallet** con logo largo per tutti i locali, testi in inglese e buono premio (15–16/10).
+- **Google Wallet approvato** per tutti il 19/10.
+- **Plancia sul PC** e **agente del mattino** nel cloud con avvisi Telegram (18/10, fuori dal repository).
+- **Validazione** (21–22/10): documento di scope, niente funzioni nuove fino alla fine del pilota.
+
 ## 3. Come si pubblica una modifica (IMPORTANTE)
 
 Dal 10 ottobre 2026 (nuovo PC) `loyalty-demo` è una copia git collegata a GitHub (`origin/main`). Node 24 e Git sono installati.
 
-1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 19.
+1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 33.
 2. Pubblica con git: `git add …`, `git commit`, `git push`.
-   - Al primo `git push` Windows apre il browser per il login GitHub: entra con l'account **federicomarasco2005-pixel**. Dopo resta salvato.
+   - Il login GitHub (account **federicomarasco2005-pixel**) è già salvato su questo PC: `git push` funziona.
    - Ripiego, se git non va: caricare i file dal browser su `github.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/upload/main/<cartella>` (una cartella per commit).
 3. Su GitHub partono i test (workflow `test`).
 4. Render ha **Auto-Deploy = "After CI Checks Pass"**: se i test passano, **pubblica da solo** (circa 1–2 minuti), e il bot Telegram scrive "🚀 Nuova versione online".
@@ -284,30 +293,29 @@ render.yaml  Blueprint Render (servizio + database)
 
 - Più locali sullo stesso server, creati dal bot. Eldorado è stato creato da Federico l'8 ottobre 2026.
 - Iscrizione, tessera web animata e in tempo reale, Cassa, dashboard, poster.
-- Google Wallet: salvataggio, aggiornamento automatico, GIF una sola volta e poi immagine fissa, notifiche "+1", messaggi con scadenza, pulsante nascosto quando la tessera è già salvata. Provato sul telefono di Federico.
+- Google Wallet (pubblicazione approvata il 19/10/2026): salvataggio, aggiornamento automatico, GIF una sola volta e poi immagine fissa, notifiche "+1", messaggi con scadenza, pulsante nascosto quando la tessera è già salvata. Provato sul telefono di Federico.
 - Timbro NFC: provato con il timbro fisico di Federico, valido per più clienti, iscrizione al momento, pausa di 3 ore, avviso in Cassa.
 - Tessera web installabile: prompt su Android verificato, guida per iPhone.
 - Bot Telegram: online (webhook), creazione dei locali verificata dal vivo. Dipendenti, gestori, report, backup e avvisi sono coperti dai test, **non ancora provati dal vivo** da Federico.
 - Postgres a tabelle e migrazione: eseguiti dal vivo l'8 ottobre 2026, senza perdite.
 - Sicurezza (email già usata, blocco PIN e recupero) e privacy (export, cancellazione): coperti dai test e pubblicati.
-- 19 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
+- 33 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
 
 ---
 
 ## 7. Cosa non va / limiti noti (in ordine di urgenza)
 
-1. **Database gratuito di Render**: scade dopo circa 30 giorni dalla creazione (inizio ottobre 2026: **controlla la data su Render**) e **non ha backup**.
+1. **Database gratuito di Render**: scade il **31/10/2026** (poi viene cancellato verso il 14/11) e **non ha backup**.
    - Se scade si perde tutto. L'unica copia è il backup settimanale su Telegram, più `/backup`.
-   - Soluzione: piano a pagamento (circa 7 $/mese) prima dei clienti veri.
+   - Soluzione scelta: **Neon gratuito** (non scade), copiando i dati con `tools/copia-database.ps1`. Fissato entro il 28–29/10/2026.
 2. **Indirizzo onrender.com scritto ovunque**: nei chip NFC, nelle tessere Wallet, nei QR stampati e nelle icone. Se cambia l'hosting, tutto questo smette di funzionare.
-   - Soluzione: un dominio proprio (circa 10 €/anno) **prima** di stampare QR e scrivere chip per locali veri.
-3. **Google Wallet in modalità demo**: solo gli account tester possono salvare la tessera.
-   - Va chiesto l'accesso di pubblicazione: Google Pay & Wallet Console → Google Wallet API → "Request publishing access". **Non ancora fatto.**
+   - In parte risolto: dal 10/10/2026 c'è **f5m.it** e i link nuovi usano quello. Chip e QR già fatti con onrender.com funzionano finché resta attivo il servizio su Render.
+3. **Google Wallet**: la modalità demo è finita. **Il 19/10/2026 Google ha approvato la pubblicazione**: chiunque con Android può salvare la tessera.
 4. **Testi legali**: l'informativa privacy e il regolamento sono una base, **da far verificare a un consulente**. Manca l'accordo scritto (nomina a responsabile del trattamento) con ogni locale.
-5. **Pubblicazione**: sul nuovo PC git è configurato e collegato a GitHub; manca solo il primo login al primo `git push` (vedi sezione 3).
+5. **Pubblicazione**: risolto. Git e login GitHub funzionano; Render pubblica da solo dopo i test.
 6. **Timbro NFC copiabile**: chi fotografa o copia l'URL del chip può timbrarsi da casa. Lo limitano la pausa di 3 ore e l'avviso in Cassa, ma non lo eliminano.
    - Soluzione: chip **NTAG 424 DNA** (codice diverso a ogni tocco). Da comprare e implementare.
-7. **Server gratuito**: se il keepalive si ferma, il server si addormenta dopo 15 minuti e la prima richiesta impiega circa 50 secondi.
+7. **Server gratuito**: il keepalive di GitHub non basta, quindi il server si addormenta dopo 15 minuti e la prima richiesta impiega 30–50 secondi. Per il pilota serve un server sveglio negli orari dei locali: un servizio gratuito che chiama `/api/cron` ogni 10 minuti, oppure il piano Render da 7 $/mese (decide Federico).
    - Le immagini stanno in memoria e si rigenerano dopo ogni riavvio: la prima richiesta è più lenta.
    - I blocchi dei PIN e dei tentativi stanno in memoria e si azzerano a ogni riavvio.
 8. **Velocità e limiti di Google**: l'aggiornamento del Wallet e le notifiche arrivano dopo secondi o minuti, decide Google. Massimo 3 notifiche push per tessera al giorno. Le GIF nell'immagine principale non sono documentate ufficialmente: oggi funzionano, e se Google le rifiuta c'è il ripiego automatico.
@@ -323,13 +331,14 @@ render.yaml  Blueprint Render (servizio + database)
 
 ## 8. Cose da sapere per non rompere niente
 
+- **Fino alla fine del pilota niente funzioni nuove**: valgono le regole del documento di scope (originale su claude.ai, link in `CLAUDE.md`). Ammessi senza prove: database, sicurezza, privacy, server sveglio, errori.
 - **Mai cambiare il `classSuffix`** di un locale esistente: le tessere già nei Wallet si staccherebbero. Per lo stesso motivo **mai rinominare lo slug** e **mai rigenerare il segreto NFC** senza riscrivere i chip.
 - **Il locale legacy `da-mario`** usa l'archivio `db`, la classe `pizzeria_demo_v1` e il PIN `STAFF_PIN`. Non è eliminabile.
 - **Cambiare tema, colore, numero di timbri o logo** fa salire `imgVersion`: le immagini vengono rigenerate e le tessere riaggiornate.
 - Cambiare il numero di timbri su un locale con clienti **ricalcola** i saldi dal ledger: per esempio da 6 a 8 timbri, chi aveva 7 timbri non ha più il premio.
 - **Le classi Google non si possono cancellare.** Se elimini un locale, la sua classe resta su Google (innocua).
 - Prima di ogni pubblicazione: `npm test`. Dopo: controlla i log di Render.
-- Le pagine usano indirizzi **relativi** (`api/...`, `card/...`, `logo.png`) per via di `<base href>`. Un percorso nuovo che inizia con `/` salta il locale. Gli unici assoluti voluti sono `/style.css`, `/common.js`, `/sw.js` e `/wallet-button-it.svg`.
+- Le pagine usano indirizzi **relativi** (`api/...`, `card/...`, `logo.png`) per via di `<base href>`. Un percorso nuovo che inizia con `/` salta il locale. Gli unici assoluti voluti sono `/style.css`, `/f5m.css`, `/common.js`, `/sw.js` e `/wallet-button-it.svg`.
 
 ---
 
@@ -347,7 +356,7 @@ npm test
 
 Prova di salute del sito live:
 ```bash
-curl https://pizzeria-loyalty-demo.onrender.com/api/config
+curl https://f5m.it/api/config
 ```
 
 ---
@@ -374,9 +383,9 @@ curl https://pizzeria-loyalty-demo.onrender.com/api/config
    - test e auto-deploy.
 
 **Prossimi passi possibili**, quando ci sarà budget:
-- dominio proprio;
-- database a pagamento;
-- richiesta di pubblicazione Google Wallet;
+- ~~dominio proprio~~ fatto (f5m.it, 10/10);
+- database su Neon gratuito (entro il 28–29/10);
+- ~~richiesta di pubblicazione Google Wallet~~ fatta (approvata il 19/10);
 - verifica legale dei testi;
 - chip NTAG 424 DNA;
 - Stripe per gli abbonamenti dei locali;

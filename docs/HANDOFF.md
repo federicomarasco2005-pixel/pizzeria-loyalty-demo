@@ -1,6 +1,6 @@
 # Passaggio di consegne — F5M tessere fedeltà
 
-*Aggiornato il 21 ottobre 2026. Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
+*Aggiornato il 22 ottobre 2026. Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
 
 ---
 
@@ -13,7 +13,7 @@
 
 ---
 
-## 2. Dove stiamo (stato al 21/10/2026)
+## 2. Dove stiamo (stato al 22/10/2026)
 
 | Cosa | Stato |
 |---|---|
@@ -24,8 +24,8 @@
 | Cassa e QR da tavolo | Nuova grafica F5M (stile comune in `public/f5m.css`). **Fotocamera della Cassa da provare su un telefono vero** |
 | Google Wallet | **✅ Approvato da Google il 19/10** (email "F5M is approved to access Google Wallet API", pratica 05701322): qualsiasi account Android può salvare la tessera, tutti i locali e i buoni premio; i locali nuovi non richiedono altre richieste; la modalità demo non torna più. Da fare: prova con un account non di prova (Federico). Profilo attività completo: nome pubblico **F5M**, MCC 5734, sito, assistenza, email e telefono; profilo pagamenti "Privato" già esistente di Federico collegato. Logo F5M (`contesto/wallet-pubblicazione/logo-f5m-1024.png`) non risultava salvato: facoltativo, da ricaricare. Provato da Federico sul suo Android il 16/10: funziona. Novità 16/10: logo largo generato per tutti i locali (font Inter in `fonts/`), testi in inglese, **buono premio** collegato (Offer) con link "🎁 Ritira il premio" (`?premio=1`) |
 | Tessera web | Nuova (16/10): apertura immediata dalla copia salvata (service worker), premio + barra sul fronte, retro con QR (la carta si gira), QR a tutto schermo con schermo acceso, riflesso lucido, ultime visite, modalità scura, inglese (`?lang=en`), "Privacy e impostazioni" chiuso in fondo |
-| Database | **Postgres gratuito di Render: scade ~31 ottobre 2026**, cancellato ~14 novembre. Nessun backup automatico tranne quello settimanale sul bot. Il 21/10 Federico ha detto **"per ora non farlo"**: riproporlo entro il 28–29/10 (servono ~30 minuti) |
-| Validazione (21/10) | Analisi con il **Founder's Playbook** di Anthropic: il prodotto è da fase MVP, ma la fase Idea non è chiusa (nessuna intervista scritta, nessun locale vero, nessun ricavo). Piano: fermare le nuove funzioni, intervistare 10–12 locali, poi pilota con 3–5 locali paganti. **Kit interviste** pronto in un documento privato: https://claude.ai/artifact/N7H4vAeWMW5wPLTaGbG8q7 (scheda principale = kit; scheda "Trento nord" = 42 locali in 4 giri con stato, contatti e messaggi). Zona scelta da Federico: **Trento nord**. **Documento di scope** (21/10, privato): https://claude.ai/artifact/RBSZgKsgR2jffbS5eSSGnw (cosa fa F5M, cosa non fa, le tre prove per aggiungere una funzione, idee parcheggiate) |
+| Database | **Postgres gratuito di Render: scade ~31 ottobre 2026**, cancellato ~14 novembre. Nessun backup automatico tranne quello settimanale sul bot. Il 21/10 Federico ha detto "per ora non farlo"; il 22/10 ha fissato lo spostamento **entro il 28–29/10** (servono ~30 minuti; dal 24/10 l'agente del mattino lo ricorda su Telegram) |
+| Validazione (21/10) | Analisi con il **Founder's Playbook** di Anthropic: il prodotto è da fase MVP, ma la fase Idea non è chiusa (nessuna intervista scritta, nessun locale vero, nessun ricavo). Piano: fermare le nuove funzioni, intervistare 10–12 locali, poi pilota con 3–5 locali paganti. **Kit interviste** pronto in un documento privato: https://claude.ai/artifact/N7H4vAeWMW5wPLTaGbG8q7 (scheda principale = kit; scheda "Trento nord" = 42 locali in 4 giri con stato, contatti e messaggi). Zona scelta da Federico: **Trento nord**. **Documento di scope** (21/10, privato): https://claude.ai/artifact/RBSZgKsgR2jffbS5eSSGnw (cosa fa F5M, cosa non fa, le tre prove per aggiungere una funzione, idee parcheggiate). Il 22/10: ipotesi, concorrenti e prezzo del pilota pronti nel kit |
 | Server | Render gratuito: si addormenta dopo 15 min e al risveglio Render mostra la sua pagina "SERVICE WAKING UP" (~30–50 s). Proposto un pinger gratuito (cron-job.org su `https://f5m.it/api/cron` ogni 10 min, 744 h/mese stanno nelle 750 gratuite) o Starter 7 $/mese: Federico il 16/10 ha detto **di no per ora** |
 | Test | 33 test, tutti verdi (`npm test`) |
 | Pubblicazione | `git push` da questo PC funziona; Render pubblica da solo dopo i test (app Render installata su GitHub) |
@@ -36,7 +36,7 @@
 
 ## 3. Cosa fare adesso (in ordine di urgenza)
 
-1. **🔴 Database prima del 31 ottobre.** Piano scelto: **Neon gratuito** (non scade).
+1. **🔴 Database prima del 31 ottobre.** Piano scelto: **Neon gratuito** (non scade). Federico l'ha fissato **entro il 28–29/10**.
    - Federico: crea account su neon.tech (con GitHub) → tu crei il progetto a Francoforte.
    - Copia dati: `tools/copia-database.ps1` (chiede le due stringhe a schermo, le incolla lui; verifica "IDENTICO" tabella per tabella; il vecchio DB non viene toccato).
    - Federico incolla la stringa Neon in `DATABASE_URL` su Render. **Attenzione**: in `render.yaml` `DATABASE_URL` è `fromDatabase` → cambiarla in `sync: false`, altrimenti il Blueprint la rimette com'era. Poi verifica avvio, clienti, un timbro di prova. Prima di tutto: `/backup` dal bot.
@@ -60,7 +60,7 @@
 
 ---
 
-## 4. Cosa è stato fatto in queste sessioni (9–21 ottobre)
+## 4. Cosa è stato fatto in queste sessioni (9–22 ottobre)
 
 - Progetto spostato sul nuovo PC, Node 24 + Git installati, cartella collegata a GitHub.
 - **Tessera web istantanea** (dati nella pagina, saldo nell'avviso live, niente attese di Google) e **Wallet più veloce** (GIF in un thread separato e preparate all'avvio, aggiornamenti in coda).
@@ -74,7 +74,9 @@
 - 19/10: Google Wallet approvato.
 - 21/10: controllo generale (sito, Wallet attivo, 33 test verdi, avvisi Telegram consegnati); ricreato `plancia/genera.js`; ripristinato `CLAUDE.md` sul PC (aveva perso la sezione "Sessioni nel cloud"); corretto il prompt dell'agente del mattino.
 - 21/10: analisi della piattaforma con il **Founder's Playbook** (fase, criteri d'uscita, passi saltati); **kit interviste** (profilo del locale, domande, scheda appunti, registro, messaggi, segnali) e **elenco di 42 locali di Trento nord** con contatti per scrivere, tutto nel documento privato su claude.ai. Consiglio su Apple Wallet: farlo dopo database e sicurezza, quando parte il primo locale vero.
-- 21/10: **documento di scope** (privato su claude.ai): per chi è F5M, il nucleo del pilota, cosa non fa, lavori ammessi senza prove, le tre prove per aggiungere una funzione, idee parcheggiate (Apple Wallet ora richiede una prova dal pilota), quando si rivede.
+- 21/10: **documento di scope** (privato su claude.ai): per chi è F5M, il nucleo del pilota, cosa non fa, lavori ammessi senza prove, le tre prove per aggiungere una funzione, idee parcheggiate (Apple Wallet ora richiede una prova dal pilota), quando si rivede. Copia sul PC: `contesto/SCOPE.md`.
+- 21–22/10: nel kit interviste privato tre schede nuove: **Ipotesi e avvocato del diavolo**, **Concorrenti e lamentele** (almeno 6 servizi di tessere su Wallet senza app a 0–15 €/mese; SumUp Fedeltà gratis per chi ha il POS SumUp; nessuno con timbro NFC; Couponoo, Tesserando e Fedelya non risultano) e **Prezzo del pilota** (deciso da Federico il 22/10; le cifre stanno solo nel kit e in `contesto/`). Rilanci su SumUp, Satispay e tessere sul telefono aggiunti alle domande 7 e 9.
+- 22/10: scritta la prima memoria di Claude (era vuota); `docs/SISTEMA.md` riportato allo stato attuale (era fermo al 9/10); aggiunto un `CLAUDE.md` in `Desktop\Clode`, la cartella da cui partono le sessioni sul PC.
 
 ---
 
@@ -103,6 +105,7 @@
 | Numeri ed email nel "riassunto AI" di Google | A volte sono sbagliati (es. un'email su un dominio che non esiste): segnarli "da confermare"; tenere separati quelli pubblicati dal locale. Escludere email con nome e cognome di persone e le partite IVA (11 cifre che iniziano con 0) |
 | Leggere un PDF sul PC | Mancano `pdftoppm` e Python: installare `pdfjs-dist` in una cartella temporanea (scratchpad) ed estrarre il testo con uno script Node |
 | Pagine su claude.ai (artifact): niente download diretti né `fetch` esterni | Usare la capacità `downloads` (solo alcuni formati: STL no, ZIP sì) e includere i dati nella pagina |
+| Sessione aperta in `Desktop\Clode` (un livello sopra il progetto): `CLAUDE.md` e HANDOFF non venivano letti da soli | Dal 22/10 c'è un `CLAUDE.md` anche in `Desktop\Clode` che rimanda a `Clode/CLAUDE.md` e a questo file |
 
 ---
 
@@ -113,4 +116,4 @@
 - **Stile**: landing in `public/home.html` (tutto dentro, particelle in canvas 2D); dashboard/Cassa/QR usano `public/f5m.css` + regole proprie. Font da Bunny Fonts (privacy).
 - **Variabili Render importanti**: `PUBLIC_URL=https://f5m.it`, `BRAND_NAME=F5M`, `SUPPORT_EMAIL`, `SHOP_DOMAIN` (commentata finché manca il certificato), `GOOGLE_SA_JSON`, `STAFF_PIN`, `TELEGRAM_BOT_TOKEN` (Secret File).
 - **Documentazione**: se aggiorni `docs/SISTEMA.md` aggiorna anche `contesto/SISTEMA.md` sul PC (la copia nel repo non contiene i prezzi). Stesso discorso per questo file: `contesto/HANDOFF.md` ha in più una sezione privata (strategia, prezzi del pilota) che **non va mai nel repo pubblico**. Mai nel repo neanche i contatti dei locali: stanno solo nel documento privato su claude.ai.
-- **Documenti privati su claude.ai**: documento di scope https://claude.ai/artifact/RBSZgKsgR2jffbS5eSSGnw (da rileggere prima di proporre funzioni nuove); kit interviste + elenco Trento nord https://claude.ai/artifact/N7H4vAeWMW5wPLTaGbG8q7 (si modifica con gli strumenti "docs"); Plancia online https://claude.ai/artifact/WhL3toHeEeWei68vNqvoGd.
+- **Documenti privati su claude.ai**: documento di scope https://claude.ai/artifact/RBSZgKsgR2jffbS5eSSGnw (da rileggere prima di proporre funzioni nuove; copia sul PC: `contesto/SCOPE.md`); kit interviste + elenco Trento nord https://claude.ai/artifact/N7H4vAeWMW5wPLTaGbG8q7 (si modifica con gli strumenti "docs"; copia sul PC delle schede senza contatti: `contesto/VALIDAZIONE.md`); Plancia online https://claude.ai/artifact/WhL3toHeEeWei68vNqvoGd.
