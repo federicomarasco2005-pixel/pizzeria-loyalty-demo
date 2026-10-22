@@ -65,6 +65,15 @@ test('iscrizione; email già usata NON restituisce la tessera', async () => {
   assert.strictEqual(again.data.emailExists, true);
 });
 
+test('QR del tavolo riscansionato da un telefono già iscritto: si apre la sua tessera', async () => {
+  const cookie = (await api(`${S}/card/${anna}`)).headers.get('set-cookie').split(';')[0];
+  const back = await api(`${S}/?lang=en`, { cookie });
+  assert.strictEqual(back.status, 302);
+  assert.strictEqual(back.headers.get('location'), `${S}/card/${anna}?lang=en`);
+  assert.strictEqual((await api(`${S}/`)).status, 200, 'telefono nuovo: modulo di iscrizione');
+  assert.strictEqual((await api(`${S}/`, { cookie: 'card_da_mario=sconosciuto' })).status, 200, 'tessera che non esiste più: modulo di iscrizione');
+});
+
 test('recupero con codice + email, tentativi limitati', async () => {
   const card = await api(`${S}/api/card/${anna}`);
   const code = card.data.code;

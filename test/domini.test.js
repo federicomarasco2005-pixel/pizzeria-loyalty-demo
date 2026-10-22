@@ -12,10 +12,10 @@ const DOMAIN = 'f5m.test';
 let server;
 
 // Richiesta con un "Host" a scelta (come se arrivasse da da-mario.f5m.test)
-function get(host, p, { method = 'GET', body } = {}) {
+function get(host, p, { method = 'GET', body, cookie } = {}) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
-    const req = http.request({ host: '127.0.0.1', port: PORT, path: p, method, headers: { host, ...(data && { 'content-type': 'application/json' }) } }, (res) => {
+    const req = http.request({ host: '127.0.0.1', port: PORT, path: p, method, headers: { host, ...(data && { 'content-type': 'application/json' }), ...(cookie && { cookie }) } }, (res) => {
       let text = '';
       res.on('data', (c) => { text += c; });
       res.on('end', () => { let json = {}; try { json = JSON.parse(text); } catch {} resolve({ status: res.statusCode, headers: res.headers, text, json }); });
@@ -77,6 +77,9 @@ test('sottodominio del locale: pagine, API e tessera', async () => {
   const card = await get(host, `/card/${signup.json.token}`);
   assert.match(card.text, /window\.CARD = \{/);
   assert.match(card.headers['set-cookie'][0], /card_da_mario=/);
+  // QR del tavolo riscansionato: la tessera si apre sul sottodominio, senza il percorso del locale
+  const back = await get(host, '/', { cookie: card.headers['set-cookie'][0].split(';')[0] });
+  assert.strictEqual(back.headers.location, `/card/${signup.json.token}`);
 
   // l'indirizzo con il percorso continua a funzionare anche sul dominio principale
   assert.strictEqual((await get(DOMAIN, '/da-mario/api/config')).json.pizzeriaName, 'Pizzeria Da Mario');

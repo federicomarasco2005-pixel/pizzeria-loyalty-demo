@@ -179,7 +179,13 @@ app.use('/:slug', (req, res, next) => {
   shop(req, res, next);
 });
 
-shop.get('/', page('index.html'));
+// Chi riscansiona il QR del tavolo con il telefono già iscritto ritrova subito la sua tessera
+// (riconosciuta dal cookie), invece del modulo di iscrizione che gli chiederebbe il codice tessera.
+shop.get('/', (req, res, next) => {
+  const token = getCardCookie(req);
+  if (!token || !req.ctx.db.findByToken(token)) return next();
+  res.set('Cache-Control', 'no-store').redirect(`${req.subdomain ? '' : `/${req.ctx.shop.slug}`}/card/${encodeURIComponent(token)}${query(req)}`);
+}, page('index.html'));
 for (const name of ['staff', 'admin', 'poster']) {
   shop.get([`/${name}`, `/${name}.html`], page(`${name}.html`));
 }

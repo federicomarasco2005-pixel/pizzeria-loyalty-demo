@@ -56,7 +56,7 @@ Tutti e tre sono esclusi da `.gitignore`.
 | `da-mario` | Pizzeria Da Mario | Locale demo originale ("legacy"). Classe Wallet `pizzeria_demo_v1`, archivio `db`, PIN da `STAFF_PIN`, logo e logo largo da file, non eliminabile. Ci sono 3 clienti di prova ("Test Claude" è la tessera salvata nel Wallet di Federico, più "Federico" e "Francesco"). |
 | `eldorado` | Eldorado | Creato da Federico con il bot l'8 ottobre 2026. |
 | `football` | (da completare) | Visto nei log di Render il 10 ottobre 2026, creato con il bot. |
-| ? | (da verificare) | Dal 21/10/2026 `/api/config` conta 4 locali: il quarto non è noto, chiedere a Federico. |
+| ? | (da verificare) | Dal 22/10/2026 `/api/config` conta 5 locali: il 4° e il 5° non sono noti (bot → "📋 I miei locali", oppure log di Render all'avvio: `[locali] N: …`). |
 
 ---
 
@@ -79,12 +79,13 @@ Tutti e tre sono esclusi da `.gitignore`.
 - **Google Wallet approvato** per tutti il 19/10.
 - **Plancia sul PC** e **agente del mattino** nel cloud con avvisi Telegram (18/10, fuori dal repository).
 - **Validazione** (21–22/10): documento di scope, niente funzioni nuove fino alla fine del pilota.
+- **Correzioni prima del pilota** (22/10): il QR del tavolo riapre la tessera a un telefono già iscritto; tolte le scritte "demo" dall'iscrizione e dalla dashboard; consenso alle offerte "nella tessera e nel Wallet".
 
 ## 3. Come si pubblica una modifica (IMPORTANTE)
 
 Dal 10 ottobre 2026 (nuovo PC) `loyalty-demo` è una copia git collegata a GitHub (`origin/main`). Node 24 e Git sono installati.
 
-1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 37.
+1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 38.
 2. Pubblica con git: `git add …`, `git commit`, `git push`.
    - Il login GitHub (account **federicomarasco2005-pixel**) è già salvato su questo PC: `git push` funziona.
    - Ripiego, se git non va: caricare i file dal browser su `github.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/upload/main/<cartella>` (una cartella per commit).
@@ -206,7 +207,7 @@ render.yaml  Blueprint Render (servizio + database)
 ### 4.7 Pagine (public/)
 | Pagina | Indirizzo | Cosa fa |
 |---|---|---|
-| index.html | `/<slug>/` | Iscrizione (nome, email, consenso al regolamento obbligatorio, marketing facoltativo). Email già usata: modulo di recupero con codice ed email. |
+| index.html | `/<slug>/` | Iscrizione (nome, email, consenso al regolamento obbligatorio, consenso facoltativo alle offerte nella tessera e nel Wallet). Email già usata: modulo di recupero con codice ed email. **Telefono già iscritto** (cookie `card_<slug>` di una tessera esistente): l'indirizzo apre subito la sua tessera, così chi riscansiona il QR del tavolo non rivede il modulo (dal 22/10/2026). |
 | card.html | `/<slug>/card/<token>` | Tessera animata, aggiornata in tempo reale. Contiene: pulsante "Aggiungi a Google Wallet" (nascosto su iPhone o se già salvata), "📲 Salva sul telefono" (guida passo passo per iPhone, installazione per Android), fronte con timbri, barra di avanzamento, premio e codice; retro con il QR (si gira toccando la tessera o "Mostra il QR in cassa"), QR a tutto schermo con lo schermo sempre acceso (si apre da solo con `?qr=1`), riflesso lucido che segue dito/inclinazione, recensione Google, messaggi del locale, ultime visite, "Privacy e impostazioni" chiuso in fondo (consenso, privacy, scarica i miei dati, elimina la tessera). Modalità scura automatica; inglese se il telefono non è in italiano (`?lang=en|it` per forzarla). Il service worker la apre subito dalla copia salvata (anche col server addormentato) e la pagina si aggiorna appena il server risponde; la rilettura ogni 15 s solo se la connessione live è caduta. Ogni tessera ha il suo manifest, così l'icona sulla Home riapre proprio quella tessera. |
 | tap.html | `/<slug>/tap/<segreto>` | Timbro NFC (vedi 4.6). |
 | staff.html | `/<slug>/staff` | Cassa: PIN, scanner QR (libreria servita da `/vendor/html5-qrcode.min.js`), ricerca (il codice completo apre subito la tessera), +1 timbro, consegna premio, annulla, feed live dei timbri NFC. I dipendenti non vedono il link alla dashboard. |
@@ -232,7 +233,7 @@ render.yaml  Blueprint Render (servizio + database)
   - autocancellazione dalla tessera e cancellazione dalla dashboard;
   - revoca del consenso;
   - **cancellazione automatica dopo 24 mesi senza visite** (controllo giornaliero);
-  - i messaggi promozionali vanno solo a chi ha dato il consenso marketing.
+  - i messaggi promozionali vanno solo a chi ha dato il consenso marketing. Il consenso riguarda solo i messaggi nella tessera e nel Wallet: F5M non manda email né SMS (testo corretto il 22/10/2026, prima diceva "via email").
 
 ### 4.9 Bot Telegram (bot.js)
 - **Webhook** su `https://…/telegram/<hash>`, con un secret token nell'header. In locale, senza https, usa il **polling**.
@@ -301,7 +302,7 @@ render.yaml  Blueprint Render (servizio + database)
 - Bot Telegram: online (webhook), creazione dei locali verificata dal vivo. Dipendenti, gestori, report, backup e avvisi sono coperti dai test, **non ancora provati dal vivo** da Federico.
 - Postgres a tabelle e migrazione: eseguiti dal vivo l'8 ottobre 2026, senza perdite.
 - Sicurezza (email già usata, blocco PIN e recupero) e privacy (export, cancellazione): coperti dai test e pubblicati.
-- 37 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
+- 38 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
 
 ---
 
