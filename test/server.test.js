@@ -21,8 +21,9 @@ async function api(p, { method = 'GET', body, pin, cookie } = {}) {
   return { status: res.status, data, text, headers: res.headers };
 }
 
-test.before(async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tessere-srv-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tessere-srv-'));
+// Avvia il server (anche di nuovo, sulla stessa cartella dati: serve a provare cosa sopravvive a un riavvio)
+async function startServer() {
   server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
     env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, STAFF_PIN: PIN, DATABASE_URL: '', GOOGLE_ISSUER_ID: '', TELEGRAM_BOT_TOKEN: '', PUBLIC_URL: B },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -35,7 +36,8 @@ test.before(async () => {
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error(`server non partito:\n${log}`);
-});
+}
+test.before(startServer);
 test.after(() => server && server.kill());
 
 const S = '/da-mario';
@@ -174,11 +176,54 @@ test('timbro NFC: nuovo cliente iscritto sul momento, poi pausa', async () => {
   assert.strictEqual(bad.status, 403);
 });
 
+test('QR della tessera: contiene il codice, non il token; la Cassa lo apre solo con il PIN', async () => {
+  const QRCode = require('qrcode');
+  const card = (await api(`${S}/api/card/${anna}`)).data;
+  assert.strictEqual(card.qr, await QRCode.toDataURL(card.code, { margin: 1, width: 360 }), 'il QR è il codice tessera');
+  assert.strictEqual((await api(`${S}/api/card/${encodeURIComponent(card.code)}`)).status, 404, 'il codice non apre la tessera');
+  assert.strictEqual((await api(`${S}/api/staff/customer/${encodeURIComponent(card.code)}`)).status, 401, 'senza PIN niente');
+  const byCode = await api(`${S}/api/staff/customer/${encodeURIComponent(card.code.toLowerCase())}`, { pin: PIN });
+  assert.strictEqual(byCode.data.name, 'Anna');
+  const byOldQr = await api(`${S}/api/staff/customer/${anna}`, { pin: PIN });
+  assert.strictEqual(byOldQr.data.name, 'Anna', 'i QR mostrati prima (con il token) valgono ancora');
+});
+
+test('protezioni di base: intestazioni, scanner della Cassa servito da qui', async () => {
+  const r = await api(`${S}/staff`);
+  assert.strictEqual(r.headers.get('x-frame-options'), 'SAMEORIGIN');
+  assert.strictEqual(r.headers.get('x-content-type-options'), 'nosniff');
+  assert.strictEqual(r.headers.get('referrer-policy'), 'same-origin');
+  assert.match(r.headers.get('content-security-policy'), /frame-ancestors 'self'/);
+  assert.ok(!r.text.includes('unpkg.com'), 'nessuna libreria da siti esterni');
+  const lib = await fetch(`${B}/vendor/html5-qrcode.min.js`);
+  assert.strictEqual(lib.status, 200);
+  assert.match(lib.headers.get('content-type'), /javascript/);
+});
+
+test('avvisi live della Cassa: biglietto valido una volta, mai il PIN nell\'indirizzo', async () => {
+  assert.strictEqual((await fetch(`${B}${S}/api/staff/stream?pin=${PIN}`)).status, 401, 'il PIN nell\'indirizzo non vale più');
+  assert.strictEqual((await api(`${S}/api/staff/stream-ticket`, { method: 'POST' })).status, 401, 'il biglietto si chiede col PIN');
+  const { ticket } = (await api(`${S}/api/staff/stream-ticket`, { method: 'POST', pin: PIN })).data;
+  const ctrl = new AbortController();
+  const ok = await fetch(`${B}${S}/api/staff/stream?t=${ticket}`, { signal: ctrl.signal });
+  assert.strictEqual(ok.status, 200);
+  ctrl.abort();
+  assert.strictEqual((await fetch(`${B}${S}/api/staff/stream?t=${ticket}`)).status, 401, 'lo stesso biglietto non vale due volte');
+});
+
 test('PIN sbagliato 5 volte: blocco', async () => {
   // stessa macchina dei test precedenti: il blocco PIN è separato da quello del recupero tessera
   for (let i = 0; i < 5; i++) assert.strictEqual((await api(`${S}/api/staff/login`, { method: 'POST', pin: '000000' })).status, 401);
   const locked = await api(`${S}/api/staff/login`, { method: 'POST', pin: PIN });
   assert.strictEqual(locked.status, 429);
+});
+
+test('il blocco PIN resta dopo un riavvio del server', async () => {
+  await new Promise((r) => setTimeout(r, 1500)); // il blocco si salva un attimo dopo l'ultimo errore
+  server.kill();
+  await new Promise((r) => server.once('exit', r));
+  await startServer();
+  assert.strictEqual((await api(`${S}/api/staff/login`, { method: 'POST', pin: PIN })).status, 429);
 });
 
 test('privacy: export e cancellazione dalla tessera', async () => {

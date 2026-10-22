@@ -225,6 +225,7 @@ async function openStore(key, { codePrefix = 'PZ' } = {}) {
   const findByCodeAndEmail = (code, email) =>
     db.customers.find((c) => c.code === code && c.email === email);
   const findByToken = (token) => db.customers.find((c) => c.token === token);
+  const findByCode = (code) => db.customers.find((c) => c.code === code); // codice tessera: lo usa solo la Cassa (con il PIN)
 
   // Ultimo timbro (non annullato) assegnato da una certa fonte, es. 'nfc'
   function lastStampBy(customerId, by) {
@@ -362,7 +363,7 @@ async function openStore(key, { codePrefix = 'PZ' } = {}) {
     get customers() { return db.customers; },
     get events() { return db.events; },
     get campaigns() { return db.campaigns; },
-    createCustomer, updateCustomer, deleteCustomer, exportCustomer, findByEmail, findByCodeAndEmail, lastStampBy, findByToken, search,
+    createCustomer, updateCustomer, deleteCustomer, exportCustomer, findByEmail, findByCodeAndEmail, lastStampBy, findByToken, findByCode, search,
     addEvent, findByRequestId, stateOf, eventsOf, reset,
     getSettings, updateSettings,
     PUSH_LIMIT, pushesLast24h, canPush, logNotification,

@@ -131,7 +131,7 @@
     </section>
   </main>
 
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="/vendor/html5-qrcode.min.js"></script>
   <script src="/common.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
@@ -276,9 +276,19 @@
 
     // ---------- Avvisi live: timbri con il timbro NFC, premi ritirati dal cliente ----------
     let staffStream = null;
-    function connectStaffStream() {
+    // Gli avvisi si aprono con un biglietto chiesto col PIN (vale una volta): se la connessione cade se ne chiede un altro
+    async function connectStaffStream() {
       if (staffStream || !window.EventSource) return;
-      staffStream = new EventSource('api/staff/stream?pin=' + encodeURIComponent(pin));
+      let ticket;
+      try {
+        ({ ticket } = await api('api/staff/stream-ticket', { method: 'POST', pin }));
+      } catch (err) {
+        // PIN rifiutato (cambiato dal bot) o bloccato: niente tentativi automatici, che conterebbero come errori
+        if (!err.status || err.status >= 500) setTimeout(connectStaffStream, 10000);
+        return;
+      }
+      staffStream = new EventSource('api/staff/stream?t=' + encodeURIComponent(ticket));
+      staffStream.onerror = () => { staffStream.close(); staffStream = null; setTimeout(connectStaffStream, 3000); };
       staffStream.onmessage = (e) => {
         let ev; try { ev = JSON.parse(e.data); } catch { return; }
         // premio ritirato dal cliente con la sua tessera: basta guardare la schermata "PREMIO VALIDO"

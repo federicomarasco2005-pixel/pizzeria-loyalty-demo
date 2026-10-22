@@ -23,6 +23,18 @@ const app = express();
 app.set('trust proxy', 1); // Render è dietro proxy: serve per sapere se la richiesta è HTTPS
 app.use(express.json({ limit: '2mb' }));
 
+// Protezioni di base su tutte le risposte: le pagine non si aprono dentro siti altrui (cassa e dashboard),
+// il browser non indovina il tipo dei file e non manda ad altri siti l'indirizzo della pagina (con il token della tessera).
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'same-origin',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'Content-Security-Policy': "frame-ancestors 'self'",
+  });
+  next();
+});
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -30,7 +42,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 // ---------- Sottodomini dei locali (SHOP_DOMAIN, es. da-mario.f5m.it) ----------
 // Una richiesta a <slug>.f5m.it diventa internamente /<slug>/…: pagine e API sono le stesse dell'indirizzo con il percorso.
 // I file comuni (/style.css, /common.js…) restano comuni. Un indirizzo vecchio (locale rinominato) porta al nuovo.
-const GLOBAL_FILES = new Set(['/style.css', '/f5m.css', '/common.js', '/sw.js', '/wallet-button-it.svg', '/robots.txt']);
+const GLOBAL_FILES = new Set(['/style.css', '/f5m.css', '/common.js', '/sw.js', '/wallet-button-it.svg', '/robots.txt', '/vendor/html5-qrcode.min.js']);
 app.use((req, res, next) => {
   const domain = shops.shopDomain();
   const host = String(req.hostname || '').toLowerCase();
@@ -106,12 +118,21 @@ app.get('/tap/:secret', (req, res) => {
 });
 // Controllo di salute di Render e ping esterno (tiene sveglio il server gratuito)
 app.get('/api/config', (req, res) => res.json({ ok: true, shops: shops.all().length, walletEnabled: wallet.enabled() }));
+// Pubblico (lo chiamano il keepalive e i ping esterni): risponde sempre, ma fa il giro delle campagne al massimo una volta al minuto
+let lastCron = 0;
 app.get('/api/cron', wrap(async (req, res) => {
-  await processDueCampaigns();
+  if (Date.now() - lastCron >= 60000) {
+    lastCron = Date.now();
+    await processDueCampaigns();
+  }
   res.json({ ok: true });
 }));
 
 bot.mount(app);
+// Scanner QR della Cassa: la libreria si serve da qui (node_modules), non da un sito esterno
+app.get('/vendor/html5-qrcode.min.js', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=86400').sendFile(path.join(__dirname, 'node_modules', 'html5-qrcode', 'html5-qrcode.min.js'));
+});
 app.use(express.static(PUBLIC_DIR, { index: false }));
 
 // ---------- Pagine del locale ----------
@@ -384,7 +405,7 @@ shop.post('/api/card/:token/delete', wrap(async (req, res) => {
 // Cancella un cliente: tessera Wallet disattivata, dati eliminati
 async function removeCustomer(ctx, customer) {
   clearTimeout(settleTimers.get(customer.id));
-  qrCache.delete(customer.token);
+  qrCache.delete(customer.code);
   await ctx.db.deleteCustomer(customer.id);
   // prima finiscono gli aggiornamenti del pass già partiti (quelli in coda vedono il cliente cancellato e saltano),
   // poi il pass si disattiva: nessun aggiornamento può riattivarlo dopo
@@ -405,14 +426,17 @@ shop.get('/api/card/:token', wrap(async (req, res) => {
 // quello che già mostra (es. una lettura partita prima di un timbro arrivato in tempo reale).
 const versionOf = (ctx, customer) => ctx.db.eventsOf(customer.id).length;
 
-// QR della tessera: il token non cambia mai, si disegna una volta sola
+// QR della tessera mostrato in cassa: contiene il codice tessera (es. PZ-AB12C), non il token.
+// Il token apre la tessera (dati, cancellazione, premio): chi fotografa il QR sul telefono di un cliente
+// non deve poterlo usare. Il codice da solo non apre niente; la Cassa lo riconosce solo con il PIN.
+// Il codice non cambia mai: il QR si disegna una volta sola.
 const qrCache = new Map();
-async function qrOf(token) {
-  if (!qrCache.has(token)) {
+async function qrOf(code) {
+  if (!qrCache.has(code)) {
     if (qrCache.size > 2000) qrCache.delete(qrCache.keys().next().value);
-    qrCache.set(token, await QRCode.toDataURL(token, { margin: 1, width: 360 }));
+    qrCache.set(code, await QRCode.toDataURL(code, { margin: 1, width: 360 }));
   }
-  return qrCache.get(token);
+  return qrCache.get(code);
 }
 
 // Dati della tessera web (API e pagina). Non aspetta mai Google: se la tessera è nel Wallet lo
@@ -427,7 +451,7 @@ async function cardData(ctx, customer) {
     rewards: state.rewards,
     stampsForReward: ctx.cfg.stampsForReward,
     v: versionOf(ctx, customer),
-    qr: await qrOf(customer.token),
+    qr: await qrOf(customer.code),
     saveUrl: wallet.enabled() ? wallet.saveUrl(customer) : null,
     walletSaved: !!customer.walletSaved,
     reviewUrl: ctx.db.getSettings().reviewUrl || null,
@@ -541,21 +565,51 @@ shop.get('/api/poster-qr', wrap(async (req, res) => {
 // ---------- Staff / Admin (protetti dal PIN del locale) ----------
 
 // Tentativi sbagliati (PIN, recupero tessera): dopo 5 errori dallo stesso indirizzo, blocco di 15 minuti.
+// I blocchi stanno nel database (chiave "attempts"): il server gratuito si riavvia spesso e non deve azzerarli.
+// Si contano anche i PIN sbagliati di tutto il locale: se nell'ultima ora sono 20 o più (qualcuno prova da più
+// indirizzi), ogni indirizzo si blocca al primo errore. Il personale con il PIN giusto continua a lavorare.
 const attempts = {
-  map: new Map(), MAX: 5, LOCK_MS: 15 * 60 * 1000,
+  map: new Map(), MAX: 5, LOCK_MS: 15 * 60 * 1000, KEEP_MS: 24 * 3600e3,
+  shopFails: new Map(), SHOP_MAX: 20, // slug -> orari dei PIN sbagliati nell'ultima ora
+  saveTimer: null,
   check(k) {
     const f = this.map.get(k);
     return f && f.until > Date.now() ? Math.ceil((f.until - Date.now()) / 60000) : 0;
   },
-  fail(k) {
+  fail(k, lockNow = false) {
     const f = this.map.get(k);
     const n = f && !(f.until && f.until <= Date.now()) ? f.n + 1 : 1;
-    const until = n >= this.MAX ? Date.now() + this.LOCK_MS : 0;
-    this.map.set(k, { n, until });
+    const until = n >= this.MAX || lockNow ? Date.now() + this.LOCK_MS : 0;
+    this.map.set(k, { n, until, at: Date.now() });
     if (this.map.size > 5000) this.map.delete(this.map.keys().next().value);
+    this.save();
     return !!until;
   },
-  ok(k) { this.map.delete(k); },
+  ok(k) { if (this.map.delete(k)) this.save(); },
+  // PIN sbagliati di tutto il locale nell'ultima ora, questo compreso
+  shopFail(slug) {
+    const now = Date.now();
+    const list = (this.shopFails.get(slug) || []).filter((t) => now - t < 3600e3);
+    list.push(now);
+    this.shopFails.set(slug, list);
+    return list.length;
+  },
+  // Una scrittura sola per una raffica di errori. Contengono indirizzi IP: si tengono al massimo 24 ore.
+  save() {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      const now = Date.now();
+      const ip = [...this.map].filter(([, f]) => f.until > now || now - (f.at || 0) < this.KEEP_MS);
+      db.saveKey('attempts', { ip, shop: [...this.shopFails] });
+    }, 1000);
+  },
+  async load() {
+    const saved = await db.loadKey('attempts');
+    if (!saved) return;
+    const now = Date.now();
+    for (const [k, f] of saved.ip || []) if (f.until > now || now - (f.at || 0) < this.KEEP_MS) this.map.set(k, f);
+    for (const [slug, list] of saved.shop || []) this.shopFails.set(slug, list.filter((t) => now - t < 3600e3));
+  },
 };
 
 // Chi sta usando la cassa: il gestore (PIN principale) o un dipendente (PIN personale, creato dal bot)
@@ -566,8 +620,12 @@ function checkPin(req, pin) {
   if (locked) return { error: `Troppi tentativi sbagliati: riprova tra ${locked} minuti.`, status: 429 };
   const who = shops.whoHasPin(ctx.shop, String(pin || ''));
   if (who) { attempts.ok(k); return { who }; }
-  if (pin && attempts.fail(k)) {
-    bot.alert(`🔐 ${ctx.cfg.pizzeriaName}: 5 PIN sbagliati di fila su cassa/dashboard (indirizzo ${req.ip}). Bloccato per 15 minuti.`, `pin|${ctx.shop.slug}`);
+  if (pin) {
+    const many = attempts.shopFail(ctx.shop.slug) >= attempts.SHOP_MAX;
+    if (attempts.fail(k, many)) {
+      if (many) bot.alert(`🔐 ${ctx.cfg.pizzeriaName}: ${attempts.SHOP_MAX} o più PIN sbagliati nell'ultima ora, da più indirizzi. Ora ogni indirizzo si blocca al primo errore.`, `pinshop|${ctx.shop.slug}`);
+      else bot.alert(`🔐 ${ctx.cfg.pizzeriaName}: 5 PIN sbagliati di fila su cassa/dashboard (indirizzo ${req.ip}). Bloccato per 15 minuti.`, `pin|${ctx.shop.slug}`);
+    }
   }
   return { error: 'PIN errato.', status: 401 };
 }
@@ -611,9 +669,13 @@ function loadCustomer(req, res) {
 
 shop.post('/api/staff/login', requirePin, (req, res) => res.json({ ok: true, role: req.who.role, name: req.who.name }));
 
-shop.get('/api/staff/customer/:token', requirePin, (req, res) => {
-  const customer = loadCustomer(req, res);
-  if (customer) res.json(customerView(req.ctx, customer));
+// Cliente aperto dalla Cassa: QR scansionato o codice scritto. Il QR delle tessere contiene il codice tessera;
+// i QR mostrati prima (con il token) restano validi.
+shop.get('/api/staff/customer/:id', requirePin, (req, res) => {
+  const raw = String(req.params.id || '').trim();
+  const customer = req.ctx.db.findByToken(raw) || req.ctx.db.findByCode(raw.toUpperCase());
+  if (!customer) return res.status(404).json({ error: 'Tessera non riconosciuta.' });
+  res.json(customerView(req.ctx, customer));
 });
 
 shop.get('/api/staff/search', requirePin, (req, res) => {
@@ -769,10 +831,22 @@ shop.post('/api/tap', wrap(async (req, res) => {
   res.json({ token: customer.token, before: { stamps: before.stamps, rewards: before.rewards }, rewardEarned, isNew });
 }));
 
-// Avvisi live per la Cassa (EventSource non può mandare header: il PIN arriva in query)
+// Avvisi live per la Cassa. EventSource non può mandare header, ma il PIN non deve finire negli indirizzi
+// (restano nei log e nella cronologia): la Cassa chiede col PIN un biglietto, valido una volta per 60 secondi,
+// e apre gli avvisi con quello. Se la connessione cade, ne chiede uno nuovo.
 const staffStreams = new Map(); // slug -> Set di risposte aperte
+const streamTickets = new Map(); // biglietto -> { slug, until }
+shop.post('/api/staff/stream-ticket', requirePin, (req, res) => {
+  const now = Date.now();
+  for (const [t, v] of streamTickets) if (v.until < now) streamTickets.delete(t);
+  const ticket = crypto.randomBytes(18).toString('base64url');
+  streamTickets.set(ticket, { slug: req.ctx.shop.slug, until: now + 60000 });
+  res.json({ ticket });
+});
 shop.get('/api/staff/stream', (req, res) => {
-  if (checkPin(req, req.query.pin).error) return res.status(401).end();
+  const t = streamTickets.get(String(req.query.t || ''));
+  streamTickets.delete(String(req.query.t || ''));
+  if (!t || t.slug !== req.ctx.shop.slug || t.until < Date.now()) return res.status(401).end();
   const { slug } = req.ctx.shop;
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
@@ -1502,6 +1576,7 @@ async function announceDeploy() {
 
 const ready = (async () => {
   await db.init();
+  await attempts.load();
   await shops.init(PUBLIC_URL);
   wallet.init({
     issuerId: process.env.GOOGLE_ISSUER_ID || '',

@@ -84,7 +84,7 @@ Tutti e tre sono esclusi da `.gitignore`.
 
 Dal 10 ottobre 2026 (nuovo PC) `loyalty-demo` è una copia git collegata a GitHub (`origin/main`). Node 24 e Git sono installati.
 
-1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 33.
+1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 37.
 2. Pubblica con git: `git add …`, `git commit`, `git push`.
    - Il login GitHub (account **federicomarasco2005-pixel**) è già salvato su questo PC: `git push` funziona.
    - Ripiego, se git non va: caricare i file dal browser su `github.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/upload/main/<cartella>` (una cartella per commit).
@@ -168,7 +168,7 @@ render.yaml  Blueprint Render (servizio + database)
 - **Un oggetto per cliente** (`loyaltyObject`, id `<issuer>.c_<customerId>`):
   - aggiornato con **PUT completo**, senza leggerlo prima;
   - i messaggi del pass li decide il server: resta solo l'ultimo messaggio attivo, con scadenza;
-  - QR del Wallet spento di default (`WALLET_QR=on` per riaccenderlo).
+  - QR del Wallet spento di default (`WALLET_QR=on` per riaccenderlo); se acceso contiene il codice tessera, non il token.
   - Testi anche in inglese (`localizedHeader/Body`, `localizedLabel`, `localizedDescription`): Google mostra la lingua del telefono. Il testo del premio resta quello scritto dal locale.
   - **Buono premio**: con un premio da ritirare la tessera ha collegato un'offerta Google (`linkedOfferIds`, classe `<classSuffix>_premio`, oggetto `c_<id>_premio`); ritirato il premio il buono diventa `COMPLETED`.
   - Ripieghi automatici su un rifiuto di Google (400), fino al riavvio: prima la GIF, poi il buono collegato, poi le traduzioni. La tessera si aggiorna comunque.
@@ -209,21 +209,23 @@ render.yaml  Blueprint Render (servizio + database)
 | index.html | `/<slug>/` | Iscrizione (nome, email, consenso al regolamento obbligatorio, marketing facoltativo). Email già usata: modulo di recupero con codice ed email. |
 | card.html | `/<slug>/card/<token>` | Tessera animata, aggiornata in tempo reale. Contiene: pulsante "Aggiungi a Google Wallet" (nascosto su iPhone o se già salvata), "📲 Salva sul telefono" (guida passo passo per iPhone, installazione per Android), fronte con timbri, barra di avanzamento, premio e codice; retro con il QR (si gira toccando la tessera o "Mostra il QR in cassa"), QR a tutto schermo con lo schermo sempre acceso (si apre da solo con `?qr=1`), riflesso lucido che segue dito/inclinazione, recensione Google, messaggi del locale, ultime visite, "Privacy e impostazioni" chiuso in fondo (consenso, privacy, scarica i miei dati, elimina la tessera). Modalità scura automatica; inglese se il telefono non è in italiano (`?lang=en|it` per forzarla). Il service worker la apre subito dalla copia salvata (anche col server addormentato) e la pagina si aggiorna appena il server risponde; la rilettura ogni 15 s solo se la connessione live è caduta. Ogni tessera ha il suo manifest, così l'icona sulla Home riapre proprio quella tessera. |
 | tap.html | `/<slug>/tap/<segreto>` | Timbro NFC (vedi 4.6). |
-| staff.html | `/<slug>/staff` | Cassa: PIN, scanner QR, ricerca (il codice completo apre subito la tessera), +1 timbro, consegna premio, annulla, feed live dei timbri NFC. I dipendenti non vedono il link alla dashboard. |
+| staff.html | `/<slug>/staff` | Cassa: PIN, scanner QR (libreria servita da `/vendor/html5-qrcode.min.js`), ricerca (il codice completo apre subito la tessera), +1 timbro, consegna premio, annulla, feed live dei timbri NFC. I dipendenti non vedono il link alla dashboard. |
 | admin.html | `/<slug>/admin` | Dashboard, **solo con il PIN del gestore**. **Panoramica**: numeri, clienti (con 🗑️ per cancellarli), storico con chi ha timbrato. **Notifiche**: segmenti, consenso, durata del messaggio (1/3/7/14 giorni), programmazione, storico, annulla, "elimina dalle tessere". **Impostazioni**: link recensione, Maps, telefono, NFC. |
 | poster.html | `/<slug>/poster` | QR da tavolo da stampare. |
 | privacy.html | `/<slug>/privacy` | Informativa e regolamento del locale. |
 | sw.js | `/sw.js` | Service worker: prima la rete, la copia salvata solo se si è offline. |
 
-**Tempo reale**: Server-Sent Events, su `api/card/<token>/stream` per la tessera e su `api/staff/stream?pin=` per la Cassa.
+**Tempo reale**: Server-Sent Events, su `api/card/<token>/stream` per la tessera e su `api/staff/stream?t=<biglietto>` per la Cassa. Il biglietto si chiede con il PIN a `api/staff/stream-ticket` e vale una volta per 60 secondi: il PIN non finisce mai in un indirizzo.
 
 ### 4.8 Sicurezza e privacy
 - **PIN**: il PIN del gestore (6 cifre per i locali nuovi) apre Cassa e dashboard; il PIN di un dipendente apre solo la Cassa.
-  - **Dopo 5 errori dallo stesso indirizzo IP: blocco di 15 minuti** e avviso su Telegram.
+  - **Dopo 5 errori dallo stesso indirizzo IP: blocco di 15 minuti** e avviso su Telegram. I blocchi sono salvati nel database (kv `attempts`, al massimo 24 ore) e sopravvivono ai riavvii.
+  - Con 20 o più PIN sbagliati in un'ora su un locale (tentativi da più indirizzi), ogni indirizzo si blocca al primo errore e arriva un avviso. Il PIN giusto continua a funzionare.
   - Il PIN viaggia nell'header `x-staff-pin` ed è ricordato nel `localStorage` del dispositivo della cassa.
 - **Iscrizione**: un'email già iscritta **non** restituisce la tessera.
   - Il recupero richiede codice ed email (`/api/recover`), con lo stesso blocco dopo 5 errori.
-- Il token della tessera è opaco: 16 byte casuali, nessun dato personale. Il QR contiene solo il token.
+- Il token della tessera è opaco (16 byte casuali, nessun dato personale) e apre la tessera: per questo **non è nel QR**. Il QR contiene il codice tessera (es. `PZ-AB12C`), che da solo non apre niente: la Cassa lo riconosce solo con il PIN (`api/staff/customer/<codice o token>`; i QR vecchi con il token restano validi).
+- **Intestazioni di sicurezza** su tutte le risposte: `X-Frame-Options: SAMEORIGIN` e `frame-ancestors 'self'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`. `/api/cron` è pubblico ma fa il giro delle campagne al massimo una volta al minuto.
 - **GDPR**:
   - informativa per locale (il locale è il titolare dei dati, il servizio è il responsabile del trattamento);
   - export JSON dei dati, senza il token;
@@ -299,7 +301,7 @@ render.yaml  Blueprint Render (servizio + database)
 - Bot Telegram: online (webhook), creazione dei locali verificata dal vivo. Dipendenti, gestori, report, backup e avvisi sono coperti dai test, **non ancora provati dal vivo** da Federico.
 - Postgres a tabelle e migrazione: eseguiti dal vivo l'8 ottobre 2026, senza perdite.
 - Sicurezza (email già usata, blocco PIN e recupero) e privacy (export, cancellazione): coperti dai test e pubblicati.
-- 33 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
+- 37 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
 
 ---
 
@@ -317,7 +319,7 @@ render.yaml  Blueprint Render (servizio + database)
    - Soluzione: chip **NTAG 424 DNA** (codice diverso a ogni tocco). Da comprare e implementare.
 7. **Server gratuito**: il keepalive di GitHub non basta, quindi il server si addormenta dopo 15 minuti e la prima richiesta impiega 30–50 secondi. Per il pilota serve un server sveglio negli orari dei locali: un servizio gratuito che chiama `/api/cron` ogni 10 minuti, oppure il piano Render da 7 $/mese (decide Federico).
    - Le immagini stanno in memoria e si rigenerano dopo ogni riavvio: la prima richiesta è più lenta.
-   - I blocchi dei PIN e dei tentativi stanno in memoria e si azzerano a ogni riavvio.
+   - I blocchi dei PIN sono salvati nel database dal 22/10/2026 e non si azzerano più ai riavvii.
 8. **Velocità e limiti di Google**: l'aggiornamento del Wallet e le notifiche arrivano dopo secondi o minuti, decide Google. Massimo 3 notifiche push per tessera al giorno. Le GIF nell'immagine principale non sono documentate ufficialmente: oggi funzionano, e se Google le rifiuta c'è il ripiego automatico.
 9. **iPhone**: niente Apple Wallet. Serve l'Apple Developer Program (99 €/anno) più lo sviluppo dei pass `.pkpass`. Su iPhone oggi c'è solo la tessera web salvata sulla Home.
 10. **Recupero della tessera**: funziona solo con codice ed email; non c'è l'invio di email. Chi perde il codice lo chiede in cassa, dove lo staff lo cerca per nome.
@@ -338,7 +340,7 @@ render.yaml  Blueprint Render (servizio + database)
 - Cambiare il numero di timbri su un locale con clienti **ricalcola** i saldi dal ledger: per esempio da 6 a 8 timbri, chi aveva 7 timbri non ha più il premio.
 - **Le classi Google non si possono cancellare.** Se elimini un locale, la sua classe resta su Google (innocua).
 - Prima di ogni pubblicazione: `npm test`. Dopo: controlla i log di Render.
-- Le pagine usano indirizzi **relativi** (`api/...`, `card/...`, `logo.png`) per via di `<base href>`. Un percorso nuovo che inizia con `/` salta il locale. Gli unici assoluti voluti sono `/style.css`, `/f5m.css`, `/common.js`, `/sw.js` e `/wallet-button-it.svg`.
+- Le pagine usano indirizzi **relativi** (`api/...`, `card/...`, `logo.png`) per via di `<base href>`. Un percorso nuovo che inizia con `/` salta il locale. Gli unici assoluti voluti sono `/style.css`, `/f5m.css`, `/common.js`, `/sw.js`, `/wallet-button-it.svg` e `/vendor/html5-qrcode.min.js`.
 
 ---
 

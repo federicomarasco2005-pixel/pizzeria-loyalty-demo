@@ -165,7 +165,8 @@ function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = 
     // QR nel Wallet facoltativo (WALLET_QR=on): Google non permette di spostarlo né rimpicciolirlo,
     // quindi di default si toglie per lasciare spazio alle pizze. In cassa si usa il codice cliente
     // (mostrato sul fronte) oppure il QR della tessera web, raggiungibile dal link nei dettagli.
-    ...(c.walletQr && { barcode: { type: 'QR_CODE', value: customer.token, alternateText: customer.code } }),
+    // Come nella tessera web, il QR contiene il codice cliente e non il token (che apre la tessera).
+    ...(c.walletQr && { barcode: { type: 'QR_CODE', value: customer.code, alternateText: customer.code } }),
     // Striscia dei timbri (immagine principale della tessera): un file per ogni stato,
     // URL diverso = Google la ricarica. Formato 3:1, come la mostra il Wallet sulle carte fedeltà.
     // Animata (GIF): l'ultima pizza ottenuta entra girando con il "+1"; con un premio pronto le pizze "saltano".
@@ -306,7 +307,7 @@ async function syncOffer(c, customer, state, selfRedeem = true) {
     if (active) await ensureOfferClass(c);
     const body = {
       id, classId: offerClassId(c), state: active ? 'ACTIVE' : 'COMPLETED',
-      ...(c.walletQr && { barcode: { type: 'QR_CODE', value: customer.token, alternateText: customer.code } }),
+      ...(c.walletQr && { barcode: { type: 'QR_CODE', value: customer.code, alternateText: customer.code } }),
       heroImage: {
         sourceUri: { uri: `${c.stampsImageBase}/grid-${c.stampsForReward}-${c.stampsForReward}.png?v=${c.imgVersion}` },
         contentDescription: loc('Premio sbloccato', 'Reward unlocked'),
