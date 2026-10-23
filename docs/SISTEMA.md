@@ -47,6 +47,7 @@ Un **solo server** ospita **tutti i locali**, ognuno con il suo indirizzo: `/<sl
 - `service-account.json`, la chiave Google: è sul PC; su Render sta nella variabile `GOOGLE_SA_JSON`.
 - `STAFF_PIN`: il PIN del primo locale, variabile su Render.
 - `TELEGRAM_BOT_TOKEN`: su Render come **Secret File**, non come variabile. `bot.js` lo legge da `/etc/secrets/`.
+- `VAPID_PRIVATE_KEY`: chiave privata delle notifiche web. Su Render come variabile; sul PC in `Clode/segreti/notifiche-web-privata.txt`.
 - `STATS_KEY`: chiave di sola lettura delle statistiche, usata solo da Claude. Su Render come variabile; sul PC in `Clode/segreti/chiave-statistiche.txt` (fuori dal repository).
 
 Tutti e tre sono esclusi da `.gitignore`.
@@ -83,12 +84,13 @@ Tutti e tre sono esclusi da `.gitignore`.
 - **Correzioni prima del pilota** (22/10): il QR del tavolo riapre la tessera a un telefono già iscritto; tolte le scritte "demo" dall'iscrizione e dalla dashboard; consenso alle offerte "nella tessera e nel Wallet".
 - **Statistiche di tutti i locali** (22/10): pagina solo per Federico (link monouso dal bot) e lettura per Claude (chiave), vedi 4.11.
 - **Messaggi automatici a fasce orarie** e **prova dal bot** (23/10), nuovo "Il tuo premio ti aspetta", vedi 4.12. Clienti della dashboard ordinabili.
+- **Notifiche web della tessera** sulla Home, anche iPhone (23/10), vedi 4.13.
 
 ## 3. Come si pubblica una modifica (IMPORTANTE)
 
 Dal 10 ottobre 2026 (nuovo PC) `loyalty-demo` è una copia git collegata a GitHub (`origin/main`). Node 24 e Git sono installati.
 
-1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 44.
+1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 45.
 2. Pubblica con git: `git add …`, `git commit`, `git push`.
    - Il login GitHub (account **federicomarasco2005-pixel**) è già salvato su questo PC: `git push` funziona.
    - Ripiego, se git non va: caricare i file dal browser su `github.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/upload/main/<cartella>` (una cartella per commit).
@@ -111,6 +113,7 @@ db.js        Archivio per locale: in memoria + Postgres (tabelle) o file JSON; l
 wallet.js    Google Wallet REST: una classe per locale, oggetti (tessere), messaggi/notifiche, link "Salva", disattivazione
 images.js    Genera sul server timbri, GIF animate, icone e logo per ogni locale (@napi-rs/canvas + gifenc)
 bot.js       Bot Telegram (webhook su Render, polling in locale)
+notifiche-web.js  Notifiche web della tessera (Web Push) per chi non ha il Wallet, vedi 4.13
 statistiche.js  Statistiche di tutti i locali: calcolo, pagina /statistiche (solo il proprietario, link dal bot) e /api/statistiche (solo Claude, chiave)
 public/      Pagine (uguali per tutti i locali): index, card, tap, staff, admin, poster, privacy + common.js, style.css, sw.js
 test/        db.test.js, server.test.js, bot.test.js (node:test; Postgres simulato con pg-mem)
@@ -296,9 +299,17 @@ render.yaml  Blueprint Render (servizio + database)
 | Ci manchi (solo con consenso) | 14 giorni senza visite (giorno), 35 (sera); una volta per assenza; non oltre 150 giorni | martedì–giovedì 8:00–11:00 | giovedì 17:30–20:00 |
 
 - **Limiti**: mai fuori dalle fasce (quindi mai tra le 21 e le 8); al massimo 1 messaggio automatico al giorno e 2 in 7 giorni per cliente (`customer.autoSent.days`). Il giro si fa ogni 10 minuti mentre il server è sveglio: **senza server sveglio le fasce vengono saltate**.
-- **Notifica sul telefono** solo con la tessera in Google Wallet, al massimo 3 al giorno per tessera (limite di Google, contano anche i "+1 timbro"): oltre arrivano senza suono. La tessera web mostra il messaggio solo quando si apre (niente notifiche web).
+- **Notifica sul telefono** con la tessera in Google Wallet oppure, senza Wallet, con le notifiche web attivate dalla tessera sulla Home (4.13); al massimo 3 al giorno per tessera (limite di Google, contano anche i "+1 timbro"): oltre arrivano senza suono. Senza nessuna delle due il messaggio si vede solo aprendo la tessera.
 - **Prova dal bot**: scheda del locale → 🤖 Automazioni → 🔔 *Prova le notifiche su una tessera* → codice tessera. Il bot dice per ogni messaggio se partirebbe adesso, cosa aspetta o perché no, quante notifiche Google la tessera ha già usato nelle 24 ore e se risulta nel Wallet; i pulsanti *Invia ora* lo mandano subito (campagna `test: true`: non segna il messaggio come mandato, non conta per i limiti né per le statistiche; "Ci manchi" solo a una tessera con consenso).
 - Le statistiche mostrano per ogni locale i messaggi degli ultimi 30 giorni per tipo e quanti sono **arrivati con notifica, senza suono o rifiutati da Google**.
+
+### 4.13 Notifiche web della tessera (dal 23/10/2026)
+- **Per chi**: clienti senza la tessera nel Google Wallet che la aprono dall'**icona sulla Home** (iPhone con iOS 16.4 o più recente, Android installata) o da un server senza Wallet. Dal browser normale il riquadro non compare: su Android si propone il Wallet, su iPhone il riquadro "Salva sul telefono" dice che l'icona porta anche gli avvisi.
+- **Nella tessera**: riquadro "🔔 Attiva le notifiche" → permesso del telefono → iscrizione (`POST api/card/<token>/push`), salvata in `customer.webPush` (al massimo 5 dispositivi). "Disattiva le notifiche" in *Privacy e impostazioni* (`push/off`). Stati: da attivare, attive, bloccate dal telefono; "Più tardi" la nasconde per 7 giorni.
+- **Invio** (`notifiche-web.js`, libreria `web-push`): nei messaggi delle campagne (automatici, del locale e prove dal bot) chi non ha `walletSaved` e ha dispositivi iscritti riceve la notifica web al posto di quella del Wallet; stesso limite di 3 al giorno (`canPush`). Toccandola si apre la tessera. Indirizzi scaduti (404/410) tolti da soli. I "+1 timbro" non vanno come notifica web (il cliente è nel locale con la tessera aperta).
+- **Chiavi**: `VAPID_PUBLIC_KEY` (in `render.yaml`, non segreta) e `VAPID_PRIVATE_KEY` (solo su Render; sul PC in `Clode/segreti/notifiche-web-privata.txt`). Senza la privata le notifiche web sono spente e il riquadro non compare. **Non cambiarle**: i clienti dovrebbero riattivare le notifiche. L'anteprima sul PC usa una coppia a parte (`notifiche-web-anteprima.json`).
+- **Privacy**: l'informativa lo spiega; l'export mostra solo il servizio che consegna (es. web.push.apple.com) e la data, non le chiavi del telefono. Il service worker (`sw.js`) mostra la notifica e apre la tessera.
+- **Statistiche e bot**: "con le notifiche web" tra gli iscritti; tra i messaggi, arrivati con notifica Wallet o web; la prova dal bot dice se la tessera ha notifiche web attive e se la notifica web è partita.
 
 ---
 
@@ -314,6 +325,7 @@ render.yaml  Blueprint Render (servizio + database)
 | `TELEGRAM_BOT_TOKEN` | Token del bot (variabile **oppure** Secret File su Render) |
 | `TELEGRAM_OWNER_ID` | Fissa il proprietario del bot (il suo numero Telegram): solo lui crea locali e apre le statistiche. Senza, il proprietario è chi ha scritto `/start` per primo |
 | `STATS_KEY` | Chiave di sola lettura di `/api/statistiche` (solo Claude, almeno 32 caratteri). Senza, l'entrata è chiusa |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Chiavi delle notifiche web della tessera (4.13). La pubblica è in `render.yaml`, la privata solo su Render. Senza tutte e due le notifiche web sono spente |
 | `STATS_DEV_LINK` | `1` solo nell'anteprima sul PC: stampa un link di prova alle statistiche. Ignorata su Render |
 | `PUBLIC_URL` | URL pubblico (su Render basta `RENDER_EXTERNAL_URL`, che è automatica) |
 | `PIZZERIA_NAME`, `PROGRAM_NAME`, `REWARD_TEXT`, `REWARD_SHORT`, `STAMPS_FOR_REWARD`, `BRAND_COLOR`, `GOOGLE_CLASS_SUFFIX`, `LEGACY_SLUG` | Usate **solo la prima volta** per creare il locale legacy. Dopo vale il registro `shops`. |
@@ -335,7 +347,7 @@ render.yaml  Blueprint Render (servizio + database)
 - Bot Telegram: online (webhook), creazione dei locali verificata dal vivo. Dipendenti, gestori, report, backup e avvisi sono coperti dai test, **non ancora provati dal vivo** da Federico.
 - Postgres a tabelle e migrazione: eseguiti dal vivo l'8 ottobre 2026, senza perdite.
 - Sicurezza (email già usata, blocco PIN e recupero) e privacy (export, cancellazione): coperti dai test e pubblicati.
-- 44 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
+- 45 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
 
 ---
 

@@ -226,6 +226,7 @@
           ${tile(num(s.newMembers7), 'nuovi in 7 giorni', `${num(s.newMembers30)} in 30 giorni`)}
           ${tile(s.members ? Math.round(s.consent / s.members * 100) + '%' : '—', 'con consenso alle offerte', `${s.consent} clienti`)}
           ${tile(s.members ? Math.round(s.wallet / s.members * 100) + '%' : '—', 'con la tessera nel Wallet', `${s.wallet} clienti`)}
+          ${tile(num(s.webPush), 'con le notifiche web', 'tessera sulla Home, senza Wallet')}
           ${tile(num(s.fromNfc), 'iscritti dal timbro NFC')}
         </div></div>
         <div><h3>Visite</h3><div class="tiles">
@@ -255,7 +256,7 @@
           ${tile(num(m.inactive), '"Ci manchi"')}
           ${tile(num(m.manual), 'messaggi del locale')}
           ${tile(pct(s.missYouBack), 'tornati entro 7 giorni da "Ci manchi"', frac(s.missYouBack))}
-          ${tile(num(s.delivery.push), 'arrivati con notifica', `${s.delivery.textOnly} senza suono · ${s.delivery.failed} rifiutati da Google`)}
+          ${tile(num(s.delivery.push + s.delivery.web), 'arrivati con notifica', `${s.delivery.push} Wallet · ${s.delivery.web} web · ${s.delivery.textOnly} senza suono · ${s.delivery.failed} rifiutati da Google`)}
         </div></div>
         <div><h3>Soldi</h3><div class="tiles">
           ${tile(num(s.money.returnVisits30), 'visite di ritorno in 30 giorni')}

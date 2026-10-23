@@ -84,7 +84,7 @@ function shopStats(ctx, now) {
   // (le prove mandate dal bot non contano); delivery: quante sono arrivate con notifica, senza suono o rifiutate da Google
   const sent = ctx.db.campaigns.filter((c) => c.status === 'sent' && c.sentAt && !c.test);
   const messages = { waiting: 0, near: 0, review: 0, inactive: 0, manual: 0 };
-  const delivery = { push: 0, textOnly: 0, failed: 0 };
+  const delivery = { push: 0, web: 0, textOnly: 0, failed: 0 };
   for (const c of sent.filter((x) => ago(x.sentAt) < 30 * DAY)) {
     messages[c.auto || 'manual'] = (messages[c.auto || 'manual'] || 0) + (c.recipients || []).length;
     for (const k of Object.keys(delivery)) delivery[k] += (c.results && c.results[k]) || 0;
@@ -141,6 +141,7 @@ function shopStats(ctx, now) {
     newMembers30: customers.filter((c) => ago(c.createdAt) < 30 * DAY).length,
     consent: customers.filter((c) => c.consentMarketing).length,
     wallet: customers.filter((c) => c.walletSaved).length,
+    webPush: customers.filter((c) => !c.walletSaved && (c.webPush || []).length).length,
     fromNfc: customers.filter((c) => { const f = (byCustomer.get(c.id) || [])[0]; return f && f.by === 'nfc' && Date.parse(f.at) - Date.parse(c.createdAt) < 5 * 60 * 1000; }).length,
     stamps: stamps.length,
     stamps7: stamps.filter((e) => ago(e.at) < 7 * DAY).length,

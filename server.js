@@ -11,6 +11,7 @@ const wallet = require('./wallet');
 const pdf = require('./pdf');
 const bot = require('./bot');
 const statistiche = require('./statistiche');
+const notificheWeb = require('./notifiche-web');
 
 const PORT = Number(process.env.PORT) || 3000;
 // Su Render RENDER_EXTERNAL_URL è impostata automaticamente.
@@ -340,6 +341,24 @@ shop.post('/api/card/:token/consent', (req, res) => {
   res.json({ consentMarketing: on });
 });
 
+// Notifiche web della tessera (vedi notifiche-web.js): il telefono si iscrive o si toglie con il token della tessera
+shop.post('/api/card/:token/push', (req, res) => {
+  const customer = req.ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  if (!notificheWeb.enabled()) return res.status(503).json({ error: 'Notifiche non disponibili.' });
+  const sub = notificheWeb.clean(req.body && req.body.subscription);
+  if (!sub) return res.status(400).json({ error: 'Iscrizione non valida.' });
+  req.ctx.db.updateCustomer(customer.id, { webPush: notificheWeb.addTo(customer.webPush, sub) });
+  res.json({ ok: true, devices: customer.webPush.length });
+});
+shop.post('/api/card/:token/push/off', (req, res) => {
+  const customer = req.ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  const endpoint = req.body && req.body.endpoint;
+  req.ctx.db.updateCustomer(customer.id, { webPush: (customer.webPush || []).filter((s) => endpoint && s.endpoint !== endpoint) });
+  res.json({ ok: true, devices: customer.webPush.length });
+});
+
 // ---------- Premio ritirato dal telefono del cliente ----------
 // Per i locali dove il personale non usa la Cassa: il cliente tocca "Usa il premio" davanti al cameriere,
 // la tessera mostra una schermata "PREMIO VALIDO" animata con l'orologio che scorre (uno screenshot non basta)
@@ -463,6 +482,8 @@ async function cardData(ctx, customer) {
     qr: await qrOf(customer.code),
     saveUrl: wallet.enabled() ? wallet.saveUrl(customer) : null,
     walletSaved: !!customer.walletSaved,
+    webPushKey: notificheWeb.publicKey(), // null: notifiche web spente sul server
+    webPush: (customer.webPush || []).length,
     reviewUrl: ctx.db.getSettings().reviewUrl || null,
     messages: ctx.db.messagesFor(customer.id).slice(0, 5),
     consentMarketing: !!customer.consentMarketing,
@@ -1124,13 +1145,28 @@ async function sendCampaign(ctx, campaign) {
   const recipients = (campaign.pending || []).map((id) => ctx.db.customers.find((c) => c.id === id)).filter(Boolean);
   for (const customer of recipients) {
     if (done.has(customer.id)) continue;
+    // Chi non ha la tessera nel Wallet ma ha attivato le notifiche web le riceve lì (stesso limite di 3 al giorno)
+    const viaWeb = !customer.walletSaved && notificheWeb.enabled() && (customer.webPush || []).length > 0;
+    const canNotify = ctx.db.canPush(customer.id);
     if (wallet.enabled()) {
       const r = await wallet.notify(customer, campaign.title, campaign.body, {
-        push: ctx.db.canPush(customer.id), messageId: `c_${campaign.id}`, expiresAt,
+        push: canNotify && !viaWeb, messageId: `c_${campaign.id}`, expiresAt,
       });
       if (!r.ok) results.failed++;
       else if (r.push) { results.push++; ctx.db.logNotification(customer.id, 'campaign', true); }
-      else results.textOnly++;
+      else if (!viaWeb) results.textOnly++;
+    }
+    if (viaWeb) {
+      if (!canNotify) results.textOnly++;
+      else {
+        const w = await notificheWeb.send(customer.webPush, {
+          title: campaign.title, body: campaign.body, tag: `c_${campaign.id}`,
+          url: `${ctx.cfg.baseUrl}/card/${encodeURIComponent(customer.token)}`, icon: `${ctx.cfg.baseUrl}/icons/icon-192.png?v=${ctx.cfg.imgVersion}`,
+        });
+        if (w.gone.length) ctx.db.updateCustomer(customer.id, { webPush: customer.webPush.filter((s) => !w.gone.includes(s.endpoint)) });
+        if (w.sent) { results.web = (results.web || 0) + 1; ctx.db.logNotification(customer.id, 'campaign', true); }
+        else results.webFailed = (results.webFailed || 0) + 1;
+      }
     }
     // La tessera web aperta mostra subito il messaggio.
     broadcast(ctx, customer, 'message', { title: campaign.title, body: campaign.body });
@@ -1694,6 +1730,8 @@ const ready = (async () => {
     keyFile: path.resolve(__dirname, process.env.GOOGLE_KEY_FILE || './service-account.json'),
     origin: PUBLIC_URL,
   });
+  // notifiche web della tessera: chi le manda si presenta con l'email dell'assistenza (la vedono solo Apple, Google, Mozilla)
+  notificheWeb.init({ subject: `mailto:${process.env.SUPPORT_EMAIL || 'assistenza@f5m.it'}` });
   // Classi Google aggiornate solo quando il sito è raggiungibile: Google scarica subito logo e immagini
   // dal nostro server, e su Render il traffico arriva qualche secondo dopo l'avvio.
   // Se fallisce si riprova da sola al primo timbro (vedi ensureClass in syncWallet).

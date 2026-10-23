@@ -599,7 +599,9 @@ function showAutoPlan(chat, slug, codeText) {
       : `⚪ <b>${esc(p.label)}</b> — ${esc(p.block)}`));
   return send(chat,
     `🔔 <b>Prova notifiche</b> · ${esc(ctx.cfg.pizzeriaName)} · tessera <b>${esc(c.code)}</b> (${esc(c.name)})\n` +
-    `📱 Nel Google Wallet: ${c.walletSaved ? 'sì' : 'non risulta (senza Wallet niente notifiche: il messaggio si vede solo aprendo la tessera)'}\n` +
+    `📱 Nel Google Wallet: ${c.walletSaved ? 'sì' : 'non risulta'}\n` +
+    `🔔 Notifiche web (tessera sulla Home): ${(c.webPush || []).length ? `attive su ${c.webPush.length} ${c.webPush.length === 1 ? 'dispositivo' : 'dispositivi'}` : 'non attivate'}` +
+    `${!c.walletSaved && !(c.webPush || []).length ? '\n<i>Senza Wallet e senza notifiche web il messaggio si vede solo aprendo la tessera.</i>' : ''}\n` +
     `🔕 Notifiche usate nelle ultime 24 ore: ${M.pushesLast24h(ctx, c)} di 3 (limite di Google, contano anche i "+1 timbro")\n\n` +
     lines.join('\n') +
     '\n\nCon i pulsanti ricevi subito il messaggio, senza aspettare giorni e orari: è solo una prova, non cambia niente per il cliente e non conta per i limiti dei messaggi automatici (usa però una delle 3 notifiche al giorno di Google).',
@@ -614,6 +616,8 @@ async function sendAutoTest(chat, slug, code, key) {
   const r = await M.autoTest(ctx, c, key);
   const res = r.results || {};
   const text = r.error ? `⚠️ ${esc(r.error)}`
+    : res.web ? '✅ Mandato <b>con notifica web</b> (tessera sulla Home): dovrebbe arrivarti sul telefono entro un minuto.'
+    : res.webFailed ? '⚠️ La notifica web non è partita: forse le notifiche sono state disattivate sul telefono. Riattivale dalla tessera.'
     : !r.walletEnabled ? '📩 Mandato, ma Google Wallet non è attivo su questo server: il messaggio è solo nella tessera web.'
       : res.push ? '✅ Mandato <b>con notifica</b>: dovrebbe arrivarti sul telefono entro un minuto.'
         : res.textOnly ? '📩 Mandato <b>senza notifica</b>: questa tessera ha già usato le 3 notifiche di oggi (limite di Google). Lo vedi aprendo la tessera nel Wallet.'

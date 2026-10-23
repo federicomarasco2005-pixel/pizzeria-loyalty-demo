@@ -6,13 +6,16 @@ const os = require('os');
 const path = require('path');
 
 const PORT = 3700 + Math.floor(Math.random() * 90);
+const vapid = require('web-push').generateVAPIDKeys(); // chiavi di prova delle notifiche web
 Object.assign(process.env, {
   PORT: String(PORT), DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'tessere-auto-')), DATABASE_URL: '',
   GOOGLE_ISSUER_ID: '', TELEGRAM_BOT_TOKEN: '', STAFF_PIN: '222222', PUBLIC_URL: `http://localhost:${PORT}`,
+  VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_KEY: vapid.privateKey,
 });
 const { manager, ready } = require('../server');
 const bot = require('../bot');
 const { compute } = require('../statistiche');
+const notificheWeb = require('../notifiche-web');
 
 const sent = [];
 const fakeTelegram = async (method, params, file) => {
@@ -142,6 +145,54 @@ test('prova dal bot: stato della tessera e invio immediato, che non conta nelle 
   assert.match(sent.at(-1).text, /consenso alle offerte/);
   const s = compute([bar]).shops[0];
   assert.strictEqual(s.messages.near, 3, 'le prove non contano nelle statistiche (3 veri: Anna e Fabio, poi Aldo)');
+});
+
+test('notifiche web: il telefono si iscrive dalla tessera, i messaggi arrivano lì se la tessera non è nel Wallet', async () => {
+  const B = `http://localhost:${PORT}/${bar.shop.slug}`;
+  const post = (p, body) => fetch(B + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const delivered = [];
+  let answer = 201;
+  notificheWeb.setSender(async (sub, payload) => {
+    if (answer !== 201) throw Object.assign(new Error('scaduta'), { statusCode: answer });
+    delivered.push({ endpoint: sub.endpoint, ...JSON.parse(payload) });
+  });
+  const lia = customer(bar, 'Lia', [day(20), day(21)]);
+  const sub = { endpoint: 'https://push.example.com/lia', keys: { p256dh: 'BHx'.padEnd(87, 'a'), auth: 'segreto123' } };
+
+  // la tessera sa che le notifiche web ci sono (chiave pubblica nei dati della pagina)
+  const page = await (await fetch(`${B}/card/${lia.token}`)).text();
+  assert.ok(page.includes(vapid.publicKey));
+  assert.strictEqual((await post(`/api/card/${lia.token}/push`, { subscription: { ...sub, endpoint: 'http://non-sicuro' } })).status, 400);
+  assert.strictEqual((await post('/api/card/inventato/push', { subscription: sub })).status, 404);
+  assert.strictEqual((await post(`/api/card/${lia.token}/push`, { subscription: sub })).status, 200);
+  assert.strictEqual(bar.db.findByToken(lia.token).webPush.length, 1);
+
+  // prova dal bot: arriva come notifica web, con il link alla tessera
+  await tap(`psend:${bar.shop.slug}|${lia.code}|near`);
+  assert.match(sent.at(-1).text, /con notifica web/);
+  assert.strictEqual(delivered.length, 1);
+  assert.match(delivered[0].title, /Ti manca 1 timbro/);
+  assert.ok(delivered[0].url.endsWith(`/card/${encodeURIComponent(lia.token)}`));
+
+  // con la tessera nel Wallet le notifiche web non partono (niente doppioni)
+  bar.db.updateCustomer(lia.id, { walletSaved: true });
+  await tap(`psend:${bar.shop.slug}|${lia.code}|waiting`);
+  assert.strictEqual(delivered.length, 1);
+  bar.db.updateCustomer(lia.id, { walletSaved: false });
+
+  // indirizzo scaduto (telefono cambiato): tolto dalla scheda
+  answer = 410;
+  await tap(`psend:${bar.shop.slug}|${lia.code}|review`);
+  assert.strictEqual(bar.db.findByToken(lia.token).webPush.length, 0);
+  answer = 201;
+
+  // disattivate dalla tessera; l'export mostra solo il servizio, non le chiavi del telefono
+  await post(`/api/card/${lia.token}/push`, { subscription: sub });
+  const exp = await (await fetch(`${B}/api/card/${lia.token}/export`)).json();
+  assert.deepStrictEqual(exp.notifiche_web.map((n) => n.servizio), ['push.example.com']);
+  assert.ok(!JSON.stringify(exp).includes('segreto123'));
+  assert.strictEqual((await post(`/api/card/${lia.token}/push/off`, { endpoint: sub.endpoint })).status, 200);
+  assert.strictEqual(bar.db.findByToken(lia.token).webPush.length, 0);
 });
 
 test('kit di lancio e report del mese in PDF, anche dal bot', async () => {

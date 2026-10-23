@@ -105,6 +105,9 @@
     .more-panel .check { margin: 8px 0; color: var(--ink); }
     .more-panel a { color: var(--ink); text-decoration: none; font-size: .9rem; padding: 11px 0; border-top: 1px solid var(--line); }
     .more-panel a.danger { color: var(--brand); }
+    /* Notifiche della tessera (senza Google Wallet) */
+    .notify-ico { width: 52px; height: 52px; border-radius: 14px; flex: none; display: grid; place-items: center; font-size: 1.6rem;
+      background: color-mix(in srgb, var(--brand) 18%, transparent); }
 
     @media (prefers-reduced-motion: reduce) { .flip-inner { transition: none; } .shine { display: none; } }
   </style>
@@ -194,6 +197,20 @@
         <button class="install-later small" id="installLater" data-t="later">Più tardi</button>
       </section>
 
+      <!-- Notifiche della tessera: per chi non ha Google Wallet, dalla tessera salvata sulla Home (iPhone compreso) -->
+      <section id="notify" class="install hidden">
+        <div class="install-row">
+          <div class="notify-ico" aria-hidden="true">🔔</div>
+          <div>
+            <strong data-t="notifyTitle">Attiva le notifiche</strong>
+            <div class="small muted" id="notifySub"></div>
+          </div>
+        </div>
+        <button class="btn" id="notifyBtn"><span class="ico">🔔</span> <span data-t="notifyBtn">Attiva le notifiche</span></button>
+        <button class="install-later small" id="notifyLater" data-t="later">Più tardi</button>
+      </section>
+      <p id="notifyOn" class="muted small center hidden" style="margin:0" data-t="notifyOn">🔔 Notifiche attive su questo telefono</p>
+
       <!-- Istruzioni passo passo (iPhone e telefoni senza installazione automatica) -->
       <div id="installSheet" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
         <div class="sheet-panel stack">
@@ -228,6 +245,7 @@
           <label class="check small">
             <input type="checkbox" id="consent"> <span data-t="consent">Voglio ricevere offerte e novità dal locale</span>
           </label>
+          <a href="#" id="notifyOff" class="hidden" data-t="notifyOff">Disattiva le notifiche</a>
           <a href="privacy" data-t="privacy">Informativa privacy</a>
           <a id="exportLink" download data-t="export">Scarica i miei dati</a>
           <a href="#" id="deleteLink" class="danger" data-t="delete">Elimina la tessera</a>
@@ -294,7 +312,19 @@
       installTitle: ['Salva la tessera sul telefono', 'Save the card on your phone'],
       installSub: ["Un'icona sulla schermata Home: la apri con un tocco, come un'app. Niente da scaricare.", 'An icon on your Home screen: open it with one tap, like an app. Nothing to download.'],
       installSubIos: ["Su iPhone: un'icona sulla schermata Home che apre la tua tessera con un tocco, come un'app. Niente da scaricare.", 'On iPhone: a Home screen icon that opens your card with one tap, like an app. Nothing to download.'],
+      installSubPush: ["Un'icona sulla schermata Home: la apri con un tocco, come un'app, e ti avvisa quando ti manca un timbro. Niente da scaricare.", "An icon on your Home screen: open it with one tap, like an app, and it tells you when you're one stamp away. Nothing to download."],
+      installSubIosPush: ["Su iPhone: un'icona sulla schermata Home che apre la tua tessera con un tocco e ti avvisa quando ti manca un timbro. Niente da scaricare.", "On iPhone: a Home screen icon that opens your card with one tap and tells you when you're one stamp away. Nothing to download."],
       installBtn: ['Salva sul telefono', 'Save on phone'],
+      notifyTitle: ['Attiva le notifiche', 'Turn on notifications'],
+      notifySub: ['Ti avvisiamo quando ti manca un timbro o il premio ti aspetta. Al massimo un messaggio al giorno.', "We'll tell you when you're one stamp away or your reward is waiting. At most one message a day."],
+      notifyBtn: ['Attiva le notifiche', 'Turn on notifications'],
+      notifyDenied: ['Le notifiche sono bloccate: riattivale dalle impostazioni del telefono, alla voce di questa tessera.', 'Notifications are blocked: turn them back on in your phone settings, under this card.'],
+      notifyOn: ['🔔 Notifiche attive su questo telefono', '🔔 Notifications on for this phone'],
+      notifyOff: ['Disattiva le notifiche', 'Turn off notifications'],
+      notifyDone: ['🔔 Fatto! Ti avviseremo noi.', "🔔 Done! We'll let you know."],
+      notifyNo: ['Notifiche non attivate.', 'Notifications not turned on.'],
+      notifyError: ['Non è stato possibile attivare le notifiche: riprova.', 'Could not turn on notifications: please try again.'],
+      notifyOffDone: ['Notifiche disattivate.', 'Notifications turned off.'],
       later: ['Più tardi', 'Later'],
       sheetTitle: ['Salva la tessera in 3 tocchi', 'Save the card in 3 taps'],
       gotIt: ['Ho capito', 'Got it'],
@@ -548,11 +578,78 @@
     let inWallet = false;
     function paintWallet(c) {
       inWallet = inWallet || !!c.walletSaved;
+      pushKey = c.webPushKey || null;
       // Su iPhone Google Wallet non esiste: al suo posto si propone di salvare la tessera sul telefono
       $('save').classList.toggle('hidden', !c.saveUrl || inWallet || device.ios);
       $('inwallet').classList.toggle('hidden', !inWallet || device.ios);
       updateInstall();
+      paintPush(c);
     }
+
+    // ---------- Notifiche della tessera (notifiche web) ----------
+    // Solo per chi non ha la tessera nel Google Wallet (che avvisa già da solo) e la apre dall'icona sulla Home
+    // (su iPhone è l'unico modo, da iOS 16.4) oppure da un server senza Wallet. Dal browser si invita prima a salvarla.
+    let pushKey = null;
+    let pushCard = {};
+    const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    const pushLaterUntil = () => { try { return Number(localStorage.getItem('pushLater') || 0); } catch { return 0; } };
+    const keyBytes = (s) => Uint8Array.from(atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/')), (ch) => ch.charCodeAt(0));
+    async function pushSub() {
+      try { return await (await navigator.serviceWorker.ready).pushManager.getSubscription(); } catch { return null; }
+    }
+    async function paintPush(c) {
+      pushCard = c;
+      const box = $('notify');
+      box.classList.add('hidden');
+      $('notifyOn').classList.add('hidden');
+      $('notifyOff').classList.add('hidden');
+      if (!pushKey || inWallet || !pushSupported || !(device.standalone || !c.saveUrl)) return;
+      const sub = Notification.permission === 'granted' ? await pushSub() : null;
+      if (sub) {
+        $('notifyOn').classList.remove('hidden');
+        $('notifyOff').classList.remove('hidden');
+        // il server non la conosce più (es. tolta perché scaduta): la ricorda di nuovo
+        if (!c.webPush) api('api/card/' + encodeURIComponent(token) + '/push', { method: 'POST', body: { subscription: sub.toJSON() } }).catch(() => {});
+        return;
+      }
+      if (Notification.permission !== 'denied' && Date.now() < pushLaterUntil()) return;
+      const denied = Notification.permission === 'denied';
+      $('notifySub').textContent = t(denied ? 'notifyDenied' : 'notifySub');
+      $('notifyBtn').classList.toggle('hidden', denied);
+      $('notifyLater').classList.toggle('hidden', denied);
+      box.classList.remove('hidden');
+    }
+    $('notifyBtn').onclick = async () => {
+      $('notifyBtn').disabled = true;
+      try {
+        // la richiesta di permesso deve partire subito dal tocco (iPhone)
+        if (await Notification.requestPermission() !== 'granted') { toast(t('notifyNo')); return paintPush(pushCard); }
+        const reg = await navigator.serviceWorker.ready;
+        const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(pushKey) });
+        await api('api/card/' + encodeURIComponent(token) + '/push', { method: 'POST', body: { subscription: sub.toJSON() } });
+        toast(t('notifyDone'), 3500);
+        paintPush({ ...pushCard, webPush: 1 });
+      } catch {
+        toast(t('notifyError'));
+      } finally {
+        $('notifyBtn').disabled = false;
+      }
+    };
+    $('notifyLater').onclick = () => {
+      try { localStorage.setItem('pushLater', String(Date.now() + 7 * 86400e3)); } catch {}
+      $('notify').classList.add('hidden');
+    };
+    $('notifyOff').onclick = async (e) => {
+      e.preventDefault();
+      const sub = await pushSub();
+      if (sub) {
+        await api('api/card/' + encodeURIComponent(token) + '/push/off', { method: 'POST', body: { endpoint: sub.endpoint } }).catch(() => {});
+        await sub.unsubscribe().catch(() => {});
+      }
+      try { localStorage.setItem('pushLater', String(Date.now() + 30 * 86400e3)); } catch {}
+      toast(t('notifyOffDone'));
+      paintPush({ ...pushCard, webPush: 0 });
+    };
 
     // ---------- Salva la tessera sul telefono (app web installabile) ----------
     const ua = navigator.userAgent;
@@ -575,7 +672,8 @@
     }
     function updateInstall() {
       $('install').classList.toggle('hidden', !wantsInstall());
-      if (device.ios) $('installSub').textContent = t('installSubIos');
+      // con le notifiche web attive sul server, l'icona sulla Home serve anche a ricevere gli avvisi
+      $('installSub').textContent = t((device.ios ? 'installSubIos' : 'installSub') + (pushKey ? 'Push' : ''));
     }
 
     const SHARE_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0a84ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>';

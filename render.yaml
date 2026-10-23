@@ -61,6 +61,12 @@ services:
       # Chiave di sola lettura delle statistiche (/api/statistiche), usata solo da Claude. Senza, l'entrata è chiusa
       - key: STATS_KEY
         sync: false
+      # Notifiche web della tessera (notifiche-web.js): la chiave pubblica non è segreta, la privata va inserita a mano.
+      # Senza la privata le notifiche web restano spente. Non cambiarle: i clienti dovrebbero riattivare le notifiche
+      - key: VAPID_PUBLIC_KEY
+        value: BPs89Y98y_IO_yJFSbpu53u0YsMiRtledmCJFfTh_B20Nk2NhiOyvK1sNMti8sxfEvt5Fm38zmI4Dive9lryExI
+      - key: VAPID_PRIVATE_KEY
+        sync: false
 
 databases:
   - name: pizzeria-loyalty-db

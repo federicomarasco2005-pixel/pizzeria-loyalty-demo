@@ -42,3 +42,23 @@ self.addEventListener('fetch', (e) => {
   // Tutto il resto: prima la rete (sempre aggiornato), la copia salvata solo se offline
   e.respondWith(fresh.catch(() => caches.match(e.request)));
 });
+
+// Notifiche web della tessera (notifiche-web.js sul server): il messaggio arriva cifrato e qui si mostra.
+// Toccandola si apre la tessera (quella già aperta, se c'è).
+self.addEventListener('push', (e) => {
+  let m = {};
+  try { m = e.data ? e.data.json() : {}; } catch {}
+  e.waitUntil(self.registration.showNotification(m.title || 'La tua tessera', {
+    body: m.body || '', icon: m.icon, badge: m.icon, tag: m.tag, data: { url: m.url || '/' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/';
+  const path = new URL(url, location.origin).pathname;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const open = list.find((c) => new URL(c.url).pathname === path);
+    return open ? open.focus() : self.clients.openWindow(url);
+  }));
+});

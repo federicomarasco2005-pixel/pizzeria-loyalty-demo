@@ -212,9 +212,11 @@ async function openStore(key, { codePrefix = 'PZ' } = {}) {
   function exportCustomer(customerId) {
     const c = db.customers.find((x) => x.id === customerId);
     if (!c) return null;
-    const { token, ...profile } = c;
+    const { token, webPush, ...profile } = c;
     return {
       cliente: profile,
+      // notifiche web: solo il servizio che le consegna e la data, non le chiavi tecniche del telefono
+      notifiche_web: (webPush || []).map((s) => ({ servizio: new URL(s.endpoint).host, attivate: s.at })),
       operazioni: eventsOf(customerId).map(({ type, at, by, ref, id: eid }) => ({ id: eid, tipo: type, data: at, da: by, annulla: ref })),
       messaggi_ricevuti: db.campaigns.filter((x) => x.recipients && x.recipients.includes(customerId))
         .map((x) => ({ titolo: x.title, testo: x.body, inviato: x.sentAt })),
