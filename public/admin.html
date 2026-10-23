@@ -53,6 +53,9 @@
     .card-h { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
     .card-h h3 { margin: 0; font-size: 1.05rem; }
     .card-h .count { color: var(--muted); font-size: .85rem; }
+    .sort { margin-left: auto; background: var(--panel2); color: var(--ink); border: 1px solid var(--line2); border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .82rem; cursor: pointer; }
+    .sort:focus { outline: none; border-color: var(--cyan); }
+    .sort option { background: #141826; }
     .list { display: flex; flex-direction: column; }
     .row { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-top: 1px solid var(--line); }
     .row:first-child { border-top: 0; }
@@ -174,7 +177,16 @@
 
         <div class="cols">
           <section class="glass card">
-            <div class="card-h"><h3>Clienti</h3><span class="count" id="custCount"></span></div>
+            <div class="card-h"><h3>Clienti</h3><span class="count" id="custCount"></span>
+              <select id="sort" class="sort" aria-label="Ordina i clienti">
+                <option value="recent">Ultima visita</option>
+                <option value="visits">Più visite</option>
+                <option value="reward">Più vicini al premio</option>
+                <option value="away">Da più tempo assenti</option>
+                <option value="new">Iscritti di recente</option>
+                <option value="name">Nome (A–Z)</option>
+              </select>
+            </div>
             <div class="list" id="customers"></div>
           </section>
           <section class="glass card">
@@ -302,9 +314,10 @@
       const start = new Date(); start.setHours(0, 0, 0, 0);
       $('today3').textContent = data.events.filter((e) => e.type === 'stamp' && !e.voided && Date.parse(e.at) >= start).length;
 
-      // clienti (con ricerca)
+      // clienti (con ricerca e ordine scelto dal gestore)
       const q = $('q').value.trim().toLowerCase();
-      const list = data.customers.filter((c) => !q || c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q) || (c.email || '').includes(q));
+      const list = data.customers.filter((c) => !q || c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q) || (c.email || '').includes(q))
+        .sort(SORTS[$('sort').value] || SORTS.recent);
       $('custCount').textContent = q ? list.length + ' di ' + data.customers.length : data.customers.length + ' in totale';
       const box = $('customers');
       box.innerHTML = '';
@@ -351,6 +364,23 @@
       });
     }
     $('q').oninput = render;
+
+    // Ordini dell'elenco clienti. A parità, prima chi è passato più di recente.
+    const time = (iso) => (iso ? Date.parse(iso) : 0);
+    const byRecent = (a, b) => time(b.lastVisitAt) - time(a.lastVisitAt);
+    const SORTS = {
+      recent: byRecent,
+      visits: (a, b) => b.visits - a.visits || byRecent(a, b),
+      // premio pronto in cima, poi chi ha meno timbri mancanti
+      reward: (a, b) => b.rewards - a.rewards || (a.stampsForReward - a.stamps) - (b.stampsForReward - b.stamps) || byRecent(a, b),
+      // chi non è mai tornato conta dalla data d'iscrizione
+      away: (a, b) => time(a.lastVisitAt || a.createdAt) - time(b.lastVisitAt || b.createdAt),
+      new: (a, b) => time(b.createdAt) - time(a.createdAt),
+      name: (a, b) => a.name.localeCompare(b.name, 'it', { sensitivity: 'base' }),
+    };
+    // l'ordine scelto resta su questo dispositivo
+    try { const s = localStorage.getItem('adminSort'); if (SORTS[s]) $('sort').value = s; } catch {}
+    $('sort').onchange = () => { try { localStorage.setItem('adminSort', $('sort').value); } catch {} render(); };
 
     // ---------- Impostazioni ----------
     async function loadSettings() {

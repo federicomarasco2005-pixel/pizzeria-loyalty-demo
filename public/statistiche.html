@@ -249,11 +249,13 @@
           ${tile(pct(s.rewards.backAfter), 'tornati dopo il premio', frac(s.rewards.backAfter))}
         </div></div>
         <div><h3>Messaggi automatici (ultimi 30 giorni)</h3><div class="tiles">
+          ${tile(num(m.waiting), '"Il tuo premio ti aspetta"')}
           ${tile(num(m.near), '"Ti manca 1 timbro"')}
           ${tile(num(m.review), 'richieste di recensione')}
           ${tile(num(m.inactive), '"Ci manchi"')}
           ${tile(num(m.manual), 'messaggi del locale')}
           ${tile(pct(s.missYouBack), 'tornati entro 7 giorni da "Ci manchi"', frac(s.missYouBack))}
+          ${tile(num(s.delivery.push), 'arrivati con notifica', `${s.delivery.textOnly} senza suono · ${s.delivery.failed} rifiutati da Google`)}
         </div></div>
         <div><h3>Soldi</h3><div class="tiles">
           ${tile(num(s.money.returnVisits30), 'visite di ritorno in 30 giorni')}

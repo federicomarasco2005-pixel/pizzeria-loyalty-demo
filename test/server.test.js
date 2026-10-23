@@ -96,6 +96,7 @@ test('cassa: timbro con PIN, dashboard solo per il gestore', async () => {
   const stats = await api(`${S}/api/admin/stats`, { pin: PIN });
   assert.strictEqual(stats.data.kpi.members, 1);
   assert.strictEqual(stats.data.events.find((e) => e.type === 'stamp').who, 'Gestore');
+  assert.ok(Date.parse(stats.data.customers[0].createdAt), 'data d\'iscrizione per ordinare l\'elenco');
 });
 
 test('tessera veloce: dati già nella pagina, nuovo saldo nell\'avviso in tempo reale', async () => {

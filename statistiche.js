@@ -81,9 +81,14 @@ function shopStats(ctx, now) {
   const backAfterReward = oldRedeems.filter((r) => (byCustomer.get(r.customerId) || []).some((e) => Date.parse(e.at) > Date.parse(r.at) && Date.parse(e.at) - Date.parse(r.at) <= 30 * DAY));
 
   // messaggi inviati negli ultimi 30 giorni (automatici e del locale) e chi torna dopo "Ci manchi"
-  const sent = ctx.db.campaigns.filter((c) => c.status === 'sent' && c.sentAt);
-  const messages = { near: 0, review: 0, inactive: 0, manual: 0 };
-  for (const c of sent) if (ago(c.sentAt) < 30 * DAY) messages[c.auto || 'manual'] = (messages[c.auto || 'manual'] || 0) + (c.recipients || []).length;
+  // (le prove mandate dal bot non contano); delivery: quante sono arrivate con notifica, senza suono o rifiutate da Google
+  const sent = ctx.db.campaigns.filter((c) => c.status === 'sent' && c.sentAt && !c.test);
+  const messages = { waiting: 0, near: 0, review: 0, inactive: 0, manual: 0 };
+  const delivery = { push: 0, textOnly: 0, failed: 0 };
+  for (const c of sent.filter((x) => ago(x.sentAt) < 30 * DAY)) {
+    messages[c.auto || 'manual'] = (messages[c.auto || 'manual'] || 0) + (c.recipients || []).length;
+    for (const k of Object.keys(delivery)) delivery[k] += (c.results && c.results[k]) || 0;
+  }
   let missN = 0, missD = 0;
   for (const c of sent.filter((x) => x.auto === 'inactive' && ago(x.sentAt) > 7 * DAY && ago(x.sentAt) < 90 * DAY)) {
     for (const id of c.recipients || []) {
@@ -159,6 +164,7 @@ function shopStats(ctx, now) {
       backAfter: ratio(new Set(backAfterReward.map((r) => r.customerId)).size, new Set(oldRedeems.map((r) => r.customerId)).size),
     },
     messages,
+    delivery,
     missYouBack: ratio(missN, missD),
     money: { returnVisits30, estimate30: avgTicket ? Math.round(returnVisits30 * avgTicket) : null },
     staff: Object.entries(staff).map(([who, n]) => ({ who, stamps: n })).sort((a, b) => b.stamps - a.stamps),

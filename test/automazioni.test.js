@@ -1,4 +1,4 @@
-// Messaggi automatici ai clienti, kit di lancio e report mensile in PDF, comandi del bot.
+// Messaggi automatici ai clienti (con orologio finto: giorni e fasce orarie), prova dal bot, kit di lancio e report mensile in PDF.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -12,6 +12,7 @@ Object.assign(process.env, {
 });
 const { manager, ready } = require('../server');
 const bot = require('../bot');
+const { compute } = require('../statistiche');
 
 const sent = [];
 const fakeTelegram = async (method, params, file) => {
@@ -21,65 +22,134 @@ const fakeTelegram = async (method, params, file) => {
 };
 const OWNER = { id: 1, first_name: 'Federico' };
 const tap = (data) => bot.handleUpdate({ callback_query: { id: 'q', from: OWNER, data, message: { chat: { id: 1 } } } });
+const msg = (text) => bot.handleUpdate({ message: { chat: { id: 1 }, from: OWNER, text } });
 const DAY = 86400000;
-let ctx;
+// ora italiana (ottobre 2026: ora legale, +02:00), es. at('2026-10-15T08:30') = giovedì 15 ottobre alle 8:30
+const at = (s) => Date.parse(`${s}:00+02:00`);
+let ctx, bar;
 
-// cliente con n timbri, l'ultimo "giorni fa"
-function customer(name, { stamps = 0, daysAgo = 0, consent = false } = {}) {
-  const c = ctx.db.createCustomer({ name, email: `${name.toLowerCase()}@x.it`, consentMarketing: consent });
-  for (let i = 0; i < stamps; i++) {
-    const e = ctx.db.addEvent({ type: 'stamp', customerId: c.id, by: 'staff' });
-    e.at = new Date(Date.now() - daysAgo * DAY - (stamps - i) * 60000).toISOString();
+// cliente con timbri dati alle ore indicate (in ordine)
+function customer(shop, name, times, { consent = false } = {}) {
+  const c = shop.db.createCustomer({ name, email: `${name.toLowerCase()}@x.it`, consentMarketing: consent });
+  c.createdAt = new Date(times.length ? at(times[0]) - 60000 : Date.now()).toISOString();
+  for (const t of times) {
+    const e = shop.db.addEvent({ type: 'stamp', customerId: c.id, by: 'staff' });
+    e.at = new Date(at(t)).toISOString();
   }
   return c;
 }
+const day = (d, hh = '09:00') => `2026-10-${String(d).padStart(2, '0')}T${hh}`;
+const auto = (shop, key) => shop.db.campaigns.filter((c) => c.auto === key && !c.test);
+const to = (shop, key) => auto(shop, key).map((c) => c.recipients);
 
 test.before(async () => {
   await ready;
   await bot.start(manager, { api: fakeTelegram });
-  await bot.handleUpdate({ message: { chat: { id: 1 }, from: OWNER, text: '/start' } });
-  const r = await manager.create({ name: 'Trattoria Prova', rewardText: 'Un dolce omaggio', stampsForReward: 6, brandColor: '#2e7d32', theme: 'pizza', reviewUrl: 'https://g.page/prova' });
-  ctx = r.ctx;
+  await msg('/start');
+  ctx = (await manager.create({ name: 'Trattoria Prova', rewardText: 'Un dolce omaggio', stampsForReward: 6, brandColor: '#2e7d32', theme: 'pizza', reviewUrl: 'https://g.page/prova' })).ctx;
+  bar = (await manager.create({ name: 'Bar Orari', rewardText: 'Un caffè omaggio', stampsForReward: 6, brandColor: '#5d4037', theme: 'caffe', reviewUrl: 'https://g.page/bar' })).ctx;
 });
 test.after(() => setTimeout(() => process.exit(0), 50));
 
-test('messaggi automatici: ognuno al cliente giusto, una volta sola', async () => {
-  const anna = customer('Anna', { stamps: 5 });                         // a 1 timbro dal premio
-  const bruno = customer('Bruno', { stamps: 3, daysAgo: 1 });           // 3ª visita ieri: recensione
-  const carla = customer('Carla', { stamps: 2, daysAgo: 30, consent: true }); // non torna da 30 giorni, consenso
-  const dario = customer('Dario', { stamps: 2, daysAgo: 30 });          // non torna, ma niente consenso alle offerte
-  customer('Elena', { stamps: 1 });                                    // niente da mandare
+test('bar (profilo giorno): ogni messaggio nella sua fascia, una volta sola, al massimo uno al giorno', async () => {
+  assert.strictEqual(manager.autoProfile(bar), 'giorno');
+  // giovedì 15 ottobre
+  const near = customer(bar, 'Anna', [day(10), day(11), day(12), day(13), day(14)]);        // a 1 timbro dal premio, ultima visita ieri
+  const nearToday = customer(bar, 'Aldo', [day(11), day(12), day(13), day(14), day(15, '07:30')]); // a 1 timbro, passato stamattina
+  const rev = customer(bar, 'Bruno', [day(13), day(14), day(15, '07:00')]);                  // 3ª visita stamattina
+  const miss = customer(bar, 'Carla', [day(1)], { consent: true });                          // 14 giorni senza visite, consenso
+  const missNo = customer(bar, 'Dario', [day(1)]);                                           // 14 giorni, niente consenso
+  const wait = customer(bar, 'Elena', [day(1), day(2), day(3), day(6), day(7), day(8)]);    // premio pronto da 7 giorni
+  const both = customer(bar, 'Fabio', [day(10), day(11), day(12), day(13), day(14, '14:00')]); // a 1 timbro e già 5 visite
 
-  await manager.runAutomations(ctx);
-  const auto = (key) => ctx.db.campaigns.filter((c) => c.auto === key);
-  assert.deepStrictEqual(auto('near').map((c) => c.recipients), [[anna.id]]);
-  assert.deepStrictEqual(auto('review').map((c) => c.recipients), [[bruno.id]]);
-  assert.deepStrictEqual(auto('inactive').map((c) => c.recipients), [[carla.id]]);
-  assert.ok(!ctx.db.campaigns.some((c) => c.recipients.includes(dario.id)), 'senza consenso: niente "ci manchi"');
-  assert.match(auto('near')[0].title, /Ti manca 1 timbro/);
-  assert.strictEqual(ctx.db.messagesFor(anna.id)[0].title, auto('near')[0].title, 'il messaggio compare nella tessera web');
+  await manager.runAutomations(bar, at(day(15, '07:50')));
+  assert.strictEqual(bar.db.campaigns.length, 0, 'prima delle 8 non parte niente');
 
-  // il giorno dopo: nessun messaggio ripetuto. Anna (5 visite) riceve ora la richiesta di recensione,
-  // che ieri era rimandata perché si manda un solo messaggio automatico al giorno per cliente.
-  await manager.runAutomations(ctx);
-  assert.deepStrictEqual(auto('near').length, 1);
-  assert.deepStrictEqual(auto('inactive').length, 1);
-  assert.deepStrictEqual(auto('review').map((c) => c.recipients), [[bruno.id], [anna.id]]);
-  const n = ctx.db.campaigns.length;
-  await manager.runAutomations(ctx);
-  assert.strictEqual(ctx.db.campaigns.length, n, 'terzo giorno: niente di nuovo');
+  await manager.runAutomations(bar, at(day(15, '08:30')));
+  assert.deepStrictEqual(to(bar, 'near'), [[near.id, both.id]]);
+  assert.deepStrictEqual(to(bar, 'inactive'), [[miss.id]]);
+  assert.deepStrictEqual(to(bar, 'waiting'), [[wait.id]]);
+  assert.deepStrictEqual(to(bar, 'review'), [], 'la recensione aspetta le 10 e 2 ore dalla visita');
+  assert.ok(!bar.db.campaigns.some((c) => c.recipients.includes(missNo.id)), 'senza consenso: niente "ci manchi"');
+  assert.ok(!bar.db.campaigns.some((c) => c.recipients.includes(nearToday.id)), '"ti manca 1 timbro" parte dal giorno dopo');
+  assert.strictEqual(bar.db.messagesFor(near.id)[0].title, auto(bar, 'near')[0].title, 'il messaggio compare nella tessera web');
 
-  // spento dal bot: un nuovo cliente vicino al premio non riceve "ti manca 1 timbro"
-  await tap(`autot:${ctx.shop.slug}|near|0`);
-  assert.strictEqual(manager.automations(ctx).find((a) => a.key === 'near').on, false);
+  await manager.runAutomations(bar, at(day(15, '10:00')));
+  // Aldo (5 visite, passato alle 7:30) e Bruno: 2 ore dopo la visita. Fabio aspetta: oggi ha già ricevuto un messaggio
+  assert.deepStrictEqual(to(bar, 'review'), [[nearToday.id, rev.id]]);
+  const n = bar.db.campaigns.length;
+  await manager.runAutomations(bar, at(day(15, '10:10')));
+  await manager.runAutomations(bar, at(day(15, '21:30')));
+  assert.strictEqual(bar.db.campaigns.length, n, 'niente di ripetuto, niente di sera');
+
+  // venerdì: Aldo riceve "ti manca 1 timbro"; Anna e Fabio la recensione (5 visite, ultima 1–2 giorni fa)
+  await manager.runAutomations(bar, at(day(16, '08:15')));
+  assert.deepStrictEqual(to(bar, 'near').at(-1), [nearToday.id]);
+  await manager.runAutomations(bar, at(day(16, '10:30')));
+  assert.deepStrictEqual(to(bar, 'review').at(-1), [near.id, both.id]);
+
+  // limite di 2 messaggi automatici in 7 giorni: con il premio pronto da 8 giorni, "il tuo premio ti aspetta" partirebbe…
+  const gaia = customer(bar, 'Gaia', [day(9), day(10), day(11), day(12), day(13), day(14)]);
+  const waitingOn22 = () => manager.autoPlan(bar, gaia, at(day(22, '08:30'))).find((p) => p.key === 'waiting').block;
+  assert.strictEqual(waitingOn22(), null);
+  // …ma non se nei 7 giorni prima ne ha già ricevuti 2
+  bar.db.updateCustomer(gaia.id, { autoSent: { days: ['2026-10-20', '2026-10-21'] } });
+  assert.match(waitingOn22(), /2 messaggi automatici in 7 giorni/);
+
+  // spento dal bot: un cliente vicino al premio non riceve "ti manca 1 timbro"
+  await tap(`autot:${bar.shop.slug}|near|0`);
+  assert.strictEqual(manager.automations(bar).find((a) => a.key === 'near').on, false);
   assert.match(sent.at(-1).text, /Messaggi automatici/);
-  const franco = customer('Franco', { stamps: 5 });
-  await manager.runAutomations(ctx);
-  assert.ok(!auto('near').some((c) => c.recipients.includes(franco.id)));
-  manager.setAutomation(ctx.shop.slug, 'near', true);
+  const franco = customer(bar, 'Franco', [day(12), day(13), day(14), day(15), day(16)]);
+  await manager.runAutomations(bar, at(day(17, '08:30')));
+  assert.ok(!auto(bar, 'near').some((c) => c.recipients.includes(franco.id)));
+  manager.setAutomation(bar.shop.slug, 'near', true);
+});
+
+test('pizzeria (profilo sera): "ti manca 1 timbro" il giovedì o venerdì pomeriggio, recensione il giorno dopo a pranzo', async () => {
+  assert.strictEqual(manager.autoProfile(ctx), 'sera');
+  const near = customer(ctx, 'Gino', [day(1, '21:00'), day(3, '21:00'), day(5, '21:00'), day(8, '21:00'), day(9, '21:00')]); // venerdì 9
+  const rev = customer(ctx, 'Ivo', [day(2, '21:00'), day(9, '21:00'), day(14, '21:00')]);  // 3ª visita mercoledì 14 sera
+  await manager.runAutomations(ctx, at(day(12, '18:00')));  // lunedì: troppo presto e giorno sbagliato
+  await manager.runAutomations(ctx, at(day(14, '22:00')));  // mercoledì sera: fuori fascia
+  assert.strictEqual(ctx.db.campaigns.length, 0);
+  await manager.runAutomations(ctx, at(day(15, '13:00')));  // giovedì a pranzo: recensione
+  assert.deepStrictEqual(to(ctx, 'review'), [[rev.id]]);
+  await manager.runAutomations(ctx, at(day(15, '18:00')));  // giovedì pomeriggio: 6 giorni dopo, "ti manca 1 timbro"
+  assert.deepStrictEqual(to(ctx, 'near'), [[near.id]]);
+});
+
+test('prova dal bot: stato della tessera e invio immediato, che non conta nelle statistiche', async () => {
+  const c = customer(bar, 'Federico', [day(20), day(21)], { consent: false });
+  sent.length = 0;
+  await tap(`auto:${bar.shop.slug}`);
+  assert.ok(sent.at(-1).kb.inline_keyboard.flat().some((b) => b.callback_data === `ptest:${bar.shop.slug}`));
+  await tap(`ptest:${bar.shop.slug}`);
+  await msg(c.code.split('-')[1].toLowerCase()); // anche senza prefisso e in minuscolo
+  const plan = sent.at(-1);
+  assert.match(plan.text, /Prova notifiche/);
+  assert.match(plan.text, /Ti manca 1 timbro<\/b> — ha 2 timbri su 6/);
+  assert.match(plan.text, /Ci manchi<\/b> — il cliente non ha dato il consenso/);
+
+  const before = bar.db.campaigns.length;
+  await tap(`psend:${bar.shop.slug}|${c.code}|near`);
+  const test1 = bar.db.campaigns.at(-1);
+  assert.strictEqual(bar.db.campaigns.length, before + 1);
+  assert.deepStrictEqual([test1.test, test1.auto, test1.recipients], [true, 'near', [c.id]]);
+  assert.match(sent.at(-1).text, /Wallet non è attivo/, 'nei test Google Wallet è spento');
+  assert.strictEqual(bar.db.customers.find((x) => x.id === c.id).autoSent, undefined, 'la prova non segna il messaggio come mandato');
+  await tap(`psend:${bar.shop.slug}|${c.code}|inactive`);
+  assert.match(sent.at(-1).text, /consenso alle offerte/);
+  const s = compute([bar]).shops[0];
+  assert.strictEqual(s.messages.near, 3, 'le prove non contano nelle statistiche (3 veri: Anna e Fabio, poi Aldo)');
 });
 
 test('kit di lancio e report del mese in PDF, anche dal bot', async () => {
+  // visite di questo mese (il report guarda il mese in corso)
+  for (let i = 0; i < 3; i++) {
+    const c = ctx.db.createCustomer({ name: `Mese${i}`, email: `mese${i}@x.it` });
+    for (let k = 0; k < 5; k++) ctx.db.addEvent({ type: 'stamp', customerId: c.id, by: 'staff' });
+  }
   const kit = await manager.launchKit(ctx);
   assert.strictEqual(kit.subarray(0, 4).toString(), '%PDF');
   assert.ok(kit.length > 5000);

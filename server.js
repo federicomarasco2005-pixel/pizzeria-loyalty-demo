@@ -954,7 +954,9 @@ shop.get('/api/admin/stats', requireManager, (req, res) => {
     rewardText: cfg.rewardText,
     walletEnabled: wallet.enabled(),
     kpi,
-    customers: views.sort((a, b) => (b.lastVisitAt || '').localeCompare(a.lastVisitAt || '')),
+    // la data d'iscrizione serve a ordinare l'elenco della dashboard (l'ordine lo sceglie il gestore)
+    customers: views.map((v, i) => ({ ...v, createdAt: ctx.db.customers[i].createdAt }))
+      .sort((a, b) => (b.lastVisitAt || '').localeCompare(a.lastVisitAt || '')),
     events: ctx.db.events.slice(-25).reverse().map((e) => ({
       type: e.type, by: e.by, who: e.who || null, at: e.at, name: nameOf[e.customerId] || '?', voided: voided.has(e.id),
     })),
@@ -1205,58 +1207,126 @@ async function runJobs() {
       }
     }
   }
-  // messaggi automatici ai clienti: in tarda mattinata, prima del pranzo
-  if (due('auto', now.hour >= 11 && now.hour < 21)) {
-    mark('auto');
+  // messaggi automatici ai clienti: ogni 10 minuti si guarda chi è nella sua fascia oraria (vedi SLOTS)
+  if (Date.now() - lastAutoRun >= 10 * 60000) {
+    lastAutoRun = Date.now();
     for (const ctx of shops.all()) await runAutomations(ctx).catch((err) => console.error(`[auto] ${ctx.shop.slug}: ${err.message}`));
   }
 }
+let lastAutoRun = 0;
 
 // ---------- Messaggi automatici ----------
-// Ogni giorno il server guarda i clienti di ogni locale e manda da solo, nella tessera (Wallet e web):
-//   near     "Ti manca 1 timbro"            una volta per ogni premio, se il cliente è passato da poco
-//   review   "Lasciaci una recensione"      una volta sola, dopo la 3ª visita (se il locale ha il link)
-//   inactive "Ci manchi"                    dopo 21 giorni senza visite, solo a chi ha dato il consenso alle offerte
-// Al massimo un messaggio automatico al giorno per cliente. Si attivano/disattivano dal bot (scheda del locale).
+// Il server manda da solo, nella tessera (Wallet con notifica e tessera web), nella fascia oraria migliore del locale:
+//   waiting  "Il tuo premio ti aspetta"   premio pronto e non ritirato (bar 7 giorni, sera 14), una volta per premio
+//   near     "Ti manca 1 timbro"          bar il giorno dopo la visita, sera 5 giorni dopo; una volta per premio
+//   review   "Lasciaci una recensione"    una volta sola, dopo la 3ª visita (bar 2 ore dopo, sera il giorno dopo a pranzo)
+//   inactive "Ci manchi"                  bar 14 giorni senza visite, sera 35; solo con il consenso alle offerte
+// Mai tra le 21 e le 8; al massimo 1 messaggio automatico al giorno e 2 a settimana per cliente.
+// Si attivano/disattivano dal bot (scheda del locale > Automazioni), che sa anche provarli subito su una tessera.
 // I messaggi passano dalle campagne: stesso limite di notifiche Google, compaiono nello storico della dashboard.
+
+// Ora italiana di un istante: giorno (AAAA-MM-GG), giorno della settimana (0 = lunedì) e minuti dalla mezzanotte
+const ROME_FMT = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Rome', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', weekday: 'short', hourCycle: 'h23' });
+const WEEKDAY = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+function romeAt(ms) {
+  const p = Object.fromEntries(ROME_FMT.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  return { day: `${p.year}-${p.month}-${p.day}`, wd: WEEKDAY[p.weekday], min: (Number(p.hour) % 24) * 60 + Number(p.minute) };
+}
+const daysBetween = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS); // giorni di calendario
+
+// Fasce orarie (ora italiana). Due profili dal tipo di timbro del locale; l'impostazione notifyProfile li forza.
+// "giorno": bar, caffè, gelaterie (si passa a colazione). "sera": pizzerie, pub, burger (si decide nel pomeriggio).
+const EVENING_THEMES = new Set(['pizza', 'burger', 'birra']);
+const profileOf = (ctx) => ctx.db.getSettings().notifyProfile || (EVENING_THEMES.has(ctx.shop.theme) ? 'sera' : 'giorno');
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
+const SLOTS = {
+  giorno: {
+    remind: { days: EVERY_DAY, from: 8 * 60, to: 11 * 60 },     // prima della colazione / a metà mattina
+    review: { days: EVERY_DAY, from: 10 * 60, to: 20 * 60 },    // almeno 2 ore dopo la visita
+    missYou: { days: [1, 2, 3], from: 8 * 60, to: 11 * 60 },    // martedì–giovedì mattina
+  },
+  sera: {
+    remind: { days: [3, 4], from: 17 * 60 + 30, to: 20 * 60 },  // giovedì e venerdì, quando si decide dove cenare
+    review: { days: EVERY_DAY, from: 12 * 60 + 30, to: 15 * 60 }, // il giorno dopo, a pranzo
+    missYou: { days: [3], from: 17 * 60 + 30, to: 20 * 60 },     // giovedì pomeriggio, prima del weekend
+  },
+};
+const DAY_NAMES = ['lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato', 'domenica'];
+const clock = (min) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
+const slotText = (slot) => `${slot.days.length === 7 ? 'ogni giorno' : slot.days.map((d) => DAY_NAMES[d]).join(' e ')} ${clock(slot.from)}–${clock(slot.to)}`;
+
+// wait: giorni dall'ultima visita prima di mandare (per profilo); maxDays: oltre, non si manda più
+// why: motivo per cui al cliente non spetta (null = gli spetta, resta da aspettare il momento giusto)
 const AUTOMATIONS = {
+  waiting: {
+    label: 'Il tuo premio ti aspetta', promo: false, slot: 'remind', wait: { giorno: 7, sera: 14 }, maxDays: 60,
+    text: (cfg) => ({ title: `Il tuo premio ti aspetta! ${cfg.emoji}`, body: `Da ${cfg.pizzeriaName} hai un premio da ritirare: ${cfg.rewardText.toLowerCase()}. Mostra la tessera alla prossima visita.` }),
+    why: (c, s) => (s.rewards < 1 ? 'nessun premio da ritirare' : (c.autoSent || {}).waiting === s.earned ? 'già mandato per questo premio' : null),
+    mark: (c, s) => ({ waiting: s.earned }),
+  },
   near: {
-    label: 'Ti manca 1 timbro', promo: false,
+    label: 'Ti manca 1 timbro', promo: false, slot: 'remind', wait: { giorno: 1, sera: 5 }, maxDays: 30,
     text: (cfg) => ({ title: `Ti manca 1 timbro! ${cfg.emoji}`, body: `Alla prossima visita da ${cfg.pizzeriaName}: ${cfg.rewardText.toLowerCase()}.` }),
-    due: (c, s, cfg) => s.stamps === cfg.stampsForReward - 1 && recent(s.lastVisitAt, 30) && (c.autoSent || {}).near !== s.earned,
+    why: (c, s, cfg) => (s.stamps !== cfg.stampsForReward - 1 ? `ha ${s.stamps} timbri su ${cfg.stampsForReward}: parte a ${cfg.stampsForReward - 1}`
+      : (c.autoSent || {}).near === s.earned ? 'già mandato per questo premio' : null),
     mark: (c, s) => ({ near: s.earned }),
   },
   review: {
-    label: 'Richiesta di recensione', promo: false,
+    label: 'Richiesta di recensione', promo: false, slot: 'review', wait: { giorno: 0, sera: 1 }, minHours: 2, maxDays: 3,
     text: (cfg) => ({ title: `Ti piace ${cfg.pizzeriaName}?`, body: 'Lasciaci una recensione su Google: per noi conta tantissimo. Trovi il link nella tua tessera.' }),
-    due: (c, s, cfg, settings) => !!settings.reviewUrl && s.visits >= 3 && recent(s.lastVisitAt, 3) && !(c.autoSent || {}).review,
+    why: (c, s, cfg, settings) => (!settings.reviewUrl ? 'il locale non ha il link delle recensioni' : s.visits < 3 ? `ha ${s.visits} visite: parte dopo la 3ª`
+      : (c.autoSent || {}).review ? 'già mandata (una volta sola)' : null),
     mark: () => ({ review: true }),
   },
   inactive: {
-    label: 'Ci manchi (21 giorni)', promo: true,
+    label: 'Ci manchi', promo: true, slot: 'missYou', wait: { giorno: 14, sera: 35 }, maxDays: 150,
     text: (cfg) => ({ title: `Ci manchi! ${cfg.emoji}`, body: `È da un po' che non passi da ${cfg.pizzeriaName}: i tuoi timbri ti aspettano. ${cfg.rewardText} è più vicino di quanto pensi!` }),
-    due: (c, s) => s.visits >= 1 && !recent(s.lastVisitAt, 21) && recent(s.lastVisitAt, 120) && (c.autoSent || {}).inactive !== s.lastVisitAt,
+    why: (c, s) => (s.visits < 1 ? 'nessuna visita' : (c.autoSent || {}).inactive === s.lastVisitAt ? 'già mandato per questa assenza' : null),
     mark: (c, s) => ({ inactive: s.lastVisitAt }),
   },
 };
 const recent = (iso, days) => !!iso && Date.now() - Date.parse(iso) < days * DAY_MS;
 const autoEnabled = (ctx, key) => (ctx.db.getSettings().auto || {})[key] !== false; // attive di default
 
-async function runAutomations(ctx) {
+// Perché il messaggio automatico `key` non parte adesso per il cliente c (null = parte). Lo usano l'invio e la prova dal bot.
+function autoBlock(ctx, key, c, s, now = Date.now()) {
+  const a = AUTOMATIONS[key];
+  const profile = profileOf(ctx);
+  if (!autoEnabled(ctx, key)) return 'spento dal bot';
+  if (a.promo && !c.consentMarketing) return 'il cliente non ha dato il consenso alle offerte';
+  const why = a.why(c, s, ctx.cfg, ctx.db.getSettings());
+  if (why) return why;
+  if (!s.lastVisitAt) return 'nessuna visita';
+  const today = romeAt(now);
+  const days = daysBetween(romeAt(Date.parse(s.lastVisitAt)).day, today.day);
+  if (days > a.maxDays) return `ultima visita ${days} giorni fa: troppo tempo, non si manda più`;
+  const wait = a.wait[profile];
+  if (days < wait) return `aspetta: parte ${wait === 1 ? 'dal giorno dopo' : `${wait} giorni dopo`} l'ultima visita (ultima visita ${days === 0 ? 'oggi' : `${days} giorni fa`})`;
+  if (a.minHours && now - Date.parse(s.lastVisitAt) < a.minHours * 3600e3) return `aspetta: parte almeno ${a.minHours} ore dopo la visita`;
+  const slot = SLOTS[profile][a.slot];
+  if (!slot.days.includes(today.wd) || today.min < slot.from || today.min >= slot.to) return `aspetta la fascia oraria: ${slotText(slot)}`;
+  const sentDays = (c.autoSent || {}).days || [];
+  if (sentDays.includes(today.day)) return 'ha già ricevuto un messaggio automatico oggi';
+  if (sentDays.filter((d) => daysBetween(d, today.day) < 7).length >= 2) return 'ha già ricevuto 2 messaggi automatici in 7 giorni';
+  return null;
+}
+
+async function runAutomations(ctx, now = Date.now()) {
   const { cfg } = ctx;
-  const settings = ctx.db.getSettings();
-  const done = new Set(); // un solo messaggio automatico per cliente in questo giro
+  const today = romeAt(now).day;
+  const done = new Set(); // un solo messaggio automatico per cliente in questo giro (l'ordine di AUTOMATIONS è la priorità)
   for (const [key, a] of Object.entries(AUTOMATIONS)) {
-    if (!autoEnabled(ctx, key)) continue;
     const chosen = [];
     for (const c of ctx.db.customers) {
-      if (done.has(c.id) || (a.promo && !c.consentMarketing)) continue;
+      if (done.has(c.id)) continue;
       const s = ctx.db.stateOf(c.id, cfg.stampsForReward);
-      if (!a.due(c, s, cfg, settings)) continue;
+      if (autoBlock(ctx, key, c, s, now)) continue;
       chosen.push(c.id);
       done.add(c.id);
-      // segnato subito: se il server riparte a metà, nessuno riceve due volte lo stesso messaggio
-      ctx.db.updateCustomer(c.id, { autoSent: { ...(c.autoSent || {}), ...a.mark(c, s) } });
+      // segnato subito: se il server riparte a metà, nessuno riceve due volte lo stesso messaggio.
+      // days: i giorni in cui ha ricevuto un messaggio automatico (ultima settimana), per i limiti al giorno e alla settimana
+      const days = [...((c.autoSent || {}).days || []).filter((d) => daysBetween(d, today) < 7), today];
+      ctx.db.updateCustomer(c.id, { autoSent: { ...(c.autoSent || {}), ...a.mark(c, s), days } });
     }
     if (!chosen.length) continue;
     const campaign = ctx.db.createCampaign({
@@ -1266,6 +1336,24 @@ async function runAutomations(ctx) {
     await sendCampaign(ctx, campaign);
     console.log(`[auto] ${ctx.shop.slug}: "${a.label}" a ${chosen.length} clienti`);
   }
+}
+
+// Prova dal bot: stato di ogni messaggio automatico per una tessera, e invio immediato di uno di loro.
+// L'invio di prova non conta per i limiti né per le statistiche, e non segna il messaggio come mandato.
+function autoPlan(ctx, c, now = Date.now()) {
+  const s = ctx.db.stateOf(c.id, ctx.cfg.stampsForReward);
+  return Object.entries(AUTOMATIONS).map(([key, a]) => ({ key, label: a.label, block: autoBlock(ctx, key, c, s, now) }));
+}
+async function autoTest(ctx, c, key) {
+  const a = AUTOMATIONS[key];
+  if (!a) return { error: 'Messaggio sconosciuto.' };
+  if (a.promo && !c.consentMarketing) return { error: `"${a.label}" va solo a chi ha dato il consenso alle offerte: provalo su una tessera con il consenso.` };
+  const campaign = ctx.db.createCampaign({
+    ...a.text(ctx.cfg), segment: 'manual', ids: [c.id], promo: a.promo, auto: key, test: true,
+    sendAt: new Date().toISOString(), recipients: [], keepDays: 1,
+  });
+  await sendCampaign(ctx, campaign);
+  return { results: ctx.db.findCampaign(campaign.id).results, walletEnabled: wallet.enabled() };
 }
 
 // ---------- Numeri di un mese (report mensile) ----------
@@ -1530,17 +1618,27 @@ const manager = {
   },
   remove: (slug) => shops.remove(slug),
   // Messaggi automatici: stato e interruttori (scheda del locale nel bot)
-  automations: (ctx) => Object.entries(AUTOMATIONS).map(([key, a]) => ({
-    key, label: a.label, on: autoEnabled(ctx, key), promo: a.promo,
-    note: key === 'review' && !ctx.db.getSettings().reviewUrl ? 'serve il link recensioni' : '',
-  })),
+  automations: (ctx) => Object.entries(AUTOMATIONS).map(([key, a]) => {
+    const profile = profileOf(ctx);
+    const wait = a.wait[profile];
+    return {
+      key, label: a.label, on: autoEnabled(ctx, key), promo: a.promo,
+      note: key === 'review' && !ctx.db.getSettings().reviewUrl ? 'serve il link recensioni' : '',
+      when: `${a.minHours && !wait ? `${a.minHours} ore dopo la visita` : wait === 1 ? 'dal giorno dopo la visita' : `${wait} giorni dopo l'ultima visita`}, ${slotText(SLOTS[profile][a.slot])}`,
+    };
+  }),
+  autoProfile: (ctx) => profileOf(ctx),
+  // Prova dal bot: stato dei messaggi automatici di una tessera e invio immediato di uno di loro
+  autoPlan: (ctx, customer, now) => autoPlan(ctx, customer, now),
+  autoTest: (ctx, customer, key) => autoTest(ctx, customer, key),
+  pushesLast24h: (ctx, customer) => ctx.db.pushesLast24h(customer.id),
   setAutomation(slug, key, on) {
     const ctx = shops.get(slug);
     if (!ctx || !AUTOMATIONS[key]) return null;
     ctx.db.updateSettings({ auto: { ...(ctx.db.getSettings().auto || {}), [key]: !!on } });
     return ctx;
   },
-  runAutomations: (ctx) => runAutomations(ctx),
+  runAutomations: (ctx, now) => runAutomations(ctx, now),
   // Premio ritirato dal telefono del cliente (acceso di default)
   selfRedeem: (ctx) => selfRedeemOn(ctx),
   setSelfRedeem(slug, on) {

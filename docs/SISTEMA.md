@@ -82,12 +82,13 @@ Tutti e tre sono esclusi da `.gitignore`.
 - **Validazione** (21–22/10): documento di scope, niente funzioni nuove fino alla fine del pilota.
 - **Correzioni prima del pilota** (22/10): il QR del tavolo riapre la tessera a un telefono già iscritto; tolte le scritte "demo" dall'iscrizione e dalla dashboard; consenso alle offerte "nella tessera e nel Wallet".
 - **Statistiche di tutti i locali** (22/10): pagina solo per Federico (link monouso dal bot) e lettura per Claude (chiave), vedi 4.11.
+- **Messaggi automatici a fasce orarie** e **prova dal bot** (23/10), nuovo "Il tuo premio ti aspetta", vedi 4.12. Clienti della dashboard ordinabili.
 
 ## 3. Come si pubblica una modifica (IMPORTANTE)
 
 Dal 10 ottobre 2026 (nuovo PC) `loyalty-demo` è una copia git collegata a GitHub (`origin/main`). Node 24 e Git sono installati.
 
-1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 42.
+1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 44.
 2. Pubblica con git: `git add …`, `git commit`, `git push`.
    - Il login GitHub (account **federicomarasco2005-pixel**) è già salvato su questo PC: `git push` funziona.
    - Ripiego, se git non va: caricare i file dal browser su `github.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/upload/main/<cartella>` (una cartella per commit).
@@ -214,7 +215,7 @@ render.yaml  Blueprint Render (servizio + database)
 | card.html | `/<slug>/card/<token>` | Tessera animata, aggiornata in tempo reale. Contiene: pulsante "Aggiungi a Google Wallet" (nascosto su iPhone o se già salvata), "📲 Salva sul telefono" (guida passo passo per iPhone, installazione per Android), fronte con timbri, barra di avanzamento, premio e codice; retro con il QR (si gira toccando la tessera o "Mostra il QR in cassa"), QR a tutto schermo con lo schermo sempre acceso (si apre da solo con `?qr=1`), riflesso lucido che segue dito/inclinazione, recensione Google, messaggi del locale, ultime visite, "Privacy e impostazioni" chiuso in fondo (consenso, privacy, scarica i miei dati, elimina la tessera). Modalità scura automatica; inglese se il telefono non è in italiano (`?lang=en|it` per forzarla). Il service worker la apre subito dalla copia salvata (anche col server addormentato) e la pagina si aggiorna appena il server risponde; la rilettura ogni 15 s solo se la connessione live è caduta. Ogni tessera ha il suo manifest, così l'icona sulla Home riapre proprio quella tessera. |
 | tap.html | `/<slug>/tap/<segreto>` | Timbro NFC (vedi 4.6). |
 | staff.html | `/<slug>/staff` | Cassa: PIN, scanner QR (libreria servita da `/vendor/html5-qrcode.min.js`), ricerca (il codice completo apre subito la tessera), +1 timbro, consegna premio, annulla, feed live dei timbri NFC. I dipendenti non vedono il link alla dashboard. |
-| admin.html | `/<slug>/admin` | Dashboard, **solo con il PIN del gestore**. **Panoramica**: numeri, clienti (con 🗑️ per cancellarli), storico con chi ha timbrato. **Notifiche**: segmenti, consenso, durata del messaggio (1/3/7/14 giorni), programmazione, storico, annulla, "elimina dalle tessere". **Impostazioni**: link recensione, Maps, telefono, NFC. |
+| admin.html | `/<slug>/admin` | Dashboard, **solo con il PIN del gestore**. **Panoramica**: numeri, clienti (con 🗑️ per cancellarli; ordinabili per ultima visita, più visite, più vicini al premio, da più tempo assenti, iscritti di recente, nome — la scelta resta sul dispositivo), storico con chi ha timbrato. **Notifiche**: segmenti, consenso, durata del messaggio (1/3/7/14 giorni), programmazione, storico, annulla, "elimina dalle tessere". **Impostazioni**: link recensione, Maps, telefono, NFC. |
 | poster.html | `/<slug>/poster` | QR da tavolo da stampare. |
 | privacy.html | `/<slug>/privacy` | Informativa e regolamento del locale. |
 | sw.js | `/sw.js` | Service worker: prima la rete, la copia salvata solo se si è offline. |
@@ -283,6 +284,22 @@ render.yaml  Blueprint Render (servizio + database)
 - **Cosa calcola** (`statistiche.js`, dal registro degli eventi in memoria): iscritti (consenso, Wallet, da NFC), timbri per settimana, giorni e orari (fuso di Roma), ritorno a 7 e 30 giorni (timbro in un giorno diverso da quello dell'iscrizione), visite al mese, giorni tra le visite, abituali, dormienti, mai tornati, premi (tempo per il primo, ritorno dopo il premio), messaggi automatici e ritorno dopo "Ci manchi", visite di ritorno × scontrino medio (con l'avviso che non è tutto merito della tessera), timbri per dipendente, NFC di notte, peso dei 3 clienti più assidui, pilota (giorno, locale attivato, settimane attive, soglie del kit).
 - **Anteprima sul PC**: configurazione `statistiche-anteprima` di `.claude/launch.json` (porta 3002, dati finti creati da `tools/dati-prova-statistiche.js`); con `STATS_DEV_LINK=1` il server stampa un link di prova all'avvio. Su Render non succede mai (variabile `RENDER`).
 
+### 4.12 Messaggi automatici a fasce orarie (dal 23/10/2026)
+- **Profilo orario** dal tipo di timbro: `sera` per pizza, burger e birra; `giorno` per gli altri (bar, caffè, gelato…). L'impostazione `notifyProfile` del locale lo forza.
+- **Regole** (`AUTOMATIONS` e `SLOTS` in `server.js`), in ordine di priorità:
+
+| Messaggio | Quando | Giorno | Sera |
+|---|---|---|---|
+| Il tuo premio ti aspetta (nuovo) | premio pronto e non ritirato: 7 giorni (giorno), 14 (sera); una volta per premio | ogni giorno 8:00–11:00 | giovedì e venerdì 17:30–20:00 |
+| Ti manca 1 timbro | 1 giorno dopo l'ultima visita (giorno), 5 (sera); una volta per premio | ogni giorno 8:00–11:00 | giovedì e venerdì 17:30–20:00 |
+| Richiesta di recensione | dopo la 3ª visita, una volta sola, se il locale ha il link: almeno 2 ore dopo (giorno), il giorno dopo (sera); entro 3 giorni | ogni giorno 10:00–20:00 | ogni giorno 12:30–15:00 |
+| Ci manchi (solo con consenso) | 14 giorni senza visite (giorno), 35 (sera); una volta per assenza; non oltre 150 giorni | martedì–giovedì 8:00–11:00 | giovedì 17:30–20:00 |
+
+- **Limiti**: mai fuori dalle fasce (quindi mai tra le 21 e le 8); al massimo 1 messaggio automatico al giorno e 2 in 7 giorni per cliente (`customer.autoSent.days`). Il giro si fa ogni 10 minuti mentre il server è sveglio: **senza server sveglio le fasce vengono saltate**.
+- **Notifica sul telefono** solo con la tessera in Google Wallet, al massimo 3 al giorno per tessera (limite di Google, contano anche i "+1 timbro"): oltre arrivano senza suono. La tessera web mostra il messaggio solo quando si apre (niente notifiche web).
+- **Prova dal bot**: scheda del locale → 🤖 Automazioni → 🔔 *Prova le notifiche su una tessera* → codice tessera. Il bot dice per ogni messaggio se partirebbe adesso, cosa aspetta o perché no, quante notifiche Google la tessera ha già usato nelle 24 ore e se risulta nel Wallet; i pulsanti *Invia ora* lo mandano subito (campagna `test: true`: non segna il messaggio come mandato, non conta per i limiti né per le statistiche; "Ci manchi" solo a una tessera con consenso).
+- Le statistiche mostrano per ogni locale i messaggi degli ultimi 30 giorni per tipo e quanti sono **arrivati con notifica, senza suono o rifiutati da Google**.
+
 ---
 
 ## 5. Variabili d'ambiente
@@ -318,7 +335,7 @@ render.yaml  Blueprint Render (servizio + database)
 - Bot Telegram: online (webhook), creazione dei locali verificata dal vivo. Dipendenti, gestori, report, backup e avvisi sono coperti dai test, **non ancora provati dal vivo** da Federico.
 - Postgres a tabelle e migrazione: eseguiti dal vivo l'8 ottobre 2026, senza perdite.
 - Sicurezza (email già usata, blocco PIN e recupero) e privacy (export, cancellazione): coperti dai test e pubblicati.
-- 42 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
+- 44 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
 
 ---
 

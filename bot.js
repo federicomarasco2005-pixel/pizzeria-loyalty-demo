@@ -326,6 +326,7 @@ function startCreate(chat) {
 async function onText(chat, text) {
   const s = sessions.get(chat);
   if (s && s.mode === 'staff') return addStaffNamed(chat, s.slug, text);
+  if (s && s.mode === 'ptest') { sessions.delete(chat); return showAutoPlan(chat, s.slug, text); }
   if (!s || !s.field && s.mode !== 'create') return menu(chat);
   const field = s.mode === 'create' ? CREATE_STEPS[s.step] : s.field;
   if (!field) return send(chat, 'Usa i pulsanti qui sopra 👆');
@@ -411,6 +412,19 @@ async function onButton(chat, data, msg) {
     const [slug, key, on] = arg.split('|');
     M.setAutomation(slug, key, on === '1');
     return showAutomations(chat, slug);
+  }
+  // prova delle notifiche su una tessera: codice tessera, poi invio immediato di un messaggio automatico
+  if (action === 'ptest') {
+    sessions.set(chat, { mode: 'ptest', slug: arg });
+    return send(chat, '🔔 Scrivimi il <b>codice della tessera</b> su cui provare (es. PZ-AB12C): usa la tua tessera di prova, salvata nel Google Wallet del tuo telefono.\n\n/annulla per tornare indietro.');
+  }
+  if (action === 'psend') {
+    const [slug, code, key] = arg.split('|');
+    return sendAutoTest(chat, slug, code, key);
+  }
+  if (action === 'pplan') {
+    const [slug, code] = arg.split('|');
+    return showAutoPlan(chat, slug, code);
   }
 
   // dipendenti con PIN personale
@@ -560,14 +574,52 @@ function showAutomations(chat, slug) {
   const ctx = M.get(slug);
   if (!ctx) return send(chat, 'Locale non trovato.');
   const list = M.automations(ctx);
-  const lines = list.map((a) => `${a.on ? '🟢' : '⚪'} <b>${esc(a.label)}</b>${a.promo ? ' <i>(solo a chi accetta le offerte)</i>' : ''}${a.note ? ` — ⚠️ ${a.note}` : ''}`);
+  const profile = M.autoProfile(ctx);
+  const lines = list.map((a) => `${a.on ? '🟢' : '⚪'} <b>${esc(a.label)}</b>${a.promo ? ' <i>(solo a chi accetta le offerte)</i>' : ''}${a.note ? ` — ⚠️ ${a.note}` : ''}\n      <i>${esc(a.when)}</i>`);
   return send(chat,
     `🤖 <b>Messaggi automatici di ${esc(ctx.cfg.pizzeriaName)}</b>\n` +
-    'Partono da soli ogni giorno in tarda mattinata, nella tessera Google Wallet (con notifica) e nella tessera web. ' +
-    'Al massimo uno al giorno per cliente.\n\n' + lines.join('\n') +
-    '\n\n<i>Ti manca 1 timbro: una volta per premio. Recensione: una volta sola, dopo la 3ª visita. Ci manchi: dopo 21 giorni senza visite.</i>',
+    `Partono da soli nella tessera Google Wallet (con notifica) e nella tessera web, negli orari migliori per un locale ${profile === 'sera' ? 'serale (pizzeria, pub)' : 'di giorno (bar, caffè)'}. ` +
+    'Mai tra le 21 e le 8; al massimo 1 al giorno e 2 a settimana per cliente.\n\n' + lines.join('\n'),
     kb([...list.map((a) => [btn(`${a.on ? '⏸️ Spegni' : '▶️ Accendi'}: ${a.label}`, `autot:${slug}|${a.key}|${a.on ? 0 : 1}`)]),
+      [btn('🔔 Prova le notifiche su una tessera', `ptest:${slug}`)],
       [btn('⬅️ Torna al locale', `shop:${slug}`)]]));
+}
+
+// Stato dei messaggi automatici per una tessera: cosa partirebbe, quando, e perché no. Con i pulsanti si mandano subito.
+function showAutoPlan(chat, slug, codeText) {
+  const ctx = M.get(slug);
+  if (!ctx) return send(chat, 'Locale non trovato.');
+  let code = String(codeText || '').trim().toUpperCase().replace(/\s+/g, '');
+  if (code && !code.includes('-')) code = `${ctx.cfg.codePrefix}-${code}`;
+  const c = ctx.db.findByCode(code);
+  if (!c) return send(chat, `Nessuna tessera ${esc(code)} in ${esc(ctx.cfg.pizzeriaName)}.`, kb([[btn('🔁 Riprova', `ptest:${slug}`), btn('⬅️ Automazioni', `auto:${slug}`)]]));
+  const plan = M.autoPlan(ctx, c);
+  const lines = plan.map((p) => (!p.block ? `🟢 <b>${esc(p.label)}</b> — partirà entro 10 minuti`
+    : /^aspetta/.test(p.block) ? `⏳ <b>${esc(p.label)}</b> — ${esc(p.block)}`
+      : `⚪ <b>${esc(p.label)}</b> — ${esc(p.block)}`));
+  return send(chat,
+    `🔔 <b>Prova notifiche</b> · ${esc(ctx.cfg.pizzeriaName)} · tessera <b>${esc(c.code)}</b> (${esc(c.name)})\n` +
+    `📱 Nel Google Wallet: ${c.walletSaved ? 'sì' : 'non risulta (senza Wallet niente notifiche: il messaggio si vede solo aprendo la tessera)'}\n` +
+    `🔕 Notifiche usate nelle ultime 24 ore: ${M.pushesLast24h(ctx, c)} di 3 (limite di Google, contano anche i "+1 timbro")\n\n` +
+    lines.join('\n') +
+    '\n\nCon i pulsanti ricevi subito il messaggio, senza aspettare giorni e orari: è solo una prova, non cambia niente per il cliente e non conta per i limiti dei messaggi automatici (usa però una delle 3 notifiche al giorno di Google).',
+    kb([...plan.map((p) => [btn(`📨 Invia ora: ${p.label}`, `psend:${slug}|${c.code}|${p.key}`)]),
+      [btn('⬅️ Automazioni', `auto:${slug}`)]]));
+}
+
+async function sendAutoTest(chat, slug, code, key) {
+  const ctx = M.get(slug);
+  const c = ctx && ctx.db.findByCode(code);
+  if (!c) return send(chat, 'Tessera non trovata.');
+  const r = await M.autoTest(ctx, c, key);
+  const res = r.results || {};
+  const text = r.error ? `⚠️ ${esc(r.error)}`
+    : !r.walletEnabled ? '📩 Mandato, ma Google Wallet non è attivo su questo server: il messaggio è solo nella tessera web.'
+      : res.push ? '✅ Mandato <b>con notifica</b>: dovrebbe arrivarti sul telefono entro un minuto.'
+        : res.textOnly ? '📩 Mandato <b>senza notifica</b>: questa tessera ha già usato le 3 notifiche di oggi (limite di Google). Lo vedi aprendo la tessera nel Wallet.'
+          : res.failed ? '⚠️ Google ha rifiutato il messaggio: la tessera è salvata nel Wallet? Se no, il messaggio si vede solo nella tessera web.'
+            : '⚠️ Non mandato.';
+  return send(chat, text, kb([[btn('🔁 Stato della tessera', `pplan:${slug}|${c.code}`), btn('⬅️ Automazioni', `auto:${slug}`)]]));
 }
 
 async function listShops(chat) {
