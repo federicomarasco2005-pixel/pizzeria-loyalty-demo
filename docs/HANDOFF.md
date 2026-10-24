@@ -1,6 +1,6 @@
 # Passaggio di consegne — F5M tessere fedeltà
 
-*Aggiornato il 22 ottobre 2026. Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
+*Aggiornato il 23 ottobre 2026 (sera). Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
 
 ---
 
@@ -13,7 +13,7 @@
 
 ---
 
-## 2. Dove stiamo (stato al 22/10/2026)
+## 2. Dove stiamo (stato al 23/10/2026)
 
 | Cosa | Stato |
 |---|---|
@@ -38,6 +38,11 @@
 
 ## 3. Cosa fare adesso (in ordine di urgenza)
 
+0. **🔴 Prossima sessione (deciso con Federico il 23/10).**
+   - **Su Render** (Federico, circa 5 minuti; Claude apre i file con i valori, che non passano mai dalla chat): `VAPID_PRIVATE_KEY` (accende le notifiche web della tessera), `STATS_KEY` (lettura delle statistiche per Claude), `TELEGRAM_OWNER_ID` (bot fissato su Federico; probabilmente 8808507400, da verificare: se sbagliato il bot risponde "privato" e mostra il numero giusto). Se vuole: account su cron-job.org per il server sveglio (`https://f5m.it/api/cron` ogni 10 minuti), che serve alle fasce orarie dei messaggi.
+   - **Prova vera delle notifiche**: dal bot (scheda del locale → 🤖 Automazioni → 🔔 Prova le notifiche su una tessera) sulla tessera Wallet di Federico e su una tessera salvata sulla Home con le notifiche web attivate.
+   - **Claude legge `/api/statistiche`** con la chiave e scopre da solo i nomi del 4° e 5° locale (oggi sconosciuti).
+   - **Database su Neon** (punto 1): già che si entra su Render, si può fare nello stesso giro.
 1. **🔴 Database prima del 31 ottobre.** Piano scelto: **Neon gratuito** (non scade). Federico l'ha fissato **entro il 28–29/10**.
    - Federico: crea account su neon.tech (con GitHub) → tu crei il progetto a Francoforte.
    - Copia dati: `tools/copia-database.ps1` (chiede le due stringhe a schermo, le incolla lui; verifica "IDENTICO" tabella per tabella; il vecchio DB non viene toccato).
@@ -65,7 +70,7 @@
 
 ---
 
-## 4. Cosa è stato fatto in queste sessioni (9–22 ottobre)
+## 4. Cosa è stato fatto in queste sessioni (9–23 ottobre)
 
 - Progetto spostato sul nuovo PC, Node 24 + Git installati, cartella collegata a GitHub.
 - **Tessera web istantanea** (dati nella pagina, saldo nell'avviso live, niente attese di Google) e **Wallet più veloce** (GIF in un thread separato e preparate all'avvio, aggiornamenti in coda).
