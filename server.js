@@ -1176,8 +1176,10 @@ async function sendCampaign(ctx, campaign) {
   ctx.db.updateCampaign(campaign.id, {
     status: 'sent', sentAt: new Date().toISOString(), recipients: recipients.map((c) => c.id), results, pending: undefined, sentTo: undefined,
   });
-  // Nella tessera resta solo l'ultimo messaggio: i precedenti vengono tolti subito
-  if (wallet.enabled()) (async () => { for (const c of recipients) await syncWallet(ctx, c); })();
+  // Nella tessera resta solo l'ultimo messaggio: i precedenti si tolgono dopo 2 minuti, come dopo un timbro.
+  // Non subito: riscrivere il pass appena dopo addMessage riporta il messaggio nuovo a semplice testo e
+  // Google può non far suonare il telefono (prova del 25/10: messaggio nella tessera, nessuna notifica).
+  if (wallet.enabled()) for (const c of recipients) settleWallet(ctx, c);
   console.log(`[notifiche] ${ctx.shop.slug}: "${campaign.title}" inviata a ${results.total} (push ${results.push}, solo testo ${results.textOnly}, errori ${results.failed})`);
 }
 
