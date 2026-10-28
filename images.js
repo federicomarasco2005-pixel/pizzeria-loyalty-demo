@@ -36,15 +36,48 @@ function roundRect(g, x, y, w, h, r, color) {
 // Ogni funzione disegna il timbro "pieno" nel quadrato (0,0)-(d,d).
 const DRAW = {
   pizza(g, d) {
-    const c = d / 2;
-    circle(g, c, c, d / 2, '#b8772c');            // bordo
-    circle(g, c, c, d * 0.47, '#e0a04a');         // cornicione
-    circle(g, c, c, d * 0.37, '#ffd76e');         // mozzarella
-    for (const [x, y, r] of [[-0.12, -0.2, 0.07], [0.2, 0.05, 0.06], [-0.05, 0.22, 0.05]]) circle(g, c + x * d, c + y * d, r * d, '#ffe9a8');
-    for (const [x, y] of [[-0.18, -0.12], [0.14, -0.2], [0.03, 0.03], [-0.2, 0.15], [0.2, 0.18], [0, -0.32], [-0.31, -0.02]]) {
-      circle(g, c + x * d, c + y * d, d * 0.075, '#c62828');
+    // Fetta di margherita napoletana, punta in basso: cornicione gonfio e bruciacchiato, pomodoro, fior di latte, basilico.
+    // Posizioni in coordinate polari dalla punta: r in frazioni di d, angolo rispetto all'asse della fetta.
+    const ax = d * 0.5, ay = d * 0.94, up = -Math.PI / 2, half = 0.5, R = 0.75;
+    const at = (r, a) => [ax + Math.cos(up + a) * r * d, ay + Math.sin(up + a) * r * d];
+    const wedge = (r, h, tip = 0) => {
+      g.beginPath(); g.moveTo(ax, ay - tip * d); g.arc(ax, ay, r * d, up - h, up + h); g.closePath();
+    };
+    const crust = () => { g.beginPath(); g.arc(ax, ay, R * d, up - half, up + half); };
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    // contorno scuro: tiene la forma leggibile anche nei timbri piccoli
+    g.strokeStyle = '#9a5a1c';
+    wedge(R - 0.03, half); g.lineWidth = d * 0.05; g.stroke();
+    crust(); g.lineWidth = d * 0.2; g.stroke();
+    // pasta e pomodoro
+    g.fillStyle = '#f0c784'; wedge(R - 0.03, half); g.fill();
+    g.fillStyle = '#cf3a22'; wedge(R - 0.06, half - 0.06, 0.07); g.fill();
+    g.save(); wedge(R - 0.06, half - 0.06, 0.07); g.clip();
+    ellipse(g, ...at(0.42, -0.12), d * 0.05, d * 0.022, 'rgba(255,255,255,0.18)', -0.5); // lucido dell'olio
+    // fior di latte: macchie morbide con un filo d'ombra
+    for (const [r, a, s] of [[0.55, -0.26, 1], [0.37, 0.17, 0.85], [0.58, 0.25, 0.95], [0.22, -0.04, 0.7]]) {
+      const [x, y] = at(r, a), k = d * 0.075 * s;
+      for (const [dx, dy, q] of [[0, 0, 1], [0.7, -0.35, 0.72], [-0.6, 0.45, 0.68]]) circle(g, x + dx * k, y + dy * k + d * 0.012, q * k, '#e6d3ad');
+      for (const [dx, dy, q] of [[0, 0, 1], [0.7, -0.35, 0.72], [-0.6, 0.45, 0.68]]) circle(g, x + dx * k, y + dy * k, q * k, '#fffaf0');
     }
-    for (const [x, y] of [[0.1, -0.06], [-0.08, 0.1], [0.16, 0.32]]) ellipse(g, c + x * d, c + y * d, d * 0.063, d * 0.036, '#2e7d32');
+    g.restore();
+    // basilico
+    for (const [r, a, rot, s] of [[0.46, 0.02, 0.7, 1.15], [0.64, -0.05, -0.6, 1], [0.3, 0.22, 2.4, 0.8]]) {
+      const [x, y] = at(r, a);
+      ellipse(g, x, y, d * 0.07 * s, d * 0.034 * s, '#2f7a34', rot);
+      g.strokeStyle = '#6fbf63'; g.lineWidth = d * 0.008;
+      g.beginPath(); g.moveTo(x - Math.cos(rot) * d * 0.055 * s, y - Math.sin(rot) * d * 0.055 * s);
+      g.lineTo(x + Math.cos(rot) * d * 0.055 * s, y + Math.sin(rot) * d * 0.055 * s); g.stroke();
+    }
+    // cornicione: dorato, più chiaro al centro, con le macchie scure del forno a legna
+    const grad = g.createRadialGradient(ax, ay, (R - 0.08) * d, ax, ay, (R + 0.08) * d);
+    grad.addColorStop(0, '#c98a3e'); grad.addColorStop(0.35, '#f3cd86'); grad.addColorStop(0.7, '#e8b062'); grad.addColorStop(1, '#c47f34');
+    crust(); g.strokeStyle = grad; g.lineWidth = d * 0.15; g.stroke();
+    for (const [a, dr, s] of [[-0.4, 0.02, 0.9], [-0.27, -0.025, 0.6], [-0.15, 0.03, 1], [0.02, -0.01, 0.7], [0.14, 0.035, 0.55], [0.27, -0.02, 1], [0.4, 0.015, 0.65]]) {
+      ellipse(g, ...at(R + dr, a), d * 0.03 * s, d * 0.02 * s, 'rgba(92,48,18,0.8)', up + a);
+    }
+    g.strokeStyle = 'rgba(255,255,255,0.4)'; g.lineWidth = d * 0.022;
+    g.beginPath(); g.arc(ax, ay, (R + 0.035) * d, up - 0.33, up - 0.05); g.stroke();
   },
   caffe(g, d) {
     // tazzina vista dall'alto, sul piattino, con il cuore di latte

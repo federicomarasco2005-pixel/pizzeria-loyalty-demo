@@ -7,6 +7,10 @@ const db = require('./db');
 const { THEMES } = require('./images');
 
 const REGISTRY_KEY = 'shops';
+// Versione dei disegni dei timbri (images.js): si aumenta quando ne cambia uno, così gli indirizzi delle
+// immagini cambiano per tutti i locali e Google e i telefoni le scaricano di nuovo. 2: la pizza diventa una fetta.
+const DRAWINGS = 2;
+const imgVersionOf = (shop) => `${shop.imgVersion || 1}.${DRAWINGS}`;
 // Parole che non possono essere l'indirizzo di un locale (sono pagine o file del sito)
 // (anche sottodomini usati per altro: www, posta…)
 const RESERVED = new Set(['api', 'card', 'tap', 'stamps', 'icons', 'telegram', 'admin', 'staff', 'poster', 'static', 'public',
@@ -64,7 +68,7 @@ async function openContext(shop) {
 // Configurazione completa di un locale, nel formato usato da server e Wallet
 function cfgOf(shop) {
   const baseUrl = shopDomain() ? `https://${shop.slug}.${shopDomain()}` : `${publicUrl}/${shop.slug}`;
-  const v = shop.imgVersion || 1;
+  const v = imgVersionOf(shop);
   return {
     slug: shop.slug,
     pizzeriaName: shop.name,
@@ -93,7 +97,7 @@ function cfgOf(shop) {
 function imageSpec(shop) {
   return {
     slug: shop.slug, name: shop.name, theme: shop.theme, stampsForReward: shop.stampsForReward, brandColor: shop.brandColor,
-    imgVersion: shop.imgVersion || 1, logo: shop.logo || null,
+    imgVersion: imgVersionOf(shop), logo: shop.logo || null,
     logoFile: shop.legacy && !shop.logo ? path.join(__dirname, 'public', 'logo.png') : null,
   };
 }
