@@ -1,6 +1,6 @@
 # Passaggio di consegne — F5M tessere fedeltà
 
-*Aggiornato il 23 ottobre 2026 (sera). Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
+*Aggiornato il 28 ottobre 2026. Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
 
 ---
 
@@ -13,36 +13,37 @@
 
 ---
 
-## 2. Dove stiamo (stato al 23/10/2026)
+## 2. Dove stiamo (stato al 28/10/2026)
 
 | Cosa | Stato |
 |---|---|
 | Sito | **https://f5m.it** online: landing scura F5M con particelle 3D interattive, demo interattiva, modulo "Richiedi una demo" (arriva sul bot), sezione Assistenza |
-| Locali | `da-mario`, `eldorado`, `football` su `https://f5m.it/<indirizzo>/` (vecchio onrender.com ancora funzionante). **Il 22/10 il server ne conta 5** (`/api/config` → `shops: 5`): i nomi del 4° e del 5° non sono noti a Claude (si vedono solo dal bot, "📋 I miei locali", o nei log di Render). Proposta una lista dei locali protetta da chiave, letta da Plancia e agente del mattino: Federico il 22/10 ha detto "non ora" |
+| Locali | 5 sul server: `da-mario` (demo), `eldorado` (bar), `football` (bar), `pingu` (bar, creato il 20/10), `assaje` (pizzeria, creata da Federico il 22/10 per un incontro) su `https://f5m.it/<indirizzo>/` (vecchio onrender.com ancora funzionante). Nomi e numeri li legge Claude da `/api/statistiche` (dal 25/10) |
 | Sottodomini (`da-mario.f5m.it`) | Codice pronto e testato, DNS su Aruba fatto (`*`, `_acme-challenge`, `_cf-custom-hostname`), `*.f5m.it` aggiunto su Render. **Manca il certificato HTTPS di Render per `*.f5m.it`** (bloccato da giorni). Quando c'è: togliere il commento a `SHOP_DOMAIN` in `render.yaml` |
 | Dashboard locali | Nuova grafica F5M "versione demo": Panoramica (iscritti, clienti, ultime operazioni), Notifiche "In arrivo", Impostazioni (recensioni, contatti) |
 | Cassa e QR da tavolo | Nuova grafica F5M (stile comune in `public/f5m.css`). Fotocamera della Cassa **provata da Federico su telefono vero il 22/10**: legge il nuovo QR (codice tessera) e apre la tessera |
 | Google Wallet | **✅ Approvato da Google il 19/10** (email "F5M is approved to access Google Wallet API", pratica 05701322): qualsiasi account Android può salvare la tessera, tutti i locali e i buoni premio; i locali nuovi non richiedono altre richieste; la modalità demo non torna più. Da fare: prova con un account non di prova (Federico). Profilo attività completo: nome pubblico **F5M**, MCC 5734, sito, assistenza, email e telefono; profilo pagamenti "Privato" già esistente di Federico collegato. Logo F5M (`contesto/wallet-pubblicazione/logo-f5m-1024.png`) non risultava salvato: facoltativo, da ricaricare. Provato da Federico sul suo Android il 16/10: funziona. Novità 16/10: logo largo generato per tutti i locali (font Inter in `fonts/`), testi in inglese, **buono premio** collegato (Offer) con link "🎁 Ritira il premio" (`?premio=1`) |
 | Tessera web | Nuova (16/10): apertura immediata dalla copia salvata (service worker), premio + barra sul fronte, retro con QR (la carta si gira), QR a tutto schermo con schermo acceso, riflesso lucido, ultime visite, modalità scura, inglese (`?lang=en`), "Privacy e impostazioni" chiuso in fondo |
-| Database | **Postgres gratuito di Render: scade ~31 ottobre 2026**, cancellato ~14 novembre. Nessun backup automatico tranne quello settimanale sul bot. Il 21/10 Federico ha detto "per ora non farlo"; il 22/10 ha fissato lo spostamento **entro il 28–29/10** (servono ~30 minuti; dal 24/10 l'agente del mattino lo ricorda su Telegram) |
+| Timbro "Pizza" (28/10) | Il tema "pizza" ora è una **fetta di margherita napoletana** (tessera web, Wallet, icona, logo largo), al posto della pizza tonda, per tutti i locali con quel tema (commit 017920a). Negli indirizzi delle immagini c'è anche `DRAWINGS` (`shops.js`): si aumenta quando cambia un disegno, così Google riscarica le immagini |
+| Database | **Postgres gratuito di Render: sospeso il 31 ottobre 2026** (email di Render del 24/10, "[ACTION REQUIRED]": non fare l'upgrade, il piano è Neon), poi cancellato. Nessun backup automatico tranne quello settimanale sul bot. Federico ha fissato lo spostamento **entro il 28–29/10**: al 28/10 **non ancora fatto** (servono ~30 minuti) |
 | Validazione (21/10) | Analisi con il **Founder's Playbook** di Anthropic: il prodotto è da fase MVP, ma la fase Idea non è chiusa (nessuna intervista scritta, nessun locale vero, nessun ricavo). Piano: fermare le nuove funzioni, intervistare 10–12 locali, poi pilota con 3–5 locali paganti. **Kit interviste** pronto in un documento privato: https://claude.ai/artifact/N7H4vAeWMW5wPLTaGbG8q7 (scheda principale = kit; scheda "Trento nord" = 42 locali in 4 giri con stato, contatti e messaggi). Zona scelta da Federico: **Trento nord**. **Documento di scope** (21/10, privato): https://claude.ai/artifact/RBSZgKsgR2jffbS5eSSGnw (cosa fa F5M, cosa non fa, le tre prove per aggiungere una funzione, idee parcheggiate). Il 22/10: ipotesi, concorrenti e prezzo del pilota pronti nel kit |
-| Server | Render gratuito: si addormenta dopo 15 min e al risveglio Render mostra la sua pagina "SERVICE WAKING UP" (~30–50 s). Proposto un pinger gratuito (cron-job.org su `https://f5m.it/api/cron` ogni 10 min, 744 h/mese stanno nelle 750 gratuite) o Starter 7 $/mese: Federico il 16/10 ha detto **di no per ora**; il 22/10 ha approvato il server sveglio tra le correzioni prima del pilota: valori per cron-job.org pronti, **manca il suo account** |
+| Server | Render gratuito: si addormenta dopo 15 min e al risveglio Render mostra la sua pagina "SERVICE WAKING UP" (~30–50 s). Il 22/10 Federico ha approvato il server sveglio tra le correzioni prima del pilota: valori per cron-job.org pronti (`https://f5m.it/api/cron` ogni 10 min), **manca il suo account** (al 28/10). Serve anche ai messaggi automatici a fasce orarie |
 | Test | 45 test, tutti verdi (`npm test`) |
-| Notifiche (23/10) | Messaggi automatici a **fasce orarie** per profilo (giorno: bar; sera: pizzeria), nuovo "Il tuo premio ti aspetta", al massimo 1 al giorno e 2 a settimana per cliente (`docs/SISTEMA.md` §4.12). Federico riceveva solo i "+1 timbro": i messaggi automatici partivano una volta al giorno dalle 11, solo a server sveglio e solo con le condizioni esatte; in più Google dà 3 notifiche al giorno per tessera, contando i "+1". **Prova dal bot**: Automazioni → 🔔 Prova le notifiche su una tessera. Le notifiche arrivano con la tessera nel Google Wallet oppure, dal 23/10, con le **notifiche web** attivate dalla tessera sulla Home (anche iPhone, iOS 16.4+; `docs/SISTEMA.md` §4.13). **Per accenderle Federico deve mettere `VAPID_PRIVATE_KEY` su Render** (da `Clode/segreti/notifiche-web-privata.txt`), insieme a `STATS_KEY` e `TELEGRAM_OWNER_ID` |
-| Statistiche (22/10) | Pagina con le statistiche di tutti i locali, **solo per Federico e Claude** (decisione di Federico). Federico: `/statistiche` al bot → link monouso di 10 minuti, avviso a ogni accesso, `/statistiche_esci`. Claude: `GET https://f5m.it/api/statistiche` con la chiave di `Clode/segreti/chiave-statistiche.txt` (header `Authorization: Bearer …`, mai stampare la chiave). Dopo la pubblicazione Federico deve mettere su Render `STATS_KEY` (la chiave) e `TELEGRAM_OWNER_ID` (il suo numero Telegram); finché manca `STATS_KEY` l'entrata di Claude è chiusa. Dettagli in `docs/SISTEMA.md` §4.11 |
+| Notifiche (23–25/10) | Messaggi automatici a **fasce orarie** per profilo (giorno: bar; sera: pizzeria), "Il tuo premio ti aspetta", al massimo 1 al giorno e 2 a settimana per cliente (`docs/SISTEMA.md` §4.12). **Prova dal bot**: Automazioni → 🔔 Prova le notifiche su una tessera. Notifiche con la tessera nel Google Wallet oppure con le **notifiche web** dalla tessera sulla Home (§4.13). **25/10: `VAPID_PRIVATE_KEY` messa su Render, notifiche web attive** (registro: "[notifiche web] attive"). Prima prova del 25/10: messaggio arrivato nella tessera Wallet ma **telefono muto**; causa probabile corretta lo stesso giorno (commit 682a392: il pass si riordina 2 minuti dopo il messaggio, non subito). **Da rifare la prova** (Federico): Wallet con la sua tessera; tessera web con una tessera **nuova, non salvata nel Wallet**, aperta dall'icona sulla Home (a una tessera nel Wallet la notifica va al Wallet) |
+| Statistiche (22/10) | Pagina con le statistiche di tutti i locali, **solo per Federico e Claude**. Federico: `/statistiche` al bot → link monouso di 10 minuti. Claude: `GET https://f5m.it/api/statistiche` con la chiave di `Clode/segreti/chiave-statistiche.txt` (header `Authorization: Bearer …`, mai stampare la chiave). **Dal 25/10 `STATS_KEY` e `TELEGRAM_OWNER_ID` (8808507400) sono su Render: l'entrata di Claude funziona.** Dettagli in `docs/SISTEMA.md` §4.11 |
 | Pubblicazione | `git push` da questo PC funziona; Render pubblica da solo dopo i test (app Render installata su GitHub) |
 | Plancia e agente (18/10) | **Plancia sul PC** (quella che usa Federico): icona "Plancia progetti" sul desktop → `plancia/plancia.html`, rigenerata ogni ora da `plancia/genera.js` (attività di Windows "Plancia progetti"; grafica in `plancia/modello.html`, test una volta al giorno). `genera.js` è sparito dal PC la sera del 19/10 e la Plancia è rimasta ferma fino al 21/10, quando è stato ricreato: se la data "Aggiornata" in alto è vecchia, controllare che il file esista. Le parti scritte a mano stanno in `plancia/dati.json`: **aggiornarle a fine sessione**. Copia online privata: https://claude.ai/artifact/WhL3toHeEeWei68vNqvoGd (separata dal sito). **Agente del mattino** nel cloud (routine `trig_01RVyQGptw7ZibaH4dZ5cVxc`, ogni giorno 06:00 UTC, solo lettura, mai push) che aggiorna la Plancia e scrive su Telegram (@AggiornaF5M_bot) solo se serve: sempre il lunedì, sempre negli ultimi 7 giorni prima del 31/10 se il database non è spostato, altrimenti solo se c'è un problema (silenzio = tutto ok). Verificato il 21/10: messaggi del 19 e 21 consegnati. Il 21/10 corretto il prompt: leggere i file della Plancia un `path` alla volta (con `paths` la lettura falliva e la Plancia online non si aggiornava). Token del bot solo nella variabile `F5M_AVVISI_TOKEN` dell'ambiente cloud, mai nel repo |
-| Timbro 3D | La versione del 16/10 (kit di stampa, `serve.js`) è **persa** nel ripristino delle 20:05; resta una versione più vecchia in `timbro-3d/timbro.html` e la bozza dell'11/10 su claude.ai |
+| Timbro 3D | La versione del 16/10 (kit di stampa, `serve.js`) è **persa** nel ripristino delle 20:05; resta `timbro-3d/timbro.html` e la bozza dell'11/10 su claude.ai. **26/10: file per il preventivo di stampa** in `timbro-3d/stampa/` (`timbro-f5m.3mf` e `.stl`: solo manico, testa e supporto, senza nome, chiusi, in mm; timbro alto 104 mm). Script che li genera dai profili di `timbro.html`: da rifare se servono pezzi separati (uno per colore) |
 
 ---
 
 ## 3. Cosa fare adesso (in ordine di urgenza)
 
-0. **🔴 Prossima sessione (deciso con Federico il 23/10).**
-   - **Su Render** (Federico, circa 5 minuti; Claude apre i file con i valori, che non passano mai dalla chat): `VAPID_PRIVATE_KEY` (accende le notifiche web della tessera), `STATS_KEY` (lettura delle statistiche per Claude), `TELEGRAM_OWNER_ID` (bot fissato su Federico; probabilmente 8808507400, da verificare: se sbagliato il bot risponde "privato" e mostra il numero giusto). Se vuole: account su cron-job.org per il server sveglio (`https://f5m.it/api/cron` ogni 10 minuti), che serve alle fasce orarie dei messaggi.
-   - **Prova vera delle notifiche**: dal bot (scheda del locale → 🤖 Automazioni → 🔔 Prova le notifiche su una tessera) sulla tessera Wallet di Federico e su una tessera salvata sulla Home con le notifiche web attivate.
-   - **Claude legge `/api/statistiche`** con la chiave e scopre da solo i nomi del 4° e 5° locale (oggi sconosciuti).
-   - **Database su Neon** (punto 1): già che si entra su Render, si può fare nello stesso giro.
+0. **🔴 Prossima sessione (stato al 28/10).**
+   - **Database su Neon, subito**: Render lo sospende il **31/10**. Federico entra su neon.tech con GitHub, Claude fa il resto (punto 1). Render è già collegato nel browser integrato di Claude (dal 25/10): Claude può aprire impostazioni, registri ed eventi del servizio, Federico incolla solo i valori segreti.
+   - **Esito della prova delle notifiche** dopo la correzione del 25/10 (vedi riga "Notifiche"): se il Wallet resta muto, controllare nel telefono l'interruttore delle notifiche della tessera e i registri di Render.
+   - **Server sveglio**: account cron-job.org di Federico (`https://f5m.it/api/cron` ogni 10 minuti). Senza, alla cassa si aspettano 30–50 s e i messaggi a fasce orarie saltano.
+   - **Logo di un locale con scritte bianche**: il server lo appoggia su fondo bianco e le scritte spariscono (`docs/SISTEMA.md` §4.5). Si carica dal bot la versione scura del logo.
 1. **🔴 Database prima del 31 ottobre.** Piano scelto: **Neon gratuito** (non scade). Federico l'ha fissato **entro il 28–29/10**.
    - Federico: crea account su neon.tech (con GitHub) → tu crei il progetto a Francoforte.
    - Copia dati: `tools/copia-database.ps1` (chiede le due stringhe a schermo, le incolla lui; verifica "IDENTICO" tabella per tabella; il vecchio DB non viene toccato).
@@ -70,7 +71,7 @@
 
 ---
 
-## 4. Cosa è stato fatto in queste sessioni (9–23 ottobre)
+## 4. Cosa è stato fatto in queste sessioni (9–28 ottobre)
 
 - Progetto spostato sul nuovo PC, Node 24 + Git installati, cartella collegata a GitHub.
 - **Tessera web istantanea** (dati nella pagina, saldo nell'avviso live, niente attese di Google) e **Wallet più veloce** (GIF in un thread separato e preparate all'avvio, aggiornamenti in coda).
@@ -92,6 +93,11 @@
 - 22/10 sera: **pagina delle statistiche di tutti i locali** (`statistiche.js`, `public/statistiche.html`): solo Federico (link monouso dal bot) e Claude (chiave di sola lettura); dati di prova per l'anteprima in `tools/dati-prova-statistiche.js`; 4 test nuovi (42).
 - 22/10 sera: **correzioni prima del pilota** (dall'analisi di velocità e dati, solo sul PC): chi riscansiona il QR del tavolo con un telefono già iscritto ritrova subito la sua tessera (prima rivedeva il modulo e gli veniva chiesto il codice); tolte la scritta "Demo — i dati inseriti servono solo a mostrare il funzionamento" sotto l'iscrizione e il riquadro "Versione demo" della dashboard; consenso alle offerte "nella tessera e nel Wallet" invece di "via email" (anche al timbro NFC e nell'informativa). Restano: server sveglio (account cron-job.org di Federico), testo dell'incasso nel report mensile, decisioni su QR nel Wallet e notifiche della dashboard.
 - 22/10: **sicurezza** (vedi sezione 3, 4 test nuovi); **bozza della nomina a responsabile del trattamento** con le note per il consulente; scheda **Metriche del pilota** nel kit (locale attivo, obiettivi a 7, 30 e 60 giorni, falsi positivi); colonna "POS e app di pagamento" nel registro delle interviste; configurazione delle anteprime copiata anche in `Desktop\Clode\.claude\launch.json`.
+- 24/10: controllo generale (codice uguale a GitHub, test verdi, sito ok, certificato `*.f5m.it` ancora assente). Email di Render: database sospeso il 31/10.
+- 25/10: **variabili su Render** (`VAPID_PRIVATE_KEY`, `STATS_KEY`, `TELEGRAM_OWNER_ID`) inserite da Claude nel browser integrato con Federico che incollava solo le chiavi; Render ora collegato nel browser integrato. Statistiche leggibili da Claude: trovati il 4° e il 5° locale (`pingu`, `assaje`). Prima prova delle notifiche fallita; **correzione del Wallet** (commit 682a392).
+- 25/10: spiegato a Federico quali messaggi partono senza consenso alle offerte ("+1 timbro", premio sbloccato, "Il tuo premio ti aspetta", "Ti manca 1 timbro", richiesta di recensione) e quali solo con il consenso ("Ci manchi" e tutti i messaggi scritti dal locale). **La richiesta di recensione senza consenso è un caso dubbio: da chiedere al consulente privacy.**
+- 26/10: file per il preventivo di stampa del timbro (`timbro-3d/stampa/`).
+- 28/10: **fetta di pizza** al posto della pizza tonda nel tema "pizza" (commit 017920a), con `DRAWINGS` per far riscaricare le immagini a Google.
 
 ---
 
@@ -121,6 +127,10 @@
 | Leggere un PDF sul PC | Mancano `pdftoppm` e Python: installare `pdfjs-dist` in una cartella temporanea (scratchpad) ed estrarre il testo con uno script Node |
 | Pagine su claude.ai (artifact): niente download diretti né `fetch` esterni | Usare la capacità `downloads` (solo alcuni formati: STL no, ZIP sì) e includere i dati nella pagina |
 | Sessione aperta in `Desktop\Clode` (un livello sopra il progetto): `CLAUDE.md` e HANDOFF non venivano letti da soli | Dal 22/10 c'è un `CLAUDE.md` anche in `Desktop\Clode` che rimanda a `Clode/CLAUDE.md` e a questo file |
+| Logo con scritte bianche su fondo trasparente: nella tessera si vede solo una parte (es. Assaje, 28/10) | `prepareLogo` appoggia il logo su fondo bianco. Caricare dal bot la versione scura del logo (spesso è sul sito del locale, anche in SVG: convertirla in PNG su fondo bianco) |
+| Cambiato il disegno di un tema ma Google mostra ancora le immagini vecchie | Google conserva le immagini per indirizzo: aumentare `DRAWINGS` in `shops.js` |
+| Notifica Wallet di un messaggio: messaggio nella tessera ma telefono muto (25/10) | Il pass veniva riscritto subito dopo `addMessage`; ora si riordina 2 minuti dopo. Google consente 3 notifiche al giorno per tessera, contando le prove |
+| Prova delle notifiche web su una tessera già nel Wallet | Non parte la notifica web: a chi ha la tessera nel Wallet la notifica va al Wallet. Per provarle serve una tessera non salvata nel Wallet, aperta dall'icona sulla Home |
 
 ---
 

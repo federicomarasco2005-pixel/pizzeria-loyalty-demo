@@ -152,7 +152,7 @@ render.yaml  Blueprint Render (servizio + database)
 | `classSuffix` | suffisso della classe Google; unico, con un timestamp, perché le classi non si cancellano |
 | `dataKey` | archivio: `db` per il legacy, `shop:<slug>` per gli altri |
 | `logo` | logo in base64 |
-| `imgVersion` | versione delle immagini: sale a ogni cambio estetico e obbliga Google a riscaricarle |
+| `imgVersion` | versione delle immagini: sale a ogni cambio estetico e obbliga Google a riscaricarle. Negli indirizzi diventa `<imgVersion>.<DRAWINGS>` (`shops.js`): `DRAWINGS` si aumenta quando cambia il disegno di un tema, per tutti i locali |
 | `legacy` | true solo per il locale demo originale |
 
 ### 4.3 Dati (db.js)
@@ -175,7 +175,7 @@ render.yaml  Blueprint Render (servizio + database)
   - `cardTemplateOverride`, una riga "Timbri · Premio · Codice" sul fronte.
 - **Un oggetto per cliente** (`loyaltyObject`, id `<issuer>.c_<customerId>`):
   - aggiornato con **PUT completo**, senza leggerlo prima;
-  - i messaggi del pass li decide il server: resta solo l'ultimo messaggio attivo, con scadenza;
+  - i messaggi del pass li decide il server: resta solo l'ultimo messaggio attivo, con scadenza. Dopo un messaggio con notifica (`addMessage` TEXT_AND_NOTIFY) il pass si riordina **2 minuti dopo**, come dopo un timbro: riscriverlo subito riportava il messaggio a semplice testo e il telefono non suonava (25/10);
   - QR del Wallet spento di default (`WALLET_QR=on` per riaccenderlo); se acceso contiene il codice tessera, non il token.
   - Testi anche in inglese (`localizedHeader/Body`, `localizedLabel`, `localizedDescription`): Google mostra la lingua del telefono. Il testo del premio resta quello scritto dal locale.
   - **Buono premio**: con un premio da ritirare la tessera ha collegato un'offerta Google (`linkedOfferIds`, classe `<classSuffix>_premio`, oggetto `c_<id>_premio`); ritirato il premio il buono diventa `COMPLETED`.
@@ -194,7 +194,8 @@ render.yaml  Blueprint Render (servizio + database)
 ### 4.5 Immagini (images.js)
 - Generate al volo, tenute in memoria (fino a circa 400 file) e preparate in anticipo prima di passarle a Google. Generarne un set richiede circa 0,3 s.
 - Indirizzi per locale: `stamps/grid-N-k.png`, `stamps/anim-N-k.gif`, `stamps/anim-N-reward.gif`, `stamps/icon(-empty).png`, `icons/icon-192|512|apple-touch-icon.png`, `logo.png`, `wide-logo.png` (logo largo del Wallet: timbro + nome in Inter, font in `fonts/`; il locale legacy usa il file `public/wide-logo.png`).
-- 6 temi disegnati come forme vettoriali, senza font né emoji sul server. Il tema "logo" usa il logo caricato.
+- 6 temi disegnati come forme vettoriali, senza font né emoji sul server. Il tema "logo" usa il logo caricato. Dal 28/10 il tema "pizza" è una **fetta di margherita napoletana** (prima una pizza tonda).
+- Il logo caricato dal bot viene appoggiato su fondo bianco (`prepareLogo`): un logo con scritte bianche su fondo trasparente perde le scritte. Usare la versione scura del logo (es. Assaje, 28/10).
 - I timbri "spenti" sono la versione in grigio scuro di quelli pieni.
 - Il "+1" è disegnato come forma: il server non ha bisogno di font.
 
