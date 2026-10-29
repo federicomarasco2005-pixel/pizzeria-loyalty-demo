@@ -35,6 +35,12 @@
     .flip.flipped { --turn: 180deg; }
     .face { grid-area: 1 / 1; position: relative; -webkit-backface-visibility: hidden; backface-visibility: hidden; }
     .face.back { transform: rotateY(180deg); display: flex; flex-direction: column; }
+    /* Il fronte è alto almeno quanto il retro: lo spazio in più va intorno ai timbri, non in fondo alla tessera */
+    .face.front { display: flex; flex-direction: column; }
+    .face.front .tiles { flex: 1; align-content: center; }
+    /* Logo largo (una scritta): targhetta bianca al posto del cerchio, e il nome scritto non si ripete */
+    .passcard .top img.wide { width: auto; height: 46px; max-width: 62%; border-radius: 12px; padding: 5px 10px; object-fit: contain; }
+    .passcard .top.wide-logo strong { visibility: hidden; }
     /* Riflesso lucido: segue il dito o l'inclinazione del telefono */
     .shine {
       position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2;
@@ -45,6 +51,7 @@
     }
     .passcard .top { position: relative; z-index: 3; }
     .pass-reward { text-align: right; min-width: 0; }
+    .passcard .top { min-height: 46px; }
     .pass-reward .pass-value { font-size: 1rem; line-height: 1.25; }
     .progress { margin: 2px 0 14px; height: 8px; background: rgba(255,255,255,.22); }
     .pass-foot .code { font-variant-numeric: tabular-nums; letter-spacing: .12em; }
@@ -284,6 +291,43 @@
   <script src="/common.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
+
+    // Logo caricato dal locale (il server lo mette su fondo bianco): si toglie il bianco intorno, così riempie il cerchio;
+    // se è una scritta larga diventa una targhetta leggibile. Il logo generato dal timbro (fondo colorato) resta com'è.
+    function fitLogo(img) {
+      if (img.dataset.fit) return;
+      img.dataset.fit = '1';
+      try {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+        const p = g.getImageData(0, 0, w, h).data;
+        if (p[0] < 240 || p[1] < 240 || p[2] < 240) return;
+        let x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for (let y = 0; y < h; y += 2) {
+          for (let x = 0; x < w; x += 2) {
+            const i = (y * w + x) * 4;
+            if (p[i] < 230 || p[i + 1] < 230 || p[i + 2] < 230) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+          }
+        }
+        if (x1 < 0) return;
+        const bw = x1 - x0 + 2, bh = y1 - y0 + 2, wide = bw / bh > 1.6;
+        const pad = Math.round(Math.max(bw, bh) * (wide ? 0.04 : 0.14));
+        const ow = (wide ? bw : Math.max(bw, bh)) + 2 * pad, oh = (wide ? bh : Math.max(bw, bh)) + 2 * pad;
+        const out = document.createElement('canvas'); out.width = ow; out.height = oh;
+        const o = out.getContext('2d');
+        o.fillStyle = '#fff'; o.fillRect(0, 0, ow, oh);
+        o.drawImage(c, x0, y0, bw, bh, (ow - bw) / 2, (oh - bh) / 2, bw, bh);
+        img.src = out.toDataURL('image/png');
+        img.classList.toggle('wide', wide);
+        img.parentElement.classList.toggle('wide-logo', wide);
+        if (wide) img.alt = (window.CFG && CFG.pizzeriaName) || '';
+      } catch {}
+    }
+    document.querySelectorAll('.passcard .top img').forEach((img) => {
+      if (img.complete && img.naturalWidth) fitLogo(img);
+      else img.addEventListener('load', () => fitLogo(img), { once: true });
+    });
     const token = decodeURIComponent(location.pathname.split('/').pop());
     let cfg;
     let state = null; // { stamps, rewards }

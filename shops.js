@@ -8,8 +8,9 @@ const { THEMES } = require('./images');
 
 const REGISTRY_KEY = 'shops';
 // Versione dei disegni dei timbri (images.js): si aumenta quando ne cambia uno, così gli indirizzi delle
-// immagini cambiano per tutti i locali e Google e i telefoni le scaricano di nuovo. 2: la pizza diventa una fetta.
-const DRAWINGS = 2;
+// immagini cambiano per tutti i locali e Google e i telefoni le scaricano di nuovo. 2: la pizza diventa una fetta;
+// 3: timbro e nome centrati nel logo largo del Wallet.
+const DRAWINGS = 3;
 const imgVersionOf = (shop) => `${shop.imgVersion || 1}.${DRAWINGS}`;
 // Parole che non possono essere l'indirizzo di un locale (sono pagine o file del sito)
 // (anche sottodomini usati per altro: www, posta…)

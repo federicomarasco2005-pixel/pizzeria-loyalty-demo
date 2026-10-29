@@ -348,8 +348,7 @@ async function wideLogo(shop, draw) {
   const WL = 1280, HL = 400;
   const c = createCanvas(WL, HL); const g = c.getContext('2d');
   const s = stampSprite(draw, 260, false);
-  g.drawImage(s.canvas, 30 + 140 - s.canvas.width / 2, HL / 2 - s.canvas.height / 2);
-  const x = 345, maxW = WL - x - 30;
+  const maxW = WL - 345 - 30;
   const name = String(shop.name || '').trim();
   const fit = (text, size) => { g.font = `${size}px "F5M Inter XB"`; return g.measureText(text).width <= maxW; };
   // una riga se ci sta a una dimensione leggibile, altrimenti due righe divise alla parola più centrale
@@ -372,6 +371,15 @@ async function wideLogo(shop, draw) {
   const tagSize = Math.round(Math.min(size, 100) * 0.4);
   const lineH = size * 1.08, gap = size * 0.22;
   const block = lines.length * lineH + gap + tagSize;
+  // timbro e scritte centrati insieme nell'intestazione (il timbro visibile parte a ~40 px, le scritte a 345)
+  g.font = `${size}px "F5M Inter XB"`;
+  let textW = Math.max(...lines.map((t) => g.measureText(t).width));
+  g.font = `${tagSize}px "F5M Inter SB"`;
+  if ('letterSpacing' in g) g.letterSpacing = `${Math.round(tagSize * 0.12)}px`;
+  textW = Math.max(textW, g.measureText('TESSERA FEDELTÀ').width + 3);
+  if ('letterSpacing' in g) g.letterSpacing = '0px';
+  const dx = Math.max(0, (WL - (345 + textW - 40)) / 2 - 40), x = 345 + dx;
+  g.drawImage(s.canvas, 30 + 140 + dx - s.canvas.width / 2, HL / 2 - s.canvas.height / 2);
   let y = (HL - block) / 2;
   g.textBaseline = 'top';
   g.font = `${size}px "F5M Inter XB"`;

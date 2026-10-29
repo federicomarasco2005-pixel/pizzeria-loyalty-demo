@@ -739,6 +739,10 @@ async function addStamp(ctx, customer, { requestId, by, who }) {
   return { before, after, rewardEarned, event };
 }
 
+// Titolo delle notifiche (Wallet e web) e dei messaggi nel pass: comincia con il nome del locale, così dalla tendina
+// si capisce subito chi scrive. Se il titolo lo contiene già (messaggio scritto dal locale) resta com'è.
+const withShop = (cfg, title) => (String(title).toLowerCase().includes(cfg.pizzeriaName.toLowerCase()) ? title : `${cfg.pizzeriaName} · ${title}`);
+
 // Aggiorna il pass (GIF animata) e manda subito la notifica come messaggio Google
 // ("+1 timbro"), che si legge meglio del generico "saldo aggiornato" e scade da solo.
 // Se il cliente ha già ricevuto 3 notifiche nelle ultime 24 ore (limite Google) non si manda nulla:
@@ -754,7 +758,7 @@ async function walletAfterStamp(ctx, customer, after, rewardEarned) {
       ? { header: 'Premio sbloccato! 🎉', body: `${cfg.rewardText}: mostra la tessera alla prossima visita.` }
       : { header: `${cfg.emoji} +1 timbro! Sei a ${after.stamps}/${n}`,
           body: missing === 1 ? `Ti manca 1 timbro per: ${cfg.rewardText.toLowerCase()}.` : `Ti mancano ${missing} timbri per: ${cfg.rewardText.toLowerCase()}.` };
-    const r = await wallet.notify(customer, msg.header, msg.body, {
+    const r = await wallet.notify(customer, withShop(cfg, msg.header), msg.body, {
       push: true, expiresAt: Date.now() + SETTLE_MS,
     });
     if (r.push) ctx.db.logNotification(customer.id, rewardEarned ? 'reward' : 'stamp', true);
@@ -1149,7 +1153,7 @@ async function sendCampaign(ctx, campaign) {
     const viaWeb = !customer.walletSaved && notificheWeb.enabled() && (customer.webPush || []).length > 0;
     const canNotify = ctx.db.canPush(customer.id);
     if (wallet.enabled()) {
-      const r = await wallet.notify(customer, campaign.title, campaign.body, {
+      const r = await wallet.notify(customer, withShop(ctx.cfg, campaign.title), campaign.body, {
         push: canNotify && !viaWeb, messageId: `c_${campaign.id}`, expiresAt,
       });
       if (!r.ok) results.failed++;
@@ -1160,7 +1164,7 @@ async function sendCampaign(ctx, campaign) {
       if (!canNotify) results.textOnly++;
       else {
         const w = await notificheWeb.send(customer.webPush, {
-          title: campaign.title, body: campaign.body, tag: `c_${campaign.id}`,
+          title: withShop(ctx.cfg, campaign.title), body: campaign.body, tag: `c_${campaign.id}`,
           url: `${ctx.cfg.baseUrl}/card/${encodeURIComponent(customer.token)}`, icon: `${ctx.cfg.baseUrl}/icons/icon-192.png?v=${ctx.cfg.imgVersion}`,
         });
         if (w.gone.length) ctx.db.updateCustomer(customer.id, { webPush: customer.webPush.filter((s) => !w.gone.includes(s.endpoint)) });
@@ -1487,11 +1491,11 @@ async function syncWalletNow(ctx, customer, message, options) {
     await images.get(shops.imageSpec(ctx.shop), `stamps/${wallet.heroFile(ctx.cfg, state, options.animated === true)}`);
     await wallet.upsertObject(ctx.cfg, customer, state, {
       ...options, ...ctx.db.getSettings(),
-      messages: ctx.db.messagesFor(customer.id, 1).map((m) => ({ id: m.id, header: m.title, body: m.body, expiresAt: m.expiresAt })),
+      messages: ctx.db.messagesFor(customer.id, 1).map((m) => ({ id: m.id, header: withShop(ctx.cfg, m.title), body: m.body, expiresAt: m.expiresAt })),
     });
     if (options.notifyOnUpdate) ctx.db.logNotification(customer.id, 'stamp', true);
     if (message) {
-      const r = await wallet.notify(customer, message.header, message.body, { push: ctx.db.canPush(customer.id) });
+      const r = await wallet.notify(customer, withShop(ctx.cfg, message.header), message.body, { push: ctx.db.canPush(customer.id) });
       if (r.push) ctx.db.logNotification(customer.id, 'reward', true);
     }
   } catch (err) {

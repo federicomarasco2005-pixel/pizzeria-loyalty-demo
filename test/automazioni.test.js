@@ -172,6 +172,7 @@ test('notifiche web: il telefono si iscrive dalla tessera, i messaggi arrivano l
   assert.match(sent.at(-1).text, /con notifica web/);
   assert.strictEqual(delivered.length, 1);
   assert.match(delivered[0].title, /Ti manca 1 timbro/);
+  assert.ok(delivered[0].title.startsWith(`${bar.shop.name} · `), 'dalla tendina si vede quale locale scrive');
   assert.ok(delivered[0].url.endsWith(`/card/${encodeURIComponent(lia.token)}`));
 
   // con la tessera nel Wallet le notifiche web non partono (niente doppioni)

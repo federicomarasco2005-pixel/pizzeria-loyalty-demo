@@ -17,16 +17,37 @@ async function applyBrand() {
 }
 
 // Disegna i timbri; quelli appena ottenuti entrano con un'animazione.
+// Tessera grande: righe scelte perché i timbri vengano il più grandi possibile senza allungare troppo la tessera
+// (fino a 6 come una tessera da 6, cioè 3 per riga; fino a 10 al massimo due righe: 8 → 4+4, 9 → 5+4, 10 → 5+5;
+// oltre, righe centrate e alternate: 12 → 4+4+4).
+// Griglia a mezze colonne: ogni timbro ne occupa due, così una riga più corta resta centrata.
+function tileLayout(el, total) {
+  const W = 310, H = 250; // griglia tipica su un telefono e sua altezza massima (px): servono solo a scegliere le righe
+  let best = null;
+  for (let r = 1; r <= (total <= 10 ? 2 : total); r++) {
+    const m = Math.max(3, Math.ceil(total / r)), gap = m > 3 ? 10 : 14;
+    const cell = (W - (2 * m - 1) * gap) / m + gap;
+    const s = Math.min(cell, (H - (r - 1) * 14) / r);
+    if (!best || s > best.s * 1.1) best = { r, m, s, cell }; // una riga in più solo se i timbri crescono davvero
+  }
+  const { r, m, s, cell } = best;
+  const base = Math.floor(total / r), extra = total % r, big = new Set();
+  if (extra === 1) big.add(Math.floor((r - 1) / 2));
+  else for (let k = 0; k < extra; k++) big.add(Math.round((k * (r - 1)) / (extra - 1)));
+  el.style.gridTemplateColumns = 'repeat(' + 2 * m + ', 1fr)';
+  el.style.columnGap = m > 3 ? '10px' : '';
+  el.style.setProperty('--tile', Math.round((s / cell) * 100) + '%'); // più stretti solo se limitati dall'altezza
+  let i = 0;
+  for (let row = 0; row < r; row++) {
+    const k = base + (big.has(row) ? 1 : 0);
+    for (let j = 0; j < k; j++, i++) el.children[i].style.gridColumn = (m - k + 2 * j + 1) + ' / span 2';
+  }
+}
+
 function renderStamps(el, filled, total, { animate = true } = {}) {
   const prev = el.dataset.filled === undefined ? null : Number(el.dataset.filled);
   el.dataset.filled = filled;
   if (el.children.length !== total) {
-    // tessera grande: colonne scelte per avere righe piene (6 → 3x2, 8 → 4x2, 10 → 5x2…)
-    if (el.classList.contains('tiles')) {
-      const cols = { 4: 4, 5: 5, 7: 4, 8: 4, 10: 5, 11: 4, 12: 4 }[total] || 3;
-      el.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
-      el.style.gap = cols > 3 ? '10px' : '';
-    }
     el.innerHTML = '';
     for (let i = 0; i < total; i++) {
       const d = document.createElement('div');
@@ -34,6 +55,7 @@ function renderStamps(el, filled, total, { animate = true } = {}) {
       d.textContent = i + 1;
       el.appendChild(d);
     }
+    if (el.classList.contains('tiles')) tileLayout(el, total);
   }
   [...el.children].forEach((d, i) => {
     const on = i < filled;
