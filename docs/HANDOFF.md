@@ -1,6 +1,6 @@
 # Passaggio di consegne — F5M tessere fedeltà
 
-*Aggiornato il 28 ottobre 2026. Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
+*Aggiornato il 29 ottobre 2026. Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
 
 ---
 
@@ -13,7 +13,7 @@
 
 ---
 
-## 2. Dove stiamo (stato al 28/10/2026)
+## 2. Dove stiamo (stato al 29/10/2026)
 
 | Cosa | Stato |
 |---|---|
@@ -25,6 +25,7 @@
 | Google Wallet | **✅ Approvato da Google il 19/10** (email "F5M is approved to access Google Wallet API", pratica 05701322): qualsiasi account Android può salvare la tessera, tutti i locali e i buoni premio; i locali nuovi non richiedono altre richieste; la modalità demo non torna più. Da fare: prova con un account non di prova (Federico). Profilo attività completo: nome pubblico **F5M**, MCC 5734, sito, assistenza, email e telefono; profilo pagamenti "Privato" già esistente di Federico collegato. Logo F5M (`contesto/wallet-pubblicazione/logo-f5m-1024.png`) non risultava salvato: facoltativo, da ricaricare. Provato da Federico sul suo Android il 16/10: funziona. Novità 16/10: logo largo generato per tutti i locali (font Inter in `fonts/`), testi in inglese, **buono premio** collegato (Offer) con link "🎁 Ritira il premio" (`?premio=1`) |
 | Tessera web | Nuova (16/10): apertura immediata dalla copia salvata (service worker), premio + barra sul fronte, retro con QR (la carta si gira), QR a tutto schermo con schermo acceso, riflesso lucido, ultime visite, modalità scura, inglese (`?lang=en`), "Privacy e impostazioni" chiuso in fondo |
 | Timbro "Pizza" (28/10) | Il tema "pizza" ora è una **fetta di margherita napoletana** (tessera web, Wallet, icona, logo largo), al posto della pizza tonda, per tutti i locali con quel tema (commit 017920a). Negli indirizzi delle immagini c'è anche `DRAWINGS` (`shops.js`): si aumenta quando cambia un disegno, così Google riscarica le immagini |
+| Tessera web e Wallet (29/10) | Timbri disposti in automatico per farli grandi (fino a 6: 3 per riga come Football; fino a 10 due righe, 10 → 5+5), niente spazio vuoto in fondo, logo largo come targhetta leggibile (sui telefoni arriva solo con la correzione di `sw.js` del 29/10 sera, alla seconda apertura); nel Wallet timbro e nome centrati nell'intestazione (`DRAWINGS` 3); nome del locale all'inizio di ogni notifica (commit c65ae9f). **Da verificare**: com'è la notifica del Wallet nella tendina (la decide Google): Federico manda uno screenshot dopo una prova dal bot. Se resta generica, proposta: notifiche web anche per chi ha la tessera nel Wallet |
 | Database | **Postgres gratuito di Render: sospeso il 31 ottobre 2026** (email di Render del 24/10, "[ACTION REQUIRED]": non fare l'upgrade, il piano è Neon), poi cancellato. Nessun backup automatico tranne quello settimanale sul bot. Federico ha fissato lo spostamento **entro il 28–29/10**: al 28/10 **non ancora fatto** (servono ~30 minuti) |
 | Validazione (21/10) | Analisi con il **Founder's Playbook** di Anthropic: il prodotto è da fase MVP, ma la fase Idea non è chiusa (nessuna intervista scritta, nessun locale vero, nessun ricavo). Piano: fermare le nuove funzioni, intervistare 10–12 locali, poi pilota con 3–5 locali paganti. **Kit interviste** pronto in un documento privato: https://claude.ai/artifact/N7H4vAeWMW5wPLTaGbG8q7 (scheda principale = kit; scheda "Trento nord" = 42 locali in 4 giri con stato, contatti e messaggi). Zona scelta da Federico: **Trento nord**. **Documento di scope** (21/10, privato): https://claude.ai/artifact/RBSZgKsgR2jffbS5eSSGnw (cosa fa F5M, cosa non fa, le tre prove per aggiungere una funzione, idee parcheggiate). Il 22/10: ipotesi, concorrenti e prezzo del pilota pronti nel kit |
 | Server | Render gratuito: si addormenta dopo 15 min e al risveglio Render mostra la sua pagina "SERVICE WAKING UP" (~30–50 s). Il 22/10 Federico ha approvato il server sveglio tra le correzioni prima del pilota: valori per cron-job.org pronti (`https://f5m.it/api/cron` ogni 10 min), **manca il suo account** (al 28/10). Serve anche ai messaggi automatici a fasce orarie |
@@ -39,7 +40,7 @@
 
 ## 3. Cosa fare adesso (in ordine di urgenza)
 
-0. **🔴 Prossima sessione (stato al 28/10).**
+0. **🔴 Prossima sessione (stato al 29/10).**
    - **Database su Neon, subito**: Render lo sospende il **31/10**. Federico entra su neon.tech con GitHub, Claude fa il resto (punto 1). Render è già collegato nel browser integrato di Claude (dal 25/10): Claude può aprire impostazioni, registri ed eventi del servizio, Federico incolla solo i valori segreti.
    - **Esito della prova delle notifiche** dopo la correzione del 25/10 (vedi riga "Notifiche"): se il Wallet resta muto, controllare nel telefono l'interruttore delle notifiche della tessera e i registri di Render.
    - **Server sveglio**: account cron-job.org di Federico (`https://f5m.it/api/cron` ogni 10 minuti). Senza, alla cassa si aspettano 30–50 s e i messaggi a fasce orarie saltano.
@@ -71,7 +72,7 @@
 
 ---
 
-## 4. Cosa è stato fatto in queste sessioni (9–28 ottobre)
+## 4. Cosa è stato fatto in queste sessioni (9–29 ottobre)
 
 - Progetto spostato sul nuovo PC, Node 24 + Git installati, cartella collegata a GitHub.
 - **Tessera web istantanea** (dati nella pagina, saldo nell'avviso live, niente attese di Google) e **Wallet più veloce** (GIF in un thread separato e preparate all'avvio, aggiornamenti in coda).
@@ -98,6 +99,7 @@
 - 25/10: spiegato a Federico quali messaggi partono senza consenso alle offerte ("+1 timbro", premio sbloccato, "Il tuo premio ti aspetta", "Ti manca 1 timbro", richiesta di recensione) e quali solo con il consenso ("Ci manchi" e tutti i messaggi scritti dal locale). **La richiesta di recensione senza consenso è un caso dubbio: da chiedere al consulente privacy.**
 - 26/10: file per il preventivo di stampa del timbro (`timbro-3d/stampa/`).
 - 28/10: **fetta di pizza** al posto della pizza tonda nel tema "pizza" (commit 017920a), con `DRAWINGS` per far riscaricare le immagini a Google.
+- 29/10: tessera web con timbri disposti in automatico e logo largo leggibile, Wallet con nome centrato e locale nel titolo delle notifiche (c65ae9f); documenti del 28/10 pubblicati. Sera: i telefoni mostravano sempre la tessera del giorno dell'iscrizione (copia salvata dal service worker): corretto `sw.js`.
 
 ---
 
@@ -130,6 +132,7 @@
 | Logo con scritte bianche su fondo trasparente: nella tessera si vede solo una parte (es. Assaje, 28/10) | `prepareLogo` appoggia il logo su fondo bianco. Caricare dal bot la versione scura del logo (spesso è sul sito del locale, anche in SVG: convertirla in PNG su fondo bianco) |
 | Cambiato il disegno di un tema ma Google mostra ancora le immagini vecchie | Google conserva le immagini per indirizzo: aumentare `DRAWINGS` in `shops.js` |
 | Notifica Wallet di un messaggio: messaggio nella tessera ma telefono muto (25/10) | Il pass veniva riscritto subito dopo `addMessage`; ora si riordina 2 minuti dopo. Google consente 3 notifiche al giorno per tessera, contando le prove |
+| Modifica alla tessera online ma il telefono mostra la pagina vecchia anche chiudendo le schede (29/10) | Il service worker salvava una copia per ogni indirizzo (`?welcome`, `?from=`) e mostrava sempre la prima, quella dell'iscrizione. Dal 29/10 una sola copia senza `?…` (cache `tessera-v4`): la pagina nuova si vede dalla seconda apertura. Se si cambia di nuovo il modo di salvare, cambiare il nome della cache |
 | Prova delle notifiche web su una tessera già nel Wallet | Non parte la notifica web: a chi ha la tessera nel Wallet la notifica va al Wallet. Per provarle serve una tessera non salvata nel Wallet, aperta dall'icona sulla Home |
 
 ---

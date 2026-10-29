@@ -2,7 +2,8 @@
 // La pagina della tessera si mostra dalla copia salvata (anche se il server gratuito sta dormendo,
 // ~50 s al risveglio) e intanto si scarica quella nuova; i dati veri arrivano poi dalla pagina stessa
 // (api/card e aggiornamenti live). Senza rete resta l'ultima versione vista.
-const CACHE = 'tessera-v3';
+// v4: svuota le copie salvate con la versione vecchia (sotto), che altrimenti resterebbero per sempre.
+const CACHE = 'tessera-v4';
 const SHELL = ['/style.css', '/common.js'];
 
 self.addEventListener('install', (e) => {
@@ -19,15 +20,19 @@ self.addEventListener('activate', (e) => {
 
 const isCardPage = (url) => /\/card\/[^/]+$/.test(url.pathname);
 const cacheable = (url) => isCardPage(url) || /\/(logo\.png|stamps\/|icons\/)/.test(url.pathname) || SHELL.includes(url.pathname);
+// La tessera si salva sempre senza ?…: una sola copia, quella dell'ultima apertura. Prima la copia arrivata con ?welcome
+// (iscrizione) restava la prima trovata e il telefono mostrava per sempre la pagina del giorno dell'iscrizione.
+const keyOf = (req, url) => (isCardPage(url) ? url.origin + url.pathname : req);
 
 // Le API e gli aggiornamenti live non passano mai dalla cache.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.includes('/api/')) return;
+  const key = keyOf(e.request, url);
   const fresh = fetch(e.request).then((res) => {
     if (res.ok && cacheable(url)) {
       const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(e.request, copy));
+      caches.open(CACHE).then((c) => c.put(key, copy));
     }
     return res;
   });
@@ -36,7 +41,7 @@ self.addEventListener('fetch', (e) => {
   if (isCardPage(url) && !['from', 'welcome', 'premio'].some((p) => url.searchParams.has(p))) {
     // Tessera: subito la copia salvata (se c'è), intanto si aggiorna per la prossima apertura
     e.waitUntil(fresh.catch(() => {}));
-    e.respondWith(caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fresh));
+    e.respondWith(caches.match(key).then((hit) => hit || fresh));
     return;
   }
   // Tutto il resto: prima la rete (sempre aggiornato), la copia salvata solo se offline
