@@ -341,6 +341,15 @@ shop.post('/api/card/:token/consent', (req, res) => {
   res.json({ consentMarketing: on });
 });
 
+// DIAGNOSI TEMPORANEA (30/10): sul telefono Xiaomi di Federico "Installa" non installa la tessera. La pagina racconta
+// cosa fa Chrome (proposta pronta, tocco, scelta, installata); va solo nel registro di Render, con il codice tessera e il
+// modello del telefono. Da togliere appena trovata la causa (anche in card.html: installLog).
+shop.post('/api/card/:token/install-log', (req, res) => {
+  const customer = req.ctx.db.findByToken(req.params.token);
+  if (customer) console.log(`[installa] ${req.ctx.shop.slug} ${customer.code}: ${JSON.stringify(req.body || {}).slice(0, 500)}`);
+  res.status(204).end();
+});
+
 // Notifiche web della tessera (vedi notifiche-web.js): il telefono si iscrive o si toglie con il token della tessera
 shop.post('/api/card/:token/push', (req, res) => {
   const customer = req.ctx.db.findByToken(req.params.token);

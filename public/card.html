@@ -725,7 +725,18 @@
     async function checkInstalled() {
       if (!navigator.getInstalledRelatedApps || device.standalone) return;
       try { installed = (await navigator.getInstalledRelatedApps()).length > 0; } catch { return; }
+      if (installed) installLog('risulta-installata');
       updateInstall();
+    }
+    // DIAGNOSI TEMPORANEA (30/10, install-log in server.js): cosa fa Chrome quando si tocca "Installa". Da togliere.
+    async function installLog(ev, extra = {}) {
+      let h = {};
+      try { h = await navigator.userAgentData.getHighEntropyValues(['model', 'platformVersion', 'fullVersionList']); } catch {}
+      const body = JSON.stringify({
+        ev, ...extra, standalone: device.standalone, prompt: !!installPrompt, model: h.model, android: h.platformVersion,
+        browser: (h.fullVersionList || []).map((b) => b.brand + ' ' + b.version).join(', ') || navigator.userAgent.slice(0, 200),
+      });
+      try { navigator.sendBeacon('api/card/' + encodeURIComponent(token) + '/install-log', new Blob([body], { type: 'application/json' })); } catch {}
     }
     function updateInstall() {
       $('install').classList.toggle('hidden', !wantsInstall());
@@ -797,9 +808,11 @@
     }
 
     $('installBtn').onclick = async () => {
+      installLog('tocco');
       if (installPrompt) {
         installPrompt.prompt();
         const choice = await installPrompt.userChoice.catch(() => null);
+        installLog('scelta', { outcome: choice && choice.outcome, platform: choice && choice.platform });
         installPrompt = null;
         if (choice && choice.outcome === 'accepted') {
           $('install').classList.add('hidden');
@@ -815,8 +828,8 @@
       try { sessionStorage.setItem('installLater', '1'); } catch {}
       $('install').classList.add('hidden');
     };
-    addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; installed = false; updateInstall(); });
-    addEventListener('appinstalled', () => { installed = true; $('install').classList.add('hidden'); toast(t('installed'), 3500); });
+    addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; installed = false; updateInstall(); installLog('proposta-pronta'); });
+    addEventListener('appinstalled', () => { installLog('appinstalled'); installed = true; $('install').classList.add('hidden'); toast(t('installed'), 3500); });
     checkInstalled();
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkInstalled(); });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
