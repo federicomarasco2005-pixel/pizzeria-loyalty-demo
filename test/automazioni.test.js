@@ -152,9 +152,9 @@ test('notifiche web: il telefono si iscrive dalla tessera, i messaggi arrivano l
   const post = (p, body) => fetch(B + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const delivered = [];
   let answer = 201;
-  notificheWeb.setSender(async (sub, payload) => {
+  notificheWeb.setSender(async (sub, payload, options) => {
     if (answer !== 201) throw Object.assign(new Error('scaduta'), { statusCode: answer });
-    delivered.push({ endpoint: sub.endpoint, ...JSON.parse(payload) });
+    delivered.push({ endpoint: sub.endpoint, urgency: options.urgency, ...JSON.parse(payload) });
   });
   const lia = customer(bar, 'Lia', [day(20), day(21)]);
   const sub = { endpoint: 'https://push.example.com/lia', keys: { p256dh: 'BHx'.padEnd(87, 'a'), auth: 'segreto123' } };
@@ -166,14 +166,28 @@ test('notifiche web: il telefono si iscrive dalla tessera, i messaggi arrivano l
   assert.strictEqual((await post('/api/card/inventato/push', { subscription: sub })).status, 404);
   assert.strictEqual((await post(`/api/card/${lia.token}/push`, { subscription: sub })).status, 200);
   assert.strictEqual(bar.db.findByToken(lia.token).webPush.length, 1);
+  const savedAt = bar.db.findByToken(lia.token).webPush[0].at;
+  await post(`/api/card/${lia.token}/push`, { subscription: sub });
+  assert.strictEqual(bar.db.findByToken(lia.token).webPush[0].at, savedAt,'la tessera la rimanda a ogni apertura: se è la stessa non si riscrive');
 
-  // prova dal bot: arriva come notifica web, con il link alla tessera
+  // prova dal bot: arriva come notifica web, con il link alla tessera, subito anche col telefono in standby
   await tap(`psend:${bar.shop.slug}|${lia.code}|near`);
   assert.match(sent.at(-1).text, /con notifica web/);
   assert.strictEqual(delivered.length, 1);
   assert.match(delivered[0].title, /Ti manca 1 timbro/);
   assert.ok(delivered[0].title.startsWith(`${bar.shop.name} · `), 'dalla tendina si vede quale locale scrive');
   assert.ok(delivered[0].url.endsWith(`/card/${encodeURIComponent(lia.token)}`));
+  assert.strictEqual(delivered[0].urgency, 'high');
+
+  // ricevuta dal telefono (sw.js): la prova nel bot dice se l'avviso è arrivato e se il telefono lo può mostrare
+  const plan = async () => { await tap(`ptest:${bar.shop.slug}`); await msg(lia.code); return sent.at(-1).text; };
+  assert.match(await plan(), /Ricevuta dal telefono: ancora nessuna/);
+  assert.ok(delivered[0].ack.endsWith(`/api/card/${encodeURIComponent(lia.token)}/push/ack`));
+  assert.strictEqual((await post(`/api/card/${lia.token}/push/ack`, { permission: 'denied', shown: true })).status, 200);
+  assert.match(await plan(), /le notifiche sono spente/);
+  await post(`/api/card/${lia.token}/push/ack`, { permission: 'granted', shown: true });
+  assert.match(await plan(), /arrivata e mostrata sul telefono/);
+  assert.strictEqual((await post('/api/card/inventato/push/ack', { permission: 'granted' })).status, 404);
 
   // tessera anche nel Wallet: con "Wallet e tessera web insieme" (di default) la notifica web parte lo stesso;
   // con "tessera web solo a chi non ha il Wallet" no (niente doppioni); con "solo Wallet" la tessera non propone le notifiche

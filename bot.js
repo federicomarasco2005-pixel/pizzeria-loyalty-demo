@@ -600,6 +600,15 @@ function showAutomations(chat, slug) {
       [btn('⬅️ Torna al locale', `shop:${slug}`)]]));
 }
 
+// Ricevuta dell'ultima notifica web (la manda il telefono appena la riceve, sw.js): dice se il problema è nel telefono.
+function ackLine(a) {
+  if (!a) return '📬 Ricevuta dal telefono: ancora nessuna. <i>Se dopo una prova resta così, l\'avviso non arriva al telefono: Chrome è bloccato dal risparmio batteria o la tessera va aperta una volta.</i>';
+  const when = new Date(a.at).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+  if (a.permission !== 'granted') return `📬 Ultima notifica web arrivata al telefono il ${when}, ma <b>le notifiche sono spente</b> per Chrome o per l'app della tessera: vanno riattivate nelle impostazioni del telefono.`;
+  if (!a.shown) return `📬 Ultima notifica web arrivata al telefono il ${when}, ma non è stata mostrata (${esc(a.error || 'errore')}).`;
+  return `📬 Ultima notifica web arrivata e mostrata sul telefono il ${when}. <i>Se non l'hai vista nella tendina, la nasconde il telefono: controlla le notifiche di Chrome e dell'app della tessera.</i>`;
+}
+
 // Stato dei messaggi automatici per una tessera: cosa partirebbe, quando, e perché no. Con i pulsanti si mandano subito.
 function showAutoPlan(chat, slug, codeText) {
   const ctx = M.get(slug);
@@ -617,6 +626,7 @@ function showAutoPlan(chat, slug, codeText) {
     `📱 Nel Google Wallet: ${c.walletSaved ? 'sì' : 'non risulta'}\n` +
     `🔔 Notifiche web (tessera sulla Home): ${(c.webPush || []).length ? `attive su ${c.webPush.length} ${c.webPush.length === 1 ? 'dispositivo' : 'dispositivi'}` : 'non attivate'}` +
     `${!c.walletSaved && !(c.webPush || []).length ? '\n<i>Senza Wallet e senza notifiche web il messaggio si vede solo aprendo la tessera.</i>' : ''}\n` +
+    `${(c.webPush || []).length ? `${ackLine(c.webPushAck)}\n` : ''}` +
     `📡 Avvisi del locale: ${CHANNELS[M.notifyChannel(ctx)].label}\n` +
     `🔕 Notifiche usate nelle ultime 24 ore: ${M.pushesLast24h(ctx, c)} di 3 (limite di Google, contano anche i "+1 timbro")\n\n` +
     lines.join('\n') +
@@ -632,8 +642,8 @@ async function sendAutoTest(chat, slug, code, key) {
   const r = await M.autoTest(ctx, c, key);
   const res = r.results || {};
   const text = r.error ? `⚠️ ${esc(r.error)}`
-    : res.web && res.push ? '✅ Mandato <b>con notifica nel Wallet e sulla tessera web</b>: dovrebbero arrivarti sul telefono due avvisi entro un minuto.'
-    : res.web ? '✅ Mandato <b>con notifica web</b> (tessera sulla Home): dovrebbe arrivarti sul telefono entro un minuto.'
+    : res.web && res.push ? '✅ Mandato <b>con notifica nel Wallet e sulla tessera web</b>: dovrebbero arrivarti sul telefono due avvisi entro un minuto. Poi tocca "Stato della tessera": vedi se il telefono ha mandato la ricevuta.'
+    : res.web ? '✅ Mandato <b>con notifica web</b> (tessera sulla Home): dovrebbe arrivarti sul telefono entro un minuto. Poi tocca "Stato della tessera": vedi se il telefono ha mandato la ricevuta.'
     : res.webFailed ? '⚠️ La notifica web non è partita: forse le notifiche sono state disattivate sul telefono. Riattivale dalla tessera.'
     : !r.walletEnabled ? '📩 Mandato, ma Google Wallet non è attivo su questo server: il messaggio è solo nella tessera web.'
       : res.push ? '✅ Mandato <b>con notifica</b>: dovrebbe arrivarti sul telefono entro un minuto.'

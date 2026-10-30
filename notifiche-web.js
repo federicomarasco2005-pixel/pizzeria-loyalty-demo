@@ -50,7 +50,9 @@ async function send(subs = [], message) {
   const gone = [];
   for (const s of subs) {
     try {
-      await sender({ endpoint: s.endpoint, keys: s.keys }, payload, { TTL: 3 * 24 * 3600 });
+      // urgency high: Google la consegna subito anche a telefono in standby o con il risparmio energetico
+      // (con la normale Android può tenerla ferma finché il telefono non si "sveglia")
+      await sender({ endpoint: s.endpoint, keys: s.keys }, payload, { TTL: 3 * 24 * 3600, urgency: 'high' });
       sent++;
     } catch (err) {
       if (err.statusCode === 404 || err.statusCode === 410) gone.push(s.endpoint);

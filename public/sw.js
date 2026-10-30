@@ -50,12 +50,17 @@ self.addEventListener('fetch', (e) => {
 
 // Notifiche web della tessera (notifiche-web.js sul server): il messaggio arriva cifrato e qui si mostra.
 // Toccandola si apre la tessera (quella già aperta, se c'è).
+// Poi manda la ricevuta al server (m.ack): l'avviso è arrivato al telefono, con lo stato del permesso. Se c'è la
+// ricevuta ma nella tendina non si vede niente, lo blocca il telefono (impostazioni di notifiche o batteria).
 self.addEventListener('push', (e) => {
   let m = {};
   try { m = e.data ? e.data.json() : {}; } catch {}
+  const ack = (r) => (m.ack ? fetch(m.ack, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permission: self.Notification ? Notification.permission : '?', ...r }),
+  }).catch(() => {}) : null);
   e.waitUntil(self.registration.showNotification(m.title || 'La tua tessera', {
     body: m.body || '', icon: m.icon, badge: m.icon, tag: m.tag, data: { url: m.url || '/' },
-  }));
+  }).then(() => ack({ shown: true }), (err) => ack({ shown: false, error: String((err && err.message) || err) })));
 });
 
 self.addEventListener('notificationclick', (e) => {

@@ -656,8 +656,9 @@
       if (sub) {
         $('notifyOn').classList.remove('hidden');
         $('notifyOff').classList.remove('hidden');
-        // il server non la conosce più (es. tolta perché scaduta): la ricorda di nuovo
-        if (!c.webPush) api('api/card/' + encodeURIComponent(token) + '/push', { method: 'POST', body: { subscription: sub.toJSON() } }).catch(() => {});
+        // a ogni apertura il server riceve l'indirizzo attuale del telefono (cambia dopo una reinstallazione o quando
+        // Chrome lo rinnova). Prima lo riceveva solo se non ne aveva nessuno, e gli avvisi potevano andare a uno vecchio.
+        api('api/card/' + encodeURIComponent(token) + '/push', { method: 'POST', body: { subscription: sub.toJSON() } }).catch(() => {});
         return;
       }
       if (Notification.permission !== 'denied' && Date.now() < pushLaterUntil()) return;

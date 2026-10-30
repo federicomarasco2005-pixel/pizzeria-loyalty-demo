@@ -348,8 +348,21 @@ shop.post('/api/card/:token/push', (req, res) => {
   if (!notificheWeb.enabled()) return res.status(503).json({ error: 'Notifiche non disponibili.' });
   const sub = notificheWeb.clean(req.body && req.body.subscription);
   if (!sub) return res.status(400).json({ error: 'Iscrizione non valida.' });
-  req.ctx.db.updateCustomer(customer.id, { webPush: notificheWeb.addTo(customer.webPush, sub) });
+  // la tessera la rimanda a ogni apertura: si salva solo se è nuova
+  const known = (customer.webPush || []).some((s) => s.endpoint === sub.endpoint && s.keys.p256dh === sub.keys.p256dh && s.keys.auth === sub.keys.auth);
+  if (!known) req.ctx.db.updateCustomer(customer.id, { webPush: notificheWeb.addTo(customer.webPush, sub) });
   res.json({ ok: true, devices: customer.webPush.length });
+});
+// Ricevuta dal telefono (sw.js): l'avviso web è arrivato. Si vede nel registro e nella prova notifiche del bot.
+shop.post('/api/card/:token/push/ack', (req, res) => {
+  const customer = req.ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  const b = req.body || {};
+  const ack = { at: new Date().toISOString(), permission: String(b.permission || '').slice(0, 20), shown: b.shown === true };
+  if (b.error) ack.error = String(b.error).slice(0, 200);
+  req.ctx.db.updateCustomer(customer.id, { webPushAck: ack });
+  console.log(`[notifiche web] ${req.ctx.shop.slug} ${customer.code}: arrivata sul telefono (permesso ${ack.permission}, ${ack.shown ? 'mostrata' : `non mostrata: ${ack.error || '?'}`})`);
+  res.json({ ok: true });
 });
 shop.post('/api/card/:token/push/off', (req, res) => {
   const customer = req.ctx.db.findByToken(req.params.token);
@@ -1181,6 +1194,7 @@ async function sendCampaign(ctx, campaign) {
         const w = await notificheWeb.send(customer.webPush, {
           title: withShop(ctx.cfg, campaign.title), body: campaign.body, tag: `c_${campaign.id}`,
           url: `${ctx.cfg.baseUrl}/card/${encodeURIComponent(customer.token)}`, icon: `${ctx.cfg.baseUrl}/icons/icon-192.png?v=${ctx.cfg.imgVersion}`,
+          ack: `${ctx.cfg.baseUrl}/api/card/${encodeURIComponent(customer.token)}/push/ack`,
         });
         if (w.gone.length) ctx.db.updateCustomer(customer.id, { webPush: customer.webPush.filter((s) => !w.gone.includes(s.endpoint)) });
         if (w.sent) { results.web = (results.web || 0) + 1; if (!notified) ctx.db.logNotification(customer.id, 'campaign', true); }
@@ -1199,7 +1213,7 @@ async function sendCampaign(ctx, campaign) {
   // Non subito: riscrivere il pass appena dopo addMessage riporta il messaggio nuovo a semplice testo e
   // Google può non far suonare il telefono (prova del 25/10: messaggio nella tessera, nessuna notifica).
   if (wallet.enabled()) for (const c of recipients) settleWallet(ctx, c);
-  console.log(`[notifiche] ${ctx.shop.slug}: "${campaign.title}" inviata a ${results.total} (push ${results.push}, solo testo ${results.textOnly}, errori ${results.failed})`);
+  console.log(`[notifiche] ${ctx.shop.slug}: "${campaign.title}" inviata a ${results.total} (push ${results.push}, web ${results.web || 0}, solo testo ${results.textOnly}, errori ${results.failed}${results.webFailed ? `, web non partite ${results.webFailed}` : ''})`);
 }
 
 // Invia le campagne programmate scadute di tutti i locali. Chiamato ogni 30 secondi e da /api/cron
