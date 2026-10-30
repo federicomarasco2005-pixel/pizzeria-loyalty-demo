@@ -226,7 +226,7 @@
           ${tile(num(s.newMembers7), 'nuovi in 7 giorni', `${num(s.newMembers30)} in 30 giorni`)}
           ${tile(s.members ? Math.round(s.consent / s.members * 100) + '%' : '—', 'con consenso alle offerte', `${s.consent} clienti`)}
           ${tile(s.members ? Math.round(s.wallet / s.members * 100) + '%' : '—', 'con la tessera nel Wallet', `${s.wallet} clienti`)}
-          ${tile(num(s.webPush), 'con le notifiche web', 'tessera sulla Home, senza Wallet')}
+          ${tile(num(s.webPush), 'con le notifiche web', 'tessera sulla Home')}
           ${tile(num(s.fromNfc), 'iscritti dal timbro NFC')}
         </div></div>
         <div><h3>Visite</h3><div class="tiles">

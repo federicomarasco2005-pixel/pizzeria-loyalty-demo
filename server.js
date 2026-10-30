@@ -482,7 +482,8 @@ async function cardData(ctx, customer) {
     qr: await qrOf(customer.code),
     saveUrl: wallet.enabled() ? wallet.saveUrl(customer) : null,
     walletSaved: !!customer.walletSaved,
-    webPushKey: notificheWeb.publicKey(), // null: notifiche web spente sul server
+    webPushKey: channelOf(ctx) === 'wallet' ? null : notificheWeb.publicKey(), // null: notifiche web spente (server o locale)
+    pushWithWallet: channelOf(ctx) === 'both', // la tessera propone le notifiche web anche a chi l'ha nel Wallet
     webPush: (customer.webPush || []).length,
     reviewUrl: ctx.db.getSettings().reviewUrl || null,
     messages: ctx.db.messagesFor(customer.id).slice(0, 5),
@@ -742,6 +743,13 @@ async function addStamp(ctx, customer, { requestId, by, who }) {
 // Titolo delle notifiche (Wallet e web) e dei messaggi nel pass: comincia con il nome del locale, così dalla tendina
 // si capisce subito chi scrive. Se il titolo lo contiene già (messaggio scritto dal locale) resta com'è.
 const withShop = (cfg, title) => (String(title).toLowerCase().includes(cfg.pizzeriaName.toLowerCase()) ? title : `${cfg.pizzeriaName} · ${title}`);
+
+// Dove arrivano i messaggi del locale (bot > Automazioni). Il Wallet avvisa sempre chi ha la tessera lì.
+//   both    anche le notifiche web a chi le ha attivate, pure con la tessera nel Wallet (riceve due avvisi)
+//   split   notifiche web solo a chi non ha la tessera nel Wallet (nessuno riceve due avvisi)
+//   wallet  solo Wallet: la tessera web non propone le notifiche
+const NOTIFY_CHANNELS = ['both', 'split', 'wallet'];
+const channelOf = (ctx) => (NOTIFY_CHANNELS.includes(ctx.db.getSettings().notifyChannel) ? ctx.db.getSettings().notifyChannel : 'both');
 
 // Aggiorna il pass (GIF animata) e manda subito la notifica come messaggio Google
 // ("+1 timbro"), che si legge meglio del generico "saldo aggiornato" e scade da solo.
@@ -1147,17 +1155,21 @@ async function sendCampaign(ctx, campaign) {
   const results = campaign.results;
   const done = new Set(campaign.sentTo || []);
   const recipients = (campaign.pending || []).map((id) => ctx.db.customers.find((c) => c.id === id)).filter(Boolean);
+  const channel = channelOf(ctx);
   for (const customer of recipients) {
     if (done.has(customer.id)) continue;
-    // Chi non ha la tessera nel Wallet ma ha attivato le notifiche web le riceve lì (stesso limite di 3 al giorno)
-    const viaWeb = !customer.walletSaved && notificheWeb.enabled() && (customer.webPush || []).length > 0;
+    // Chi ha attivato le notifiche web le riceve lì, secondo il canale scelto per il locale (stesso limite di 3 al giorno:
+    // un messaggio arrivato su Wallet e web conta una volta sola)
+    const viaWeb = notificheWeb.enabled() && (customer.webPush || []).length > 0
+      && (channel === 'both' || (channel === 'split' && !customer.walletSaved));
     const canNotify = ctx.db.canPush(customer.id);
+    let notified = false;
     if (wallet.enabled()) {
       const r = await wallet.notify(customer, withShop(ctx.cfg, campaign.title), campaign.body, {
-        push: canNotify && !viaWeb, messageId: `c_${campaign.id}`, expiresAt,
+        push: canNotify && (customer.walletSaved || !viaWeb), messageId: `c_${campaign.id}`, expiresAt,
       });
       if (!r.ok) results.failed++;
-      else if (r.push) { results.push++; ctx.db.logNotification(customer.id, 'campaign', true); }
+      else if (r.push) { results.push++; notified = true; ctx.db.logNotification(customer.id, 'campaign', true); }
       else if (!viaWeb) results.textOnly++;
     }
     if (viaWeb) {
@@ -1168,7 +1180,7 @@ async function sendCampaign(ctx, campaign) {
           url: `${ctx.cfg.baseUrl}/card/${encodeURIComponent(customer.token)}`, icon: `${ctx.cfg.baseUrl}/icons/icon-192.png?v=${ctx.cfg.imgVersion}`,
         });
         if (w.gone.length) ctx.db.updateCustomer(customer.id, { webPush: customer.webPush.filter((s) => !w.gone.includes(s.endpoint)) });
-        if (w.sent) { results.web = (results.web || 0) + 1; ctx.db.logNotification(customer.id, 'campaign', true); }
+        if (w.sent) { results.web = (results.web || 0) + 1; if (!notified) ctx.db.logNotification(customer.id, 'campaign', true); }
         else results.webFailed = (results.webFailed || 0) + 1;
       }
     }
@@ -1670,6 +1682,14 @@ const manager = {
     };
   }),
   autoProfile: (ctx) => profileOf(ctx),
+  // Dove arrivano i messaggi: 'both' Wallet e tessera web, 'split' web solo a chi non ha il Wallet, 'wallet' solo Wallet
+  notifyChannel: (ctx) => channelOf(ctx),
+  setNotifyChannel(slug, channel) {
+    const ctx = shops.get(slug);
+    if (!ctx || !NOTIFY_CHANNELS.includes(channel)) return null;
+    ctx.db.updateSettings({ notifyChannel: channel });
+    return ctx;
+  },
   // Prova dal bot: stato dei messaggi automatici di una tessera e invio immediato di uno di loro
   autoPlan: (ctx, customer, now) => autoPlan(ctx, customer, now),
   autoTest: (ctx, customer, key) => autoTest(ctx, customer, key),

@@ -112,7 +112,7 @@
     .more-panel .check { margin: 8px 0; color: var(--ink); }
     .more-panel a { color: var(--ink); text-decoration: none; font-size: .9rem; padding: 11px 0; border-top: 1px solid var(--line); }
     .more-panel a.danger { color: var(--brand); }
-    /* Notifiche della tessera (senza Google Wallet) */
+    /* Notifiche della tessera (notifiche web) */
     .notify-ico { width: 52px; height: 52px; border-radius: 14px; flex: none; display: grid; place-items: center; font-size: 1.6rem;
       background: color-mix(in srgb, var(--brand) 18%, transparent); }
 
@@ -204,7 +204,7 @@
         <button class="install-later small" id="installLater" data-t="later">Più tardi</button>
       </section>
 
-      <!-- Notifiche della tessera: per chi non ha Google Wallet, dalla tessera salvata sulla Home (iPhone compreso) -->
+      <!-- Notifiche della tessera: dalla tessera salvata sulla Home (iPhone compreso); con il Wallet solo se il locale le manda su tutti e due -->
       <section id="notify" class="install hidden">
         <div class="install-row">
           <div class="notify-ico" aria-hidden="true">🔔</div>
@@ -223,6 +223,7 @@
         <div class="sheet-panel stack">
           <h2 id="sheetTitle" data-t="sheetTitle">Salva la tessera in 3 tocchi</h2>
           <ol class="steps" id="steps"></ol>
+          <p class="small muted hidden" id="stepsNote" style="margin:0"></p>
           <button class="btn" id="sheetOk" data-t="gotIt">Ho capito</button>
         </div>
         <div class="sheet-arrow hidden" id="sheetArrow">⬇️</div>
@@ -623,6 +624,7 @@
     function paintWallet(c) {
       inWallet = inWallet || !!c.walletSaved;
       pushKey = c.webPushKey || null;
+      pushWithWallet = !!c.pushWithWallet;
       // Su iPhone Google Wallet non esiste: al suo posto si propone di salvare la tessera sul telefono
       $('save').classList.toggle('hidden', !c.saveUrl || inWallet || device.ios);
       $('inwallet').classList.toggle('hidden', !inWallet || device.ios);
@@ -631,9 +633,11 @@
     }
 
     // ---------- Notifiche della tessera (notifiche web) ----------
-    // Solo per chi non ha la tessera nel Google Wallet (che avvisa già da solo) e la apre dall'icona sulla Home
-    // (su iPhone è l'unico modo, da iOS 16.4) oppure da un server senza Wallet. Dal browser si invita prima a salvarla.
+    // Per chi apre la tessera dall'icona sulla Home (su iPhone è l'unico modo, da iOS 16.4) oppure da un server senza Wallet.
+    // Dal browser si invita prima a salvarla. Chi ha la tessera nel Wallet (che avvisa già da solo) le vede solo se il locale
+    // manda gli avvisi su tutti e due (pushWithWallet); con "solo Wallet" il server non manda la chiave e il riquadro non compare.
     let pushKey = null;
+    let pushWithWallet = false;
     let pushCard = {};
     const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
     const pushLaterUntil = () => { try { return Number(localStorage.getItem('pushLater') || 0); } catch { return 0; } };
@@ -647,7 +651,7 @@
       box.classList.add('hidden');
       $('notifyOn').classList.add('hidden');
       $('notifyOff').classList.add('hidden');
-      if (!pushKey || inWallet || !pushSupported || !(device.standalone || !c.saveUrl)) return;
+      if (!pushKey || (inWallet && !pushWithWallet) || !pushSupported || !(device.standalone || !c.saveUrl)) return;
       const sub = Notification.permission === 'granted' ? await pushSub() : null;
       if (sub) {
         $('notifyOn').classList.remove('hidden');
@@ -711,8 +715,9 @@
     function wantsInstall() {
       if (device.standalone) return false;                 // già aperta come app
       if (!welcome && Date.now() < laterUntil()) return false;
-      // su Android, se la tessera è già in Google Wallet non insistiamo
-      return device.ios || !!installPrompt || !inWallet;
+      // su Android, se la tessera è già in Google Wallet non insistiamo, a meno che il locale mandi gli avvisi
+      // anche alla tessera web: servono l'icona sulla Home e le notifiche attivate da lì
+      return device.ios || !!installPrompt || !inWallet || (!!pushKey && pushWithWallet);
     }
     function updateInstall() {
       $('install').classList.toggle('hidden', !wantsInstall());
@@ -755,6 +760,11 @@
         ];
       }
       $('steps').innerHTML = steps.map((s) => '<li>' + s + '</li>').join('');
+      // Android: se la tessera è già installata Chrome non propone "Installa app" (e la pagina non mostra il riquadro da sola)
+      $('stepsNote').classList.toggle('hidden', device.ios || device.inApp);
+      $('stepsNote').innerHTML = EN
+        ? 'If the menu shows <strong>"Open app"</strong> instead, the card is already installed: look for it among your apps.'
+        : 'Se nel menu c\'è invece <strong>"Apri app"</strong>, la tessera è già installata: cercala tra le tue app.';
       // su iPhone con Safari il pulsante Condividi è in basso: freccia che lo indica
       $('sheetArrow').classList.toggle('hidden', !(device.ios && !device.iosOtherBrowser && !device.inApp));
       $('installSheet').classList.remove('hidden');

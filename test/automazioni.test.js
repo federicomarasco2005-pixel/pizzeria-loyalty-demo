@@ -175,11 +175,28 @@ test('notifiche web: il telefono si iscrive dalla tessera, i messaggi arrivano l
   assert.ok(delivered[0].title.startsWith(`${bar.shop.name} · `), 'dalla tendina si vede quale locale scrive');
   assert.ok(delivered[0].url.endsWith(`/card/${encodeURIComponent(lia.token)}`));
 
-  // con la tessera nel Wallet le notifiche web non partono (niente doppioni)
+  // tessera anche nel Wallet: con "Wallet e tessera web insieme" (di default) la notifica web parte lo stesso;
+  // con "tessera web solo a chi non ha il Wallet" no (niente doppioni); con "solo Wallet" la tessera non propone le notifiche
+  const card = async () => (await fetch(`${B}/api/card/${lia.token}`)).json();
   bar.db.updateCustomer(lia.id, { walletSaved: true });
+  assert.strictEqual(manager.notifyChannel(bar), 'both');
+  assert.strictEqual((await card()).pushWithWallet, true);
   await tap(`psend:${bar.shop.slug}|${lia.code}|waiting`);
-  assert.strictEqual(delivered.length, 1);
+  assert.strictEqual(delivered.length, 2);
+  await tap(`notch:${bar.shop.slug}|split`);
+  assert.match(sent.at(-1).text, /Dove arrivano gli avvisi.*solo a chi non ha il Wallet/s);
+  assert.strictEqual((await card()).pushWithWallet, false);
+  await tap(`psend:${bar.shop.slug}|${lia.code}|waiting`);
+  assert.strictEqual(delivered.length, 2, 'con il Wallet niente doppioni');
+  await tap(`notch:${bar.shop.slug}|wallet`);
   bar.db.updateCustomer(lia.id, { walletSaved: false });
+  assert.strictEqual((await card()).webPushKey, null, 'solo Wallet: la tessera non propone le notifiche');
+  await tap(`psend:${bar.shop.slug}|${lia.code}|waiting`);
+  assert.strictEqual(delivered.length, 2, 'solo Wallet: niente notifiche web, nemmeno senza Wallet');
+  await tap(`notch:${bar.shop.slug}|inventato`);
+  assert.strictEqual(manager.notifyChannel(bar), 'wallet');
+  await tap(`notch:${bar.shop.slug}|both`);
+  assert.strictEqual(manager.notifyChannel(bar), 'both');
 
   // indirizzo scaduto (telefono cambiato): tolto dalla scheda
   answer = 410;

@@ -141,7 +141,7 @@ function shopStats(ctx, now) {
     newMembers30: customers.filter((c) => ago(c.createdAt) < 30 * DAY).length,
     consent: customers.filter((c) => c.consentMarketing).length,
     wallet: customers.filter((c) => c.walletSaved).length,
-    webPush: customers.filter((c) => !c.walletSaved && (c.webPush || []).length).length,
+    webPush: customers.filter((c) => (c.webPush || []).length).length, // anche chi ha il Wallet, se il locale manda su tutti e due
     fromNfc: customers.filter((c) => { const f = (byCustomer.get(c.id) || [])[0]; return f && f.by === 'nfc' && Date.parse(f.at) - Date.parse(c.createdAt) < 5 * 60 * 1000; }).length,
     stamps: stamps.length,
     stamps7: stamps.filter((e) => ago(e.at) < 7 * DAY).length,

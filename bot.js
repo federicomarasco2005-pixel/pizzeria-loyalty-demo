@@ -413,6 +413,11 @@ async function onButton(chat, data, msg) {
     M.setAutomation(slug, key, on === '1');
     return showAutomations(chat, slug);
   }
+  if (action === 'notch') {
+    const [slug, channel] = arg.split('|');
+    M.setNotifyChannel(slug, channel);
+    return showAutomations(chat, slug);
+  }
   // prova delle notifiche su una tessera: codice tessera, poi invio immediato di un messaggio automatico
   if (action === 'ptest') {
     sessions.set(chat, { mode: 'ptest', slug: arg });
@@ -570,17 +575,27 @@ async function sendMonthlyReports() {
   }
 }
 
+// Dove arrivano i messaggi del locale (vedi channelOf in server.js)
+const CHANNELS = {
+  both: { label: '📲 Wallet e tessera web insieme', text: 'Chi ha la tessera nel Wallet riceve l\'avviso dal Wallet; chi ha installato la tessera web e attivato le notifiche lo riceve anche lì. Chi ha tutte e due riceve due avvisi.' },
+  split: { label: '🔀 Wallet, tessera web solo a chi non ha il Wallet', text: 'Chi ha la tessera nel Wallet riceve l\'avviso solo dal Wallet; gli altri (per esempio con iPhone) dalla tessera web installata. Nessuno riceve due avvisi.' },
+  wallet: { label: '💳 Solo Wallet', text: 'Avvisi solo dal Wallet. La tessera web non propone le notifiche: chi non ha il Wallet (per esempio con iPhone) non riceve avvisi.' },
+};
+
 function showAutomations(chat, slug) {
   const ctx = M.get(slug);
   if (!ctx) return send(chat, 'Locale non trovato.');
   const list = M.automations(ctx);
   const profile = M.autoProfile(ctx);
+  const channel = M.notifyChannel(ctx);
   const lines = list.map((a) => `${a.on ? '🟢' : '⚪'} <b>${esc(a.label)}</b>${a.promo ? ' <i>(solo a chi accetta le offerte)</i>' : ''}${a.note ? ` — ⚠️ ${a.note}` : ''}\n      <i>${esc(a.when)}</i>`);
   return send(chat,
     `🤖 <b>Messaggi automatici di ${esc(ctx.cfg.pizzeriaName)}</b>\n` +
     `Partono da soli nella tessera Google Wallet (con notifica) e nella tessera web, negli orari migliori per un locale ${profile === 'sera' ? 'serale (pizzeria, pub)' : 'di giorno (bar, caffè)'}. ` +
-    'Mai tra le 21 e le 8; al massimo 1 al giorno e 2 a settimana per cliente.\n\n' + lines.join('\n'),
+    'Mai tra le 21 e le 8; al massimo 1 al giorno e 2 a settimana per cliente.\n\n' + lines.join('\n') +
+    `\n\n🔔 <b>Dove arrivano gli avvisi</b> (anche dei messaggi dalla dashboard): ${CHANNELS[channel].label}\n<i>${CHANNELS[channel].text}</i>`,
     kb([...list.map((a) => [btn(`${a.on ? '⏸️ Spegni' : '▶️ Accendi'}: ${a.label}`, `autot:${slug}|${a.key}|${a.on ? 0 : 1}`)]),
+      ...Object.entries(CHANNELS).map(([key, c]) => [btn(`${key === channel ? '✅' : '◻️'} ${c.label}`, `notch:${slug}|${key}`)]),
       [btn('🔔 Prova le notifiche su una tessera', `ptest:${slug}`)],
       [btn('⬅️ Torna al locale', `shop:${slug}`)]]));
 }
@@ -602,6 +617,7 @@ function showAutoPlan(chat, slug, codeText) {
     `📱 Nel Google Wallet: ${c.walletSaved ? 'sì' : 'non risulta'}\n` +
     `🔔 Notifiche web (tessera sulla Home): ${(c.webPush || []).length ? `attive su ${c.webPush.length} ${c.webPush.length === 1 ? 'dispositivo' : 'dispositivi'}` : 'non attivate'}` +
     `${!c.walletSaved && !(c.webPush || []).length ? '\n<i>Senza Wallet e senza notifiche web il messaggio si vede solo aprendo la tessera.</i>' : ''}\n` +
+    `📡 Avvisi del locale: ${CHANNELS[M.notifyChannel(ctx)].label}\n` +
     `🔕 Notifiche usate nelle ultime 24 ore: ${M.pushesLast24h(ctx, c)} di 3 (limite di Google, contano anche i "+1 timbro")\n\n` +
     lines.join('\n') +
     '\n\nCon i pulsanti ricevi subito il messaggio, senza aspettare giorni e orari: è solo una prova, non cambia niente per il cliente e non conta per i limiti dei messaggi automatici (usa però una delle 3 notifiche al giorno di Google).',
@@ -616,6 +632,7 @@ async function sendAutoTest(chat, slug, code, key) {
   const r = await M.autoTest(ctx, c, key);
   const res = r.results || {};
   const text = r.error ? `⚠️ ${esc(r.error)}`
+    : res.web && res.push ? '✅ Mandato <b>con notifica nel Wallet e sulla tessera web</b>: dovrebbero arrivarti sul telefono due avvisi entro un minuto.'
     : res.web ? '✅ Mandato <b>con notifica web</b> (tessera sulla Home): dovrebbe arrivarti sul telefono entro un minuto.'
     : res.webFailed ? '⚠️ La notifica web non è partita: forse le notifiche sono state disattivate sul telefono. Riattivale dalla tessera.'
     : !r.walletEnabled ? '📩 Mandato, ma Google Wallet non è attivo su questo server: il messaggio è solo nella tessera web.'

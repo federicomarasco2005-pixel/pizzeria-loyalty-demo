@@ -1,5 +1,6 @@
-// Notifiche web della tessera (Web Push), per chi non ha la tessera nel Google Wallet: soprattutto iPhone
-// (tessera salvata sulla Home, iOS 16.4 o più recente) e Android senza Wallet.
+// Notifiche web della tessera (Web Push), soprattutto per chi non ha la tessera nel Google Wallet: iPhone
+// (tessera salvata sulla Home, iOS 16.4 o più recente) e Android senza Wallet. Se il locale manda gli avvisi
+// "Wallet e tessera web insieme" (bot > Automazioni, channelOf in server.js) le può attivare anche chi ha il Wallet.
 // Il cliente tocca "Attiva le notifiche" nella tessera: il telefono dà un indirizzo di consegna (di Apple, Google o
 // Mozilla) che salviamo nella sua scheda (customer.webPush, al massimo 5 dispositivi). Il messaggio viaggia cifrato:
 // chi lo consegna non lo legge. Chiavi: VAPID_PUBLIC_KEY (anche in render.yaml) e VAPID_PRIVATE_KEY (solo su Render);
