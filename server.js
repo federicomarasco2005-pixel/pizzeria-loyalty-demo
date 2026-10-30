@@ -585,6 +585,9 @@ shop.get('/card/:token/manifest.webmanifest', (req, res) => {
       { src: `${base}/icons/icon-512.png${v}`, sizes: '512x512', type: 'image/png', purpose: 'any' },
       { src: `${base}/icons/icon-512.png${v}`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
+    // La tessera aperta nel browser chiede a Chrome (Android) se questa app è installata: il riquadro
+    // "Salva la tessera sul telefono" sparisce dopo l'installazione e ricompare se la si disinstalla.
+    related_applications: [{ platform: 'webapp', url: `${req.protocol}://${req.get('host')}${req.originalUrl.split('?')[0]}` }],
   });
 });
 

@@ -709,15 +709,23 @@
       standalone: matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
     };
     let installPrompt = null; // Android/Chrome: finestra di installazione nativa
+    let installed = false;    // Android/Chrome: questa tessera è già installata (related_applications nel manifest)
     const welcome = new URLSearchParams(location.search).has('welcome');
 
-    function laterUntil() { try { return Number(localStorage.getItem('installLater') || 0); } catch { return 0; } }
+    // Il riquadro compare a ogni apertura finché la tessera non è installata, anche con il Wallet.
+    // "Più tardi" lo nasconde solo fino alla prossima apertura. Su iPhone non si può sapere se è sulla Home:
+    // compare sempre in Safari e mai dall'icona.
     function wantsInstall() {
-      if (device.standalone) return false;                 // già aperta come app
-      if (!welcome && Date.now() < laterUntil()) return false;
-      // su Android, se la tessera è già in Google Wallet non insistiamo, a meno che il locale mandi gli avvisi
-      // anche alla tessera web: servono l'icona sulla Home e le notifiche attivate da lì
-      return device.ios || !!installPrompt || !inWallet || (!!pushKey && pushWithWallet);
+      if (device.standalone || installed) return false;
+      try { if (sessionStorage.getItem('installLater')) return false; } catch {}
+      return true;
+    }
+    // Chrome su Android dice se l'app di questa tessera è installata: si controlla all'apertura e a ogni ritorno
+    // sulla pagina, così dopo l'installazione il riquadro sparisce e dopo la disinstallazione ricompare.
+    async function checkInstalled() {
+      if (!navigator.getInstalledRelatedApps || device.standalone) return;
+      try { installed = (await navigator.getInstalledRelatedApps()).length > 0; } catch { return; }
+      updateInstall();
     }
     function updateInstall() {
       $('install').classList.toggle('hidden', !wantsInstall());
@@ -783,11 +791,13 @@
     $('sheetOk').onclick = () => $('installSheet').classList.add('hidden');
     $('installSheet').onclick = (e) => { if (e.target === $('installSheet')) $('installSheet').classList.add('hidden'); };
     $('installLater').onclick = () => {
-      try { localStorage.setItem('installLater', String(Date.now() + 3 * 86400e3)); } catch {}
+      try { sessionStorage.setItem('installLater', '1'); } catch {}
       $('install').classList.add('hidden');
     };
-    addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; updateInstall(); });
-    addEventListener('appinstalled', () => { $('install').classList.add('hidden'); toast(t('installed'), 3500); });
+    addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; installed = false; updateInstall(); });
+    addEventListener('appinstalled', () => { installed = true; $('install').classList.add('hidden'); toast(t('installed'), 3500); });
+    checkInstalled();
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkInstalled(); });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
     // Pagina aperta dalla copia salvata nel telefono (sw.js): i dati dentro possono essere vecchi.
