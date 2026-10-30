@@ -578,12 +578,16 @@ shop.get('/card/:token/manifest.webmanifest', (req, res) => {
   if (!ctx.db.findByToken(req.params.token)) return res.status(404).end();
   const base = `/${cfg.slug}`;
   const v = `?v=${cfg.imgVersion}`;
+  // ?n=: la tessera era installata ed è stata tolta (card.html, newAppIdentity). Alcuni telefoni non reinstallano la
+  // stessa app: con id e indirizzo di partenza diversi per il telefono è un'app nuova. Stessa tessera, stesso token.
+  const n = Math.min(Math.max(parseInt(req.query.n, 10) || 0, 0), 999);
+  const app = n ? `?app=${n}` : '';
   res.type('application/manifest+json').json({
     name: `Tessera ${cfg.pizzeriaName}`,
     short_name: `Tessera ${cfg.emoji}`,
     description: `${cfg.programName}: i tuoi timbri sempre a portata di mano`,
-    id: `${base}/card/${req.params.token}`,
-    start_url: `${base}/card/${req.params.token}`,
+    id: `${base}/card/${req.params.token}${app}`,
+    start_url: `${base}/card/${req.params.token}${app}`,
     scope: `${base}/`,
     display: 'standalone',
     orientation: 'portrait',
@@ -596,7 +600,7 @@ shop.get('/card/:token/manifest.webmanifest', (req, res) => {
     ],
     // La tessera aperta nel browser chiede a Chrome (Android) se questa app è installata: il riquadro
     // "Salva la tessera sul telefono" sparisce dopo l'installazione e ricompare se la si disinstalla.
-    related_applications: [{ platform: 'webapp', url: `${req.protocol}://${req.get('host')}${req.originalUrl.split('?')[0]}` }],
+    related_applications: [{ platform: 'webapp', url: `${req.protocol}://${req.get('host')}${req.originalUrl.split('?')[0]}${n ? `?n=${n}` : ''}` }],
   });
 });
 

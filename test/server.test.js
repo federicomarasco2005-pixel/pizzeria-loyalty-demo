@@ -99,6 +99,19 @@ test('cassa: timbro con PIN, dashboard solo per il gestore', async () => {
   assert.ok(Date.parse(stats.data.customers[0].createdAt), 'data d\'iscrizione per ordinare l\'elenco');
 });
 
+test('tessera installabile: manifest della tessera, e un\'app nuova per il telefono dopo una disinstallazione (?n=)', async () => {
+  const m = JSON.parse((await api(`${S}/card/${anna}/manifest.webmanifest`)).text);
+  assert.strictEqual(m.id, `${S}/card/${anna}`);
+  assert.strictEqual(m.start_url, `${S}/card/${anna}`);
+  assert.deepStrictEqual(m.related_applications, [{ platform: 'webapp', url: `${B}${S}/card/${anna}/manifest.webmanifest` }]);
+  const again = JSON.parse((await api(`${S}/card/${anna}/manifest.webmanifest?n=2`)).text);
+  assert.strictEqual(again.id, `${S}/card/${anna}?app=2`);
+  assert.strictEqual(again.start_url, `${S}/card/${anna}?app=2`, 'stessa tessera, indirizzo di partenza diverso');
+  assert.strictEqual(again.related_applications[0].url, `${B}${S}/card/${anna}/manifest.webmanifest?n=2`);
+  assert.strictEqual(again.scope, m.scope);
+  assert.strictEqual((await api(`${S}/card/inventato/manifest.webmanifest`)).status, 404);
+});
+
 test('tessera veloce: dati già nella pagina, nuovo saldo nell\'avviso in tempo reale', async () => {
   const page = await api(`${S}/card/${anna}`);
   const card = JSON.parse(page.text.match(/window\.CARD = (\{.*?\});/)[1]);

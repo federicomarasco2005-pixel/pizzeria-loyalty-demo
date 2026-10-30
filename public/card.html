@@ -119,8 +119,12 @@
     @media (prefers-reduced-motion: reduce) { .flip-inner { transition: none; } .shine { display: none; } }
   </style>
   <script>
-    // manifest della singola tessera: l'icona installata riapre proprio questa tessera
-    document.getElementById('manifest').href = location.pathname.replace(/\/$/, '') + '/manifest.webmanifest';
+    // manifest della singola tessera: l'icona installata riapre proprio questa tessera.
+    // ?n= dopo una disinstallazione (vedi newAppIdentity): la tessera si presenta al telefono come un'app nuova.
+    // Dall'icona installata il numero arriva nell'indirizzo (?app=), dal browser dalla memoria del telefono.
+    var appN = Number(new URLSearchParams(location.search).get('app')) || 0;
+    try { appN = appN || Number(localStorage.getItem('appN:' + location.pathname)) || 0; } catch (e) {}
+    document.getElementById('manifest').href = location.pathname.replace(/\/$/, '') + '/manifest.webmanifest' + (appN ? '?n=' + appN : '');
   </script>
 </head>
 <body>
@@ -723,10 +727,29 @@
     // Chrome su Android dice se l'app di questa tessera è installata: si controlla all'apertura e a ogni ritorno
     // sulla pagina, così dopo l'installazione il riquadro sparisce e dopo la disinstallazione ricompare.
     async function checkInstalled() {
-      if (!navigator.getInstalledRelatedApps || device.standalone) return;
+      if (device.standalone) return markInstalled();
+      if (!navigator.getInstalledRelatedApps) return;
       try { installed = (await navigator.getInstalledRelatedApps()).length > 0; } catch { return; }
-      if (installed) installLog('risulta-installata');
+      if (installed) { markInstalled(); installLog('risulta-installata'); }
+      else if (appGet('appWas') && Date.now() - appGet('appWas') > 60e3) newAppIdentity();
       updateInstall();
+    }
+    // Alcuni telefoni (es. Honor, 30/10) non reinstallano una tessera installata e poi tolta: Chrome dice "installata"
+    // ma l'icona non arriva. Il telefono si ricorda che la tessera era installata (appWas); se non lo è più, la tessera
+    // si presenta come un'app nuova: manifest con ?n=, quindi id e indirizzo di partenza diversi (server.js).
+    // Un minuto di attesa: un'installazione appena partita può non risultare ancora.
+    const appKey = (k) => k + ':' + location.pathname;
+    const appGet = (k) => { try { return Number(localStorage.getItem(appKey(k))) || 0; } catch { return 0; } };
+    const appSet = (k, v) => { try { if (v) localStorage.setItem(appKey(k), String(v)); else localStorage.removeItem(appKey(k)); } catch {} };
+    function markInstalled(now) { if (now || !appGet('appWas')) appSet('appWas', Date.now()); }
+    function newAppIdentity() {
+      const n = Math.max(appN, appGet('appN')) + 1;
+      appN = n;
+      appSet('appN', n);
+      appSet('appWas', 0);
+      installPrompt = null; // era per l'app di prima: Chrome ne propone una nuova con il manifest nuovo
+      $('manifest').href = location.pathname.replace(/\/$/, '') + '/manifest.webmanifest?n=' + n;
+      installLog('nuova-identita', { n });
     }
     // DIAGNOSI TEMPORANEA (30/10, install-log in server.js): cosa fa Chrome quando si tocca "Installa". Da togliere.
     async function installLog(ev, extra = {}) {
@@ -829,7 +852,7 @@
       $('install').classList.add('hidden');
     };
     addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; installed = false; updateInstall(); installLog('proposta-pronta'); });
-    addEventListener('appinstalled', () => { installLog('appinstalled'); installed = true; $('install').classList.add('hidden'); toast(t('installed'), 3500); });
+    addEventListener('appinstalled', () => { installLog('appinstalled', { n: appN }); markInstalled(true); installed = true; $('install').classList.add('hidden'); toast(t('installed'), 3500); });
     checkInstalled();
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkInstalled(); });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
