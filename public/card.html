@@ -767,14 +767,32 @@
           'Conferma: trovi l\'icona 🍕 tra le tue app!',
         ];
       }
+      $('sheetTitle').textContent = t('sheetTitle');
       $('steps').innerHTML = steps.map((s) => '<li>' + s + '</li>').join('');
-      // Android: se la tessera è già installata Chrome non propone "Installa app" (e la pagina non mostra il riquadro da sola)
+      // Android: se la tessera è già installata Chrome non propone "Installa app"; su Xiaomi serve un permesso di Chrome
       $('stepsNote').classList.toggle('hidden', device.ios || device.inApp);
-      $('stepsNote').innerHTML = EN
+      $('stepsNote').innerHTML = (EN
         ? 'If the menu shows <strong>"Open app"</strong> instead, the card is already installed: look for it among your apps.'
-        : 'Se nel menu c\'è invece <strong>"Apri app"</strong>, la tessera è già installata: cercala tra le tue app.';
+        : 'Se nel menu c\'è invece <strong>"Apri app"</strong>, la tessera è già installata: cercala tra le tue app.') + '<br>' + XIAOMI_HINT();
       // su iPhone con Safari il pulsante Condividi è in basso: freccia che lo indica
       $('sheetArrow').classList.toggle('hidden', !(device.ios && !device.iosOtherBrowser && !device.inApp));
+      $('installSheet').classList.remove('hidden');
+    }
+
+    // Xiaomi, Redmi e Poco (MIUI, HyperOS): Chrome installa la tessera ma l'icona compare sulla Home solo se Chrome
+    // ha il permesso "Scorciatoie della schermata Home", spento di serie. Il telefono non si riconosce dal browser,
+    // quindi dopo "Installa" su Android si spiega a tutti dove cercare l'icona e cosa fare se non c'è.
+    const XIAOMI_HINT = () => (EN
+      ? 'No icon on <strong>Xiaomi, Redmi or Poco</strong>? Hold the <strong>Chrome</strong> icon → <strong>App info</strong> → <strong>Other permissions</strong> → allow <strong>Home screen shortcuts</strong>, then tap "Save on phone" again.'
+      : 'Niente icona su <strong>Xiaomi, Redmi o Poco</strong>? Tieni premuta l\'icona di <strong>Chrome</strong> → <strong>Info app</strong> → <strong>Altre autorizzazioni</strong> → consenti le <strong>scorciatoie (collegamenti) sulla schermata Home</strong>, poi tocca di nuovo "Salva sul telefono".');
+    function installedHelp() {
+      $('sheetTitle').textContent = EN ? 'Almost done' : 'Quasi fatto';
+      $('steps').innerHTML = '<li>' + (EN
+        ? 'In a few seconds the <strong>card icon</strong> appears on your Home screen or among your apps (swipe up): open the card from there.'
+        : 'Tra pochi secondi compare l\'<strong>icona della tessera</strong>, sulla schermata Home oppure tra le app (scorri verso l\'alto): aprila da lì.') + '</li>';
+      $('stepsNote').innerHTML = XIAOMI_HINT();
+      $('stepsNote').classList.remove('hidden');
+      $('sheetArrow').classList.add('hidden');
       $('installSheet').classList.remove('hidden');
     }
 
@@ -783,7 +801,10 @@
         installPrompt.prompt();
         const choice = await installPrompt.userChoice.catch(() => null);
         installPrompt = null;
-        if (choice && choice.outcome === 'accepted') $('install').classList.add('hidden');
+        if (choice && choice.outcome === 'accepted') {
+          $('install').classList.add('hidden');
+          if (/Android/i.test(ua)) installedHelp();
+        }
         return;
       }
       openSteps();
