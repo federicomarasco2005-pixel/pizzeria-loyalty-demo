@@ -341,15 +341,6 @@ shop.post('/api/card/:token/consent', (req, res) => {
   res.json({ consentMarketing: on });
 });
 
-// DIAGNOSI TEMPORANEA (30/10): sul telefono Xiaomi di Federico "Installa" non installa la tessera. La pagina racconta
-// cosa fa Chrome (proposta pronta, tocco, scelta, installata); va solo nel registro di Render, con il codice tessera e il
-// modello del telefono. Da togliere appena trovata la causa (anche in card.html: installLog).
-shop.post('/api/card/:token/install-log', (req, res) => {
-  const customer = req.ctx.db.findByToken(req.params.token);
-  if (customer) console.log(`[installa] ${req.ctx.shop.slug} ${customer.code}: ${JSON.stringify(req.body || {}).slice(0, 500)}`);
-  res.status(204).end();
-});
-
 // Notifiche web della tessera (vedi notifiche-web.js): il telefono si iscrive o si toglie con il token della tessera
 shop.post('/api/card/:token/push', (req, res) => {
   const customer = req.ctx.db.findByToken(req.params.token);
@@ -578,16 +569,12 @@ shop.get('/card/:token/manifest.webmanifest', (req, res) => {
   if (!ctx.db.findByToken(req.params.token)) return res.status(404).end();
   const base = `/${cfg.slug}`;
   const v = `?v=${cfg.imgVersion}`;
-  // ?n=: la tessera era installata ed è stata tolta (card.html, newAppIdentity). Alcuni telefoni non reinstallano la
-  // stessa app: con id e indirizzo di partenza diversi per il telefono è un'app nuova. Stessa tessera, stesso token.
-  const n = Math.min(Math.max(parseInt(req.query.n, 10) || 0, 0), 999);
-  const app = n ? `?app=${n}` : '';
   res.type('application/manifest+json').json({
     name: `Tessera ${cfg.pizzeriaName}`,
     short_name: `Tessera ${cfg.emoji}`,
     description: `${cfg.programName}: i tuoi timbri sempre a portata di mano`,
-    id: `${base}/card/${req.params.token}${app}`,
-    start_url: `${base}/card/${req.params.token}${app}`,
+    id: `${base}/card/${req.params.token}`,
+    start_url: `${base}/card/${req.params.token}`,
     scope: `${base}/`,
     display: 'standalone',
     orientation: 'portrait',
@@ -600,7 +587,7 @@ shop.get('/card/:token/manifest.webmanifest', (req, res) => {
     ],
     // La tessera aperta nel browser chiede a Chrome (Android) se questa app è installata: il riquadro
     // "Salva la tessera sul telefono" sparisce dopo l'installazione e ricompare se la si disinstalla.
-    related_applications: [{ platform: 'webapp', url: `${req.protocol}://${req.get('host')}${req.originalUrl.split('?')[0]}${n ? `?n=${n}` : ''}` }],
+    related_applications: [{ platform: 'webapp', url: `${req.protocol}://${req.get('host')}${req.originalUrl.split('?')[0]}` }],
   });
 });
 
