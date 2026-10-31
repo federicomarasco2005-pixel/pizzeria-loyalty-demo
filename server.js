@@ -1367,30 +1367,33 @@ const slotText = (slot) => `${slot.days.length === 7 ? 'ogni giorno' : slot.days
 
 // wait: giorni dall'ultima visita prima di mandare (per profilo); maxDays: oltre, non si manda più
 // why: motivo per cui al cliente non spetta (null = gli spetta, resta da aspettare il momento giusto)
+// Testi semplici, senza punti esclamativi, senza il testo del premio e senza parole come "premio" o "gratis": Chrome su
+// Android li legge con un filtro anti-spam e li nasconde come "Possibile spam" (prova del 31/10: "Ti manca 1 timbro!"
+// con "una pizza gratis", mandato due volte in un minuto). Il premio si vede aprendo la tessera.
 const AUTOMATIONS = {
   waiting: {
     label: 'Il tuo premio ti aspetta', promo: false, slot: 'remind', wait: { giorno: 7, sera: 14 }, maxDays: 60,
-    text: (cfg) => ({ title: `Il tuo premio ti aspetta! ${cfg.emoji}`, body: `Da ${cfg.pizzeriaName} hai un premio da ritirare: ${cfg.rewardText.toLowerCase()}. Mostra la tessera alla prossima visita.` }),
+    text: (cfg) => ({ title: `Tessera completa ${cfg.emoji}`, body: `Hai completato la tessera di ${cfg.pizzeriaName}: alla prossima visita mostrala in cassa.` }),
     why: (c, s) => (s.rewards < 1 ? 'nessun premio da ritirare' : (c.autoSent || {}).waiting === s.earned ? 'già mandato per questo premio' : null),
     mark: (c, s) => ({ waiting: s.earned }),
   },
   near: {
     label: 'Ti manca 1 timbro', promo: false, slot: 'remind', wait: { giorno: 1, sera: 5 }, maxDays: 30,
-    text: (cfg) => ({ title: `Ti manca 1 timbro! ${cfg.emoji}`, body: `Alla prossima visita da ${cfg.pizzeriaName}: ${cfg.rewardText.toLowerCase()}.` }),
+    text: (cfg) => ({ title: `Ti manca 1 timbro ${cfg.emoji}`, body: `Con la prossima visita da ${cfg.pizzeriaName} completi la tessera.` }),
     why: (c, s, cfg) => (s.stamps !== cfg.stampsForReward - 1 ? `ha ${s.stamps} timbri su ${cfg.stampsForReward}: parte a ${cfg.stampsForReward - 1}`
       : (c.autoSent || {}).near === s.earned ? 'già mandato per questo premio' : null),
     mark: (c, s) => ({ near: s.earned }),
   },
   review: {
     label: 'Richiesta di recensione', promo: false, slot: 'review', wait: { giorno: 0, sera: 1 }, minHours: 2, maxDays: 3,
-    text: (cfg) => ({ title: `Ti piace ${cfg.pizzeriaName}?`, body: 'Lasciaci una recensione su Google: per noi conta tantissimo. Trovi il link nella tua tessera.' }),
+    text: (cfg) => ({ title: `Com'è andata da ${cfg.pizzeriaName}?`, body: 'Se ti va, lascia una recensione su Google: il link è nella tua tessera.' }),
     why: (c, s, cfg, settings) => (!settings.reviewUrl ? 'il locale non ha il link delle recensioni' : s.visits < 3 ? `ha ${s.visits} visite: parte dopo la 3ª`
       : (c.autoSent || {}).review ? 'già mandata (una volta sola)' : null),
     mark: () => ({ review: true }),
   },
   inactive: {
     label: 'Ci manchi', promo: true, slot: 'missYou', wait: { giorno: 14, sera: 35 }, maxDays: 150,
-    text: (cfg) => ({ title: `Ci manchi! ${cfg.emoji}`, body: `È da un po' che non passi da ${cfg.pizzeriaName}: i tuoi timbri ti aspettano. ${cfg.rewardText} è più vicino di quanto pensi!` }),
+    text: (cfg) => ({ title: `È da un po' che non passi ${cfg.emoji}`, body: `I tuoi timbri da ${cfg.pizzeriaName} sono ancora lì: ti aspettiamo.` }),
     why: (c, s) => (s.visits < 1 ? 'nessuna visita' : (c.autoSent || {}).inactive === s.lastVisitAt ? 'già mandato per questa assenza' : null),
     mark: (c, s) => ({ inactive: s.lastVisitAt }),
   },
@@ -1458,8 +1461,11 @@ async function autoTest(ctx, c, key) {
   const a = AUTOMATIONS[key];
   if (!a) return { error: 'Messaggio sconosciuto.' };
   if (a.promo && !c.consentMarketing) return { error: `"${a.label}" va solo a chi ha dato il consenso alle offerte: provalo su una tessera con il consenso.` };
+  // L'ora nel testo rende ogni prova diversa dalla precedente: Chrome segna come spam le notifiche uguali ripetute
+  const text = a.text(ctx.cfg);
+  const at = new Date().toLocaleTimeString('it-IT', { timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit' });
   const campaign = ctx.db.createCampaign({
-    ...a.text(ctx.cfg), segment: 'manual', ids: [c.id], promo: a.promo, auto: key, test: true,
+    ...text, body: `${text.body} (prova delle ${at})`, segment: 'manual', ids: [c.id], promo: a.promo, auto: key, test: true,
     sendAt: new Date().toISOString(), recipients: [], keepDays: 1,
   });
   await sendCampaign(ctx, campaign);

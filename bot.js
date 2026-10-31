@@ -653,16 +653,28 @@ function clockOf(iso, withDay = false) {
 }
 
 // Dopo una prova con la notifica web il bot aspetta la ricevuta del telefono (sw.js, con il tag del messaggio) e dice
-// com'è andata: arrivata e mostrata, arrivata ma nascosta dal telefono, oppure mai arrivata e cosa controllare.
-let ackWaitMs = 45000;
+// com'è andata: arrivata e mostrata, arrivata ma nascosta dal telefono, oppure non ancora arrivata e cosa controllare.
+// Se la ricevuta arriva più tardi (il telefono consegna solo quando si riapre Chrome: prova del 31/10, 67 secondi dopo)
+// il bot lo scrive con il ritardo: è il segno del risparmio batteria.
+let ackWaitMs = 90000;
+let lateWaitMs = 5 * 60000;
+const BATTERY_STEPS = 'Honor: Impostazioni → Batteria → Avvio app → Chrome: togli «Gestisci automaticamente» e accendi tutte e tre le voci. ' +
+  'Xiaomi/Redmi: Impostazioni → App → Gestisci app → Chrome: «Avvio automatico» acceso e Risparmio batteria «Nessuna restrizione».';
+const ackOf = (c, tag, since) => {
+  const a = c && c.webPushAck;
+  return a && (a.tag ? a.tag === tag : Date.parse(a.at) >= since) ? a : null;
+};
+const duration = (ms) => {
+  const s = Math.round(ms / 1000);
+  const m = Math.floor(s / 60);
+  return m ? `${m} ${m === 1 ? 'minuto' : 'minuti'}${s % 60 ? ` e ${s % 60} secondi` : ''}` : `${s} secondi`;
+};
 function ackVerdict(c, tag, since) {
-  const a = c.webPushAck;
-  const mine = a && (a.tag ? a.tag === tag : Date.parse(a.at) >= since);
-  if (!mine) {
-    return `❌ <b>La notifica web non è arrivata al telefono</b>: dopo ${Math.round(ackWaitMs / 1000)} secondi nessuna ricevuta.\n\n` +
+  const a = ackOf(c, tag, since);
+  if (!a) {
+    return `❌ <b>La notifica web non è ancora arrivata al telefono</b>: dopo ${duration(ackWaitMs)} nessuna ricevuta. Se arriva più tardi te lo scrivo.\n\n` +
       'Tocca «⏱️ Prova a tempo», apri subito la tessera dall\'icona sulla Home e aspetta lì.\n' +
-      '• <b>Se così arriva</b>, il telefono blocca Chrome quando non lo usi. Honor: Impostazioni → Batteria → Avvio app → Chrome: togli «Gestisci automaticamente» e accendi tutte e tre le voci. ' +
-      'Xiaomi/Redmi: Impostazioni → App → Gestisci app → Chrome: «Avvio automatico» acceso e Risparmio batteria «Nessuna restrizione».\n' +
+      `• <b>Se così arriva</b>, il telefono blocca Chrome quando non lo usi. ${BATTERY_STEPS}\n` +
       '• <b>Se non arriva nemmeno così</b>, il telefono è iscritto a un indirizzo che il server non conosce: chiudi la tessera, riaprila dall\'icona due volte e riprova.';
   }
   const when = clockOf(a.at);
@@ -671,7 +683,8 @@ function ackVerdict(c, tag, since) {
   }
   if (!a.shown) return `📬 Arrivata sul telefono alle ${when}, ma il telefono non l'ha mostrata (${esc(a.error || 'errore')}).`;
   return `✅ <b>Notifica web arrivata sul telefono alle ${when} e mostrata.</b> Se nella tendina non l'hai vista, la nasconde il telefono: ` +
-    'Impostazioni → Notifiche → Chrome (e «Tessera …»): consenti, con banner e schermata di blocco.';
+    'Impostazioni → Notifiche → Chrome (e «Tessera …»): consenti, con banner e schermata di blocco.\n' +
+    'Se al suo posto c\'è «Possibile spam», è il filtro di Chrome: apri l\'avviso e scegli di mostrarla, mai «Annulla iscrizione» (toglie il permesso).';
 }
 
 async function sendAutoTest(chat, slug, code, key, delayMs = 0) {
@@ -701,15 +714,25 @@ async function sendAutoTest(chat, slug, code, key, delayMs = 0) {
   } else if (res.failed) lines.push('⚠️ Wallet: Google ha rifiutato il messaggio. La tessera è salvata nel Wallet?');
   else if (!c.walletSaved) lines.push('📱 Wallet: la tessera non risulta salvata nel Google Wallet.');
   // Notifica web (tessera sulla Home)
-  if (res.web) lines.push(`🔔 <b>Notifica web partita.</b> Tra ${Math.round(ackWaitMs / 1000)} secondi ti dico se il telefono l'ha ricevuta.`);
+  if (res.web) lines.push(`🔔 <b>Notifica web partita.</b> Tra ${duration(ackWaitMs)} ti dico se il telefono l'ha ricevuta.`);
   else if (res.webFailed) lines.push('⚠️ La notifica web non è partita: l\'indirizzo del telefono non vale più. Riattiva le notifiche dalla tessera.');
   else if (!(c.webPush || []).length) lines.push('🔔 Notifiche web non attivate su questa tessera.');
   if (res.web) {
+    const again = kb([[btn('⏱️ Prova a tempo (30 s)', `pdelay:${slug}|${code}|${key}`), btn('🔁 Stato della tessera', `pplan:${slug}|${code}`)]]);
     const t = setTimeout(() => {
       const now = ctx.db.findByCode(code);
       if (!now) return;
-      send(chat, ackVerdict(now, r.tag, since), kb([[btn('⏱️ Prova a tempo (30 s)', `pdelay:${slug}|${code}|${key}`), btn('🔁 Stato della tessera', `pplan:${slug}|${code}`)]]))
-        .catch((err) => console.error(`[bot] ${err.message}`));
+      send(chat, ackVerdict(now, r.tag, since), again).catch((err) => console.error(`[bot] ${err.message}`));
+      if (ackOf(now, r.tag, since)) return;
+      // ricevuta in ritardo: il telefono ha consegnato l'avviso solo quando Chrome è ripartito
+      const t2 = setTimeout(() => {
+        const a = ackOf(ctx.db.findByCode(code), r.tag, since);
+        if (!a) return;
+        send(chat, `📬 <b>Arrivata in ritardo</b>, alle ${clockOf(a.at)}: ${duration(Date.parse(a.at) - since)} dopo l'invio. ` +
+          `Il telefono consegna le notifiche solo quando riapri Chrome o la tessera: è il risparmio batteria. ${BATTERY_STEPS}`, again)
+          .catch((err) => console.error(`[bot] ${err.message}`));
+      }, Math.max(0, lateWaitMs - ackWaitMs));
+      if (t2.unref) t2.unref();
     }, ackWaitMs);
     if (t.unref) t.unref();
   }
@@ -925,5 +948,6 @@ const enabled = () => !!M && !!ownerId && (!!TOKEN || call !== telegram);
 
 module.exports = {
   mount, start, handleUpdate, alert, enabled, sendBackup, sendWeeklyReports, sendMonthlyReports,
-  setAckWait: (ms) => { ackWaitMs = ms; }, // per i test: attesa della ricevuta dopo una prova
+  // per i test: attesa della ricevuta dopo una prova e del controllo dei ritardi
+  setAckWait: (ms, lateMs = 5 * 60000) => { ackWaitMs = ms; lateWaitMs = lateMs; },
 };

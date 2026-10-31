@@ -241,7 +241,7 @@ test('prova dal bot: la notifica web parte anche dopo le 3 del giorno, il bot di
   for (let i = 0; i < 3; i++) bar.db.logNotification(rita.id, 'stamp', true); // tre "+1 timbro" oggi: limite raggiunto
   assert.strictEqual(bar.db.canPush(rita.id), false);
   assert.ok(Date.parse(manager.nextPushAt(bar, rita)) > Date.now() + 23 * 3600e3, 'la prossima notifica tra circa 24 ore');
-  bot.setAckWait(40);
+  bot.setAckWait(40, 150);
 
   // la prova parte lo stesso e non consuma il limite; il giro automatico, passato durante l'invio, non la rimanda
   const tapped = tap(`psend:${bar.shop.slug}|${rita.code}|near`);
@@ -251,6 +251,10 @@ test('prova dal bot: la notifica web parte anche dopo le 3 del giorno, il bot di
   assert.strictEqual(bar.db.pushesLast24h(rita.id), 3, 'la prova web non conta nel limite');
   assert.match(sent.at(-1).text, /Notifica web partita/);
   assert.ok(delivered[0].ack.startsWith(`/${bar.shop.slug}/api/card/`), 'ricevuta allo stesso sito della tessera');
+  // testi che il filtro anti-spam di Chrome non scambia per pubblicità: niente "!", niente premio o "gratis";
+  // e ogni prova ha l'ora nel testo, così due prove di fila non sono identiche
+  assert.ok(!/[!]|premio|gratis|omaggio/i.test(`${delivered[0].title} ${delivered[0].body}`), `${delivered[0].title} — ${delivered[0].body}`);
+  assert.match(delivered[0].body, /\(prova delle \d\d:\d\d\)$/);
 
   // il telefono manda la ricevuta con il tag del messaggio: il bot dice da solo che è arrivata
   await post(`/api/card/${rita.token}/push/ack`, { permission: 'granted', shown: true, tag: delivered[0].tag });
@@ -259,11 +263,15 @@ test('prova dal bot: la notifica web parte anche dopo le 3 del giorno, il bot di
   // nessuna ricevuta per la prova successiva: il bot spiega cosa controllare e propone la prova a tempo
   await tap(`psend:${bar.shop.slug}|${rita.code}|near`);
   await new Promise((r) => setTimeout(r, 100));
-  assert.match(sent.at(-1).text, /non è arrivata al telefono/);
+  assert.match(sent.at(-1).text, /non è ancora arrivata al telefono/);
   assert.ok(sent.at(-1).kb.inline_keyboard.flat().some((b) => b.callback_data === `pdelay:${bar.shop.slug}|${rita.code}|near`));
+  // la ricevuta arriva dopo il verdetto (telefono che consegna solo quando si riapre Chrome): il bot lo scrive
+  await post(`/api/card/${rita.token}/push/ack`, { permission: 'granted', shown: true, tag: delivered[1].tag });
+  await new Promise((r) => setTimeout(r, 200));
+  assert.match(sent.at(-1).text, /Arrivata in ritardo.*risparmio batteria/s);
   await tap(`pdelay:${bar.shop.slug}|${rita.code}|near`);
   assert.match(sent.at(-1).text, /parte tra 30 secondi/);
-  bot.setAckWait(45000);
+  bot.setAckWait(90000);
 });
 
 test('kit di lancio e report del mese in PDF, anche dal bot', async () => {
