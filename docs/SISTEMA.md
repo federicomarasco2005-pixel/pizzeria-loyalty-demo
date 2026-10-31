@@ -1,6 +1,6 @@
 # Tessere fedeltà digitali: come funziona tutto il sistema
 
-*Stato aggiornato al 22 ottobre 2026. Documento per riprendere il lavoro da zero: leggilo prima di toccare qualcosa. Lo stato del giorno e le cose da fare sono in `HANDOFF.md`.*
+*Stato aggiornato al 31 ottobre 2026. Documento per riprendere il lavoro da zero: leggilo prima di toccare qualcosa. Lo stato del giorno e le cose da fare sono in `HANDOFF.md`.*
 
 ---
 
@@ -90,7 +90,7 @@ Tutti e tre sono esclusi da `.gitignore`.
 
 Dal 10 ottobre 2026 (nuovo PC) `loyalty-demo` è una copia git collegata a GitHub (`origin/main`). Node 24 e Git sono installati.
 
-1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 45.
+1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 48.
 2. Pubblica con git: `git add …`, `git commit`, `git push`.
    - Il login GitHub (account **federicomarasco2005-pixel**) è già salvato su questo PC: `git push` funziona.
    - Ripiego, se git non va: caricare i file dal browser su `github.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/upload/main/<cartella>` (una cartella per commit).
@@ -167,6 +167,7 @@ render.yaml  Blueprint Render (servizio + database)
   - `customer.settleAt`, la fine dell'animazione nel Wallet;
   - lo stato delle campagne (`pending`, `sentTo`);
   - lo stato dei lavori periodici (`jobs`).
+- Se una scrittura su Postgres fallisce il server avvisa sul bot, al massimo ogni 30 minuti (`db.onWriteError`, dal 30/10 sera): il dato resta solo in memoria e si perde al riavvio.
 
 ### 4.4 Google Wallet (wallet.js)
 - **Una classe per locale** (`loyaltyClass`) con:
@@ -275,6 +276,7 @@ render.yaml  Blueprint Render (servizio + database)
 - **Segmenti**: tutti, a 1 timbro dal premio, con un premio da ritirare, inattivi da 30 o più giorni, mai tornati, nuovi negli ultimi 7 giorni, scelti a mano.
 - Invio subito o **programmato**: le campagne vengono controllate ogni 30 secondi e da `/api/cron`.
 - Ogni campagna si ricorda a chi è già stata inviata: se il server riparte a metà riprende senza doppioni.
+- Un invio in corso non viene ripreso dal giro ogni 30 secondi (`sendingNow`, dal 30/10 sera): prima "manda subito" dalla dashboard e le prove dal bot potevano partire due volte.
 - Il messaggio resta nella tessera per `keepDays`, poi sparisce. "Elimina dalle tessere" lo toglie subito.
 
 ---
@@ -308,7 +310,7 @@ render.yaml  Blueprint Render (servizio + database)
 - **Per chi**: clienti che aprono la tessera dall'**icona sulla Home** (iPhone con iOS 16.4 o più recente, Android installata) o da un server senza Wallet. Chi ha anche la tessera nel Wallet le vede solo se il locale manda gli avvisi "insieme" (sotto). Dal browser normale il riquadro non compare: su Android si propone il Wallet, su iPhone il riquadro "Salva sul telefono" dice che l'icona porta anche gli avvisi.
 - **Canale del locale** (dal 30/10, bot → scheda del locale → 🤖 Automazioni, `settings.notifyChannel`, `channelOf` in `server.js`): `both` **Wallet e tessera web insieme** (di default: chi ha tutte e due riceve due avvisi, che contano una volta sola nel limite di 3); `split` tessera web solo a chi non ha il Wallet (com'era fino al 29/10); `wallet` solo Wallet (la tessera non riceve la chiave e non propone le notifiche). Il Wallet avvisa sempre chi ha la tessera lì, anche per i "+1 timbro". Il riquadro "Salva la tessera sul telefono" compare **a ogni apertura finché la tessera non è installata**, anche a chi ha il Wallet: il manifest della tessera ha `related_applications` (il proprio indirizzo) e la pagina chiede a Chrome su Android (`navigator.getInstalledRelatedApps`) se l'app è installata, all'apertura e a ogni ritorno sulla pagina; dopo l'installazione sparisce, dopo la disinstallazione ricompare. "Più tardi" lo nasconde solo fino alla prossima apertura (`sessionStorage`). Su iPhone non si può sapere: compare sempre in Safari, mai dall'icona. **Installazione lenta** (30/10): su Android l'app della tessera la installa Google Play, in coda con gli altri download; su alcuni telefoni (Honor di Federico) arriva dopo minuti, e Chrome dice "installata" subito. Il riquadro "Quasi fatto" lo spiega e dice di non toccare di nuovo Installa (si avrebbe la stessa tessera due volte). Le istruzioni dicono che "Apri app" nel menu vuol dire tessera già installata. **Xiaomi, Redmi, Poco** (MIUI, HyperOS): Chrome installa ma l'icona compare solo se Chrome ha il permesso "Scorciatoie della schermata Home" (Info app di Chrome → Altre autorizzazioni), spento di serie; il telefono non si riconosce dal browser, quindi dopo "Installa" su Android la tessera mostra "Quasi fatto" con questa spiegazione (anche nelle istruzioni a mano).
 - **Nella tessera**: riquadro "🔔 Attiva le notifiche" → permesso del telefono → iscrizione (`POST api/card/<token>/push`), salvata in `customer.webPush` (al massimo 5 dispositivi). A ogni apertura dall'icona la tessera rimanda l'iscrizione attuale del telefono (dal 30/10; il server la salva solo se è nuova): prima la mandava solo se il server non ne aveva nessuna, e gli avvisi potevano andare a un indirizzo vecchio. "Disattiva le notifiche" in *Privacy e impostazioni* (`push/off`). Stati: da attivare, attive, bloccate dal telefono; "Più tardi" la nasconde per 7 giorni.
-- **Invio** (`notifiche-web.js`, libreria `web-push`): nei messaggi delle campagne (automatici, del locale e prove dal bot) chi ha dispositivi iscritti riceve la notifica web secondo il canale del locale; stesso limite di 3 al giorno (`canPush`). Toccandola si apre la tessera. Indirizzi scaduti (404/410) tolti da soli. Partono con `urgency: high` (dal 30/10): Google le consegna subito anche col telefono in standby o a risparmio energetico. **Ricevuta**: il service worker, appena mostra la notifica, la conferma al server (`POST api/card/<token>/push/ack`, con lo stato del permesso) → registro di Render `[notifiche web] <locale> <codice>: arrivata sul telefono` e `customer.webPushAck`. I "+1 timbro" non vanno come notifica web (il cliente è nel locale con la tessera aperta).
+- **Invio** (`notifiche-web.js`, libreria `web-push`): nei messaggi delle campagne (automatici, del locale e prove dal bot) chi ha dispositivi iscritti riceve la notifica web secondo il canale del locale; stesso limite di 3 al giorno (`canPush`). Toccandola si apre la tessera. Indirizzi scaduti (404/410) tolti da soli. Partono con `urgency: high` (dal 30/10): Google le consegna subito anche col telefono in standby o a risparmio energetico. **Ricevuta**: il service worker, appena mostra la notifica, la conferma al server (`POST api/card/<token>/push/ack`, con lo stato del permesso) → registro di Render `[notifiche web] <locale> <codice>: arrivata sul telefono` e `customer.webPushAck`. **Prove dal bot** (dal 30/10 sera): la notifica web di prova parte sempre e non conta nel limite; il Wallet ci prova e il bot dice se Google ha finito le 3 notifiche del giorno e quando torna libera la prossima. La ricevuta porta il tag del messaggio ed è un percorso (va al sito da cui è aperta la tessera); il bot aspetta 45 secondi e manda il verdetto: arrivata e mostrata, nascosta dal telefono, oppure mai arrivata, con i passi per Honor e Xiaomi. «⏱️ Prova a tempo» parte dopo 30 secondi, per provare con la tessera aperta. Prova completa sul PC con Chrome: `tools/prova-notifiche-pc.mjs`. I "+1 timbro" non vanno come notifica web (il cliente è nel locale con la tessera aperta).
 - **Chiavi**: `VAPID_PUBLIC_KEY` (in `render.yaml`, non segreta) e `VAPID_PRIVATE_KEY` (solo su Render; sul PC in `Clode/segreti/notifiche-web-privata.txt`). Senza la privata le notifiche web sono spente e il riquadro non compare. **Non cambiarle**: i clienti dovrebbero riattivare le notifiche. L'anteprima sul PC usa una coppia a parte (`notifiche-web-anteprima.json`).
 - **Privacy**: l'informativa lo spiega; l'export mostra solo il servizio che consegna (es. web.push.apple.com) e la data, non le chiavi del telefono. Il service worker (`sw.js`) mostra la notifica e apre la tessera.
 - **Statistiche e bot**: "con le notifiche web" tra gli iscritti; tra i messaggi, arrivati con notifica Wallet o web; la prova dal bot dice se la tessera ha notifiche web attive, se la notifica web è partita e l'ultima **ricevuta dal telefono** (📬): senza ricevuta l'avviso non arriva al telefono (Chrome fermato dal risparmio batteria, iscrizione vecchia); con la ricevuta ma niente nella tendina, lo nasconde il telefono (notifiche di Chrome o dell'app della tessera spente). Il registro di Render conta anche le notifiche web (`web N`).
@@ -349,7 +351,7 @@ render.yaml  Blueprint Render (servizio + database)
 - Bot Telegram: online (webhook), creazione dei locali verificata dal vivo. Dipendenti, gestori, report, backup e avvisi sono coperti dai test, **non ancora provati dal vivo** da Federico.
 - Postgres a tabelle e migrazione: eseguiti dal vivo l'8 ottobre 2026, senza perdite.
 - Sicurezza (email già usata, blocco PIN e recupero) e privacy (export, cancellazione): coperti dai test e pubblicati.
-- 45 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
+- 48 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
 
 ---
 

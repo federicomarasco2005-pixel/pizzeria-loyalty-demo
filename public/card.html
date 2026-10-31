@@ -630,6 +630,7 @@
       $('inwallet').classList.toggle('hidden', !inWallet || device.ios);
       updateInstall();
       paintPush(c);
+      sendDiag();
     }
 
     // ---------- Notifiche della tessera (notifiche web) ----------
@@ -699,6 +700,23 @@
       toast(t('notifyOffDone'));
       paintPush({ ...pushCard, webPush: 0 });
     };
+
+    // DIAGNOSI TEMPORANEA (30/10, notifiche web che non arrivano ai telefoni): all'apertura la tessera scrive nel
+    // registro di Render come il telefono vede notifiche e iscrizione. Da togliere dopo la prova.
+    let diagSent = false;
+    async function sendDiag() {
+      if (diagSent || !('serviceWorker' in navigator)) return;
+      diagSent = true;
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+        api('api/card/' + encodeURIComponent(token) + '/diag', { method: 'POST', body: {
+          standalone: device.standalone, perm: 'Notification' in window ? Notification.permission : 'no',
+          sub: sub ? sub.endpoint.slice(-10) : null, host: sub ? new URL(sub.endpoint).host : null,
+          sw: reg && reg.active ? 'attivo' : 'no', ctl: !!navigator.serviceWorker.controller, ua: navigator.userAgent,
+        } }).catch(() => {});
+      } catch {}
+    }
 
     // ---------- Salva la tessera sul telefono (app web installabile) ----------
     const ua = navigator.userAgent;

@@ -52,11 +52,13 @@ self.addEventListener('fetch', (e) => {
 // Toccandola si apre la tessera (quella già aperta, se c'è).
 // Poi manda la ricevuta al server (m.ack): l'avviso è arrivato al telefono, con lo stato del permesso. Se c'è la
 // ricevuta ma nella tendina non si vede niente, lo blocca il telefono (impostazioni di notifiche o batteria).
+// La ricevuta va sempre al sito da cui è stata aperta la tessera (m.ack è un percorso) e dice quale messaggio (tag).
 self.addEventListener('push', (e) => {
   let m = {};
   try { m = e.data ? e.data.json() : {}; } catch {}
-  const ack = (r) => (m.ack ? fetch(m.ack, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permission: self.Notification ? Notification.permission : '?', ...r }),
+  const ack = (r) => (m.ack ? fetch(new URL(m.ack, self.location.origin), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ permission: self.Notification ? Notification.permission : '?', tag: m.tag, ...r }),
   }).catch(() => {}) : null);
   e.waitUntil(self.registration.showNotification(m.title || 'La tua tessera', {
     body: m.body || '', icon: m.icon, badge: m.icon, tag: m.tag, data: { url: m.url || '/' },

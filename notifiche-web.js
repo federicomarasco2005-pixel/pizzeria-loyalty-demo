@@ -52,7 +52,9 @@ async function send(subs = [], message) {
     try {
       // urgency high: Google la consegna subito anche a telefono in standby o con il risparmio energetico
       // (con la normale Android può tenerla ferma finché il telefono non si "sveglia")
-      await sender({ endpoint: s.endpoint, keys: s.keys }, payload, { TTL: 3 * 24 * 3600, urgency: 'high' });
+      const r = await sender({ endpoint: s.endpoint, keys: s.keys }, payload, { TTL: 3 * 24 * 3600, urgency: 'high' });
+      // DIAGNOSI TEMPORANEA (30/10): a quale indirizzo è andata e cosa ha risposto il servizio. Da togliere dopo la prova.
+      console.log(`[diagnosi] notifica web → ${new URL(s.endpoint).host} …${s.endpoint.slice(-10)}: ${(r && r.statusCode) || '?'}`);
       sent++;
     } catch (err) {
       if (err.statusCode === 404 || err.statusCode === 410) gone.push(s.endpoint);

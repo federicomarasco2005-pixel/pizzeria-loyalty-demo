@@ -353,6 +353,19 @@ shop.post('/api/card/:token/push', (req, res) => {
   if (!known) req.ctx.db.updateCustomer(customer.id, { webPush: notificheWeb.addTo(customer.webPush, sub) });
   res.json({ ok: true, devices: customer.webPush.length });
 });
+// DIAGNOSI TEMPORANEA (30/10): come il telefono vede notifiche e iscrizione (card.html, sendDiag). Da togliere dopo la prova.
+shop.post('/api/card/:token/diag', (req, res) => {
+  const customer = req.ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  const b = req.body || {};
+  const s = (v, n = 20) => String(v == null ? '' : v).slice(0, n);
+  const known = (customer.webPush || []).map((x) => `${new URL(x.endpoint).host} …${x.endpoint.slice(-10)} (${s(x.at, 16)})`);
+  const mine = b.sub && (customer.webPush || []).some((x) => x.endpoint.endsWith(s(b.sub, 10)));
+  console.log(`[diagnosi] ${req.ctx.shop.slug} ${customer.code}: dall'icona ${b.standalone ? 'sì' : 'no'}, permesso ${s(b.perm)}, `
+    + `iscrizione ${b.sub ? `${s(b.host, 60)} …${s(b.sub, 10)} ${mine ? '(nota al server)' : '(SCONOSCIUTA al server)'}` : 'nessuna'}, `
+    + `sw ${s(b.sw)}/${b.ctl ? 'controlla la pagina' : 'non controlla'}; il server ne ha ${known.length}: ${known.join(' | ') || '-'} · ${s(b.ua, 180)}`);
+  res.json({ ok: true });
+});
 // Ricevuta dal telefono (sw.js): l'avviso web è arrivato. Si vede nel registro e nella prova notifiche del bot.
 shop.post('/api/card/:token/push/ack', (req, res) => {
   const customer = req.ctx.db.findByToken(req.params.token);
@@ -360,6 +373,7 @@ shop.post('/api/card/:token/push/ack', (req, res) => {
   const b = req.body || {};
   const ack = { at: new Date().toISOString(), permission: String(b.permission || '').slice(0, 20), shown: b.shown === true };
   if (b.error) ack.error = String(b.error).slice(0, 200);
+  if (b.tag) ack.tag = String(b.tag).slice(0, 40); // quale messaggio: la prova dal bot riconosce la sua ricevuta
   req.ctx.db.updateCustomer(customer.id, { webPushAck: ack });
   console.log(`[notifiche web] ${req.ctx.shop.slug} ${customer.code}: arrivata sul telefono (permesso ${ack.permission}, ${ack.shown ? 'mostrata' : `non mostrata: ${ack.error || '?'}`})`);
   res.json({ ok: true });
@@ -1157,7 +1171,21 @@ async function cleanCampaign(ctx, campaign) {
   }
 }
 
+// Invii in corso. "Manda subito" dalla dashboard e la prova dal bot inviano mentre il giro ogni 30 secondi riprende
+// gli invii rimasti a metà: senza questo segno lo stesso invio partiva due volte e i clienti ricevevano il messaggio doppio.
+const sendingNow = new Set();
 async function sendCampaign(ctx, campaign) {
+  const key = `${ctx.shop.slug}|${campaign.id}`;
+  if (sendingNow.has(key)) return;
+  sendingNow.add(key);
+  try {
+    await deliverCampaign(ctx, campaign);
+  } finally {
+    sendingNow.delete(key);
+  }
+}
+
+async function deliverCampaign(ctx, campaign) {
   // Il messaggio resta nella tessera per keepDays giorni, poi sparisce da solo.
   const expiresAt = campaign.expiresAt || new Date(Date.now() + (campaign.keepDays || 3) * DAY_MS).toISOString();
   // destinatari fissati al primo tentativo; se il server riparte a metà si riprende da dove era rimasto
@@ -1179,26 +1207,37 @@ async function sendCampaign(ctx, campaign) {
     const viaWeb = notificheWeb.enabled() && (customer.webPush || []).length > 0
       && (channel === 'both' || (channel === 'split' && !customer.walletSaved));
     const canNotify = ctx.db.canPush(customer.id);
+    // Prova dal bot (campaign.test): il limite di 3 notifiche al giorno è di Google e vale solo per il Wallet.
+    // La notifica web di prova parte sempre e non conta; il Wallet ci prova comunque e, se le 3 di oggi sono finite,
+    // lo dice Google (il messaggio arriva senza suono). Prima anche le prove web si fermavano alla terza (30/10).
+    const tryPush = canNotify || !!campaign.test;
     let notified = false;
     if (wallet.enabled()) {
+      const wantPush = tryPush && (customer.walletSaved || !viaWeb);
       const r = await wallet.notify(customer, withShop(ctx.cfg, campaign.title), campaign.body, {
-        push: canNotify && (customer.walletSaved || !viaWeb), messageId: `c_${campaign.id}`, expiresAt,
+        push: wantPush, messageId: `c_${campaign.id}`, expiresAt,
       });
       if (!r.ok) results.failed++;
       else if (r.push) { results.push++; notified = true; ctx.db.logNotification(customer.id, 'campaign', true); }
-      else if (!viaWeb) results.textOnly++;
+      else {
+        if (wantPush) results.walletQuota = (results.walletQuota || 0) + 1; // Google: notifiche di oggi finite
+        if (!viaWeb) results.textOnly++;
+      }
     }
     if (viaWeb) {
-      if (!canNotify) results.textOnly++;
+      if (!tryPush) results.textOnly++;
       else {
         const w = await notificheWeb.send(customer.webPush, {
           title: withShop(ctx.cfg, campaign.title), body: campaign.body, tag: `c_${campaign.id}`,
           url: `${ctx.cfg.baseUrl}/card/${encodeURIComponent(customer.token)}`, icon: `${ctx.cfg.baseUrl}/icons/icon-192.png?v=${ctx.cfg.imgVersion}`,
-          ack: `${ctx.cfg.baseUrl}/api/card/${encodeURIComponent(customer.token)}/push/ack`,
+          // solo il percorso: il telefono lo manda al sito da cui ha aperto la tessera (f5m.it o il vecchio onrender.com)
+          ack: `${new URL(ctx.cfg.baseUrl).pathname.replace(/\/$/, '')}/api/card/${encodeURIComponent(customer.token)}/push/ack`,
         });
         if (w.gone.length) ctx.db.updateCustomer(customer.id, { webPush: customer.webPush.filter((s) => !w.gone.includes(s.endpoint)) });
-        if (w.sent) { results.web = (results.web || 0) + 1; if (!notified) ctx.db.logNotification(customer.id, 'campaign', true); }
-        else results.webFailed = (results.webFailed || 0) + 1;
+        if (w.sent) {
+          results.web = (results.web || 0) + 1;
+          if (!notified && !campaign.test) ctx.db.logNotification(customer.id, 'campaign', true);
+        } else results.webFailed = (results.webFailed || 0) + 1;
       }
     }
     // La tessera web aperta mostra subito il messaggio.
@@ -1213,7 +1252,7 @@ async function sendCampaign(ctx, campaign) {
   // Non subito: riscrivere il pass appena dopo addMessage riporta il messaggio nuovo a semplice testo e
   // Google può non far suonare il telefono (prova del 25/10: messaggio nella tessera, nessuna notifica).
   if (wallet.enabled()) for (const c of recipients) settleWallet(ctx, c);
-  console.log(`[notifiche] ${ctx.shop.slug}: "${campaign.title}" inviata a ${results.total} (push ${results.push}, web ${results.web || 0}, solo testo ${results.textOnly}, errori ${results.failed}${results.webFailed ? `, web non partite ${results.webFailed}` : ''})`);
+  console.log(`[notifiche] ${ctx.shop.slug}: "${campaign.title}"${campaign.test ? ' (prova)' : ''} inviata a ${results.total} (push ${results.push}, web ${results.web || 0}, solo testo ${results.textOnly}, errori ${results.failed}${results.walletQuota ? `, Wallet senza suono (limite Google) ${results.walletQuota}` : ''}${results.webFailed ? `, web non partite ${results.webFailed}` : ''})`);
 }
 
 // Invia le campagne programmate scadute di tutti i locali. Chiamato ogni 30 secondi e da /api/cron
@@ -1424,7 +1463,8 @@ async function autoTest(ctx, c, key) {
     sendAt: new Date().toISOString(), recipients: [], keepDays: 1,
   });
   await sendCampaign(ctx, campaign);
-  return { results: ctx.db.findCampaign(campaign.id).results, walletEnabled: wallet.enabled() };
+  // tag: lo rimanda il telefono nella ricevuta (sw.js), così il bot sa se è arrivata proprio questa prova
+  return { results: ctx.db.findCampaign(campaign.id).results, walletEnabled: wallet.enabled(), tag: `c_${campaign.id}` };
 }
 
 // ---------- Numeri di un mese (report mensile) ----------
@@ -1711,6 +1751,7 @@ const manager = {
   autoPlan: (ctx, customer, now) => autoPlan(ctx, customer, now),
   autoTest: (ctx, customer, key) => autoTest(ctx, customer, key),
   pushesLast24h: (ctx, customer) => ctx.db.pushesLast24h(customer.id),
+  nextPushAt: (ctx, customer) => ctx.db.nextPushAt(customer.id),
   setAutomation(slug, key, on) {
     const ctx = shops.get(slug);
     if (!ctx || !AUTOMATIONS[key]) return null;
@@ -1764,6 +1805,9 @@ async function announceDeploy() {
 }
 
 const ready = (async () => {
+  // Database che non salva (spento, pieno, ore di calcolo finite): i dati nuovi restano solo in memoria e si perdono
+  // al primo riavvio. Prima finiva solo nel registro di Render; ora arriva subito un avviso sul bot (al massimo ogni 30 minuti).
+  db.onWriteError((err) => bot.alert(`🔴 Il database non salva più: ${err.message.slice(0, 200)}\nTimbri e iscrizioni nuovi restano solo in memoria e si perdono al prossimo riavvio del server.`, 'db-scrittura', 30 * 60e3));
   await db.init();
   await attempts.load();
   await shops.init(PUBLIC_URL);

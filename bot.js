@@ -427,6 +427,11 @@ async function onButton(chat, data, msg) {
     const [slug, code, key] = arg.split('|');
     return sendAutoTest(chat, slug, code, key);
   }
+  // prova a tempo: parte tra 30 secondi, il tempo di aprire la tessera (o di bloccare il telefono)
+  if (action === 'pdelay') {
+    const [slug, code, key] = arg.split('|');
+    return sendAutoTest(chat, slug, code, key, 30000);
+  }
   if (action === 'pplan') {
     const [slug, code] = arg.split('|');
     return showAutoPlan(chat, slug, code);
@@ -618,6 +623,7 @@ function showAutoPlan(chat, slug, codeText) {
   const c = ctx.db.findByCode(code);
   if (!c) return send(chat, `Nessuna tessera ${esc(code)} in ${esc(ctx.cfg.pizzeriaName)}.`, kb([[btn('🔁 Riprova', `ptest:${slug}`), btn('⬅️ Automazioni', `auto:${slug}`)]]));
   const plan = M.autoPlan(ctx, c);
+  const next = M.nextPushAt(ctx, c);
   const lines = plan.map((p) => (!p.block ? `🟢 <b>${esc(p.label)}</b> — partirà entro 10 minuti`
     : /^aspetta/.test(p.block) ? `⏳ <b>${esc(p.label)}</b> — ${esc(p.block)}`
       : `⚪ <b>${esc(p.label)}</b> — ${esc(p.block)}`));
@@ -628,29 +634,86 @@ function showAutoPlan(chat, slug, codeText) {
     `${!c.walletSaved && !(c.webPush || []).length ? '\n<i>Senza Wallet e senza notifiche web il messaggio si vede solo aprendo la tessera.</i>' : ''}\n` +
     `${(c.webPush || []).length ? `${ackLine(c.webPushAck)}\n` : ''}` +
     `📡 Avvisi del locale: ${CHANNELS[M.notifyChannel(ctx)].label}\n` +
-    `🔕 Notifiche usate nelle ultime 24 ore: ${M.pushesLast24h(ctx, c)} di 3 (limite di Google, contano anche i "+1 timbro")\n\n` +
+    `🔕 Notifiche usate nelle ultime 24 ore: ${M.pushesLast24h(ctx, c)} di 3 (limite di Google per il Wallet, contano anche i "+1 timbro")` +
+    `${next ? `: la prossima il ${clockOf(next, true)}` : ''}\n\n` +
     lines.join('\n') +
-    '\n\nCon i pulsanti ricevi subito il messaggio, senza aspettare giorni e orari: è solo una prova, non cambia niente per il cliente e non conta per i limiti dei messaggi automatici (usa però una delle 3 notifiche al giorno di Google).',
+    '\n\nCon i pulsanti ricevi subito il messaggio, senza aspettare giorni e orari: è solo una prova, non cambia niente per il cliente e non conta per i limiti dei messaggi automatici. ' +
+    'La notifica web di prova parte sempre; quella del Wallet usa una delle 3 notifiche al giorno di Google.\n' +
+    '⏱️ <b>Prova a tempo</b>: parte dopo 30 secondi, così fai in tempo ad aprire la tessera dall\'icona (o a bloccare il telefono).',
     kb([...plan.map((p) => [btn(`📨 Invia ora: ${p.label}`, `psend:${slug}|${c.code}|${p.key}`)]),
+      [btn('⏱️ Prova a tempo (30 s): Ti manca 1 timbro', `pdelay:${slug}|${c.code}|near`)],
       [btn('⬅️ Automazioni', `auto:${slug}`)]]));
 }
 
-async function sendAutoTest(chat, slug, code, key) {
+// Ora italiana di un istante: "19:05:12", oppure con il giorno "31/10 alle 15:56"
+function clockOf(iso, withDay = false) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString('it-IT', { timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit', ...(!withDay && { second: '2-digit' }) });
+  return withDay ? `${d.toLocaleDateString('it-IT', { timeZone: 'Europe/Rome', day: 'numeric', month: 'numeric' })} alle ${time}` : time;
+}
+
+// Dopo una prova con la notifica web il bot aspetta la ricevuta del telefono (sw.js, con il tag del messaggio) e dice
+// com'è andata: arrivata e mostrata, arrivata ma nascosta dal telefono, oppure mai arrivata e cosa controllare.
+let ackWaitMs = 45000;
+function ackVerdict(c, tag, since) {
+  const a = c.webPushAck;
+  const mine = a && (a.tag ? a.tag === tag : Date.parse(a.at) >= since);
+  if (!mine) {
+    return `❌ <b>La notifica web non è arrivata al telefono</b>: dopo ${Math.round(ackWaitMs / 1000)} secondi nessuna ricevuta.\n\n` +
+      'Tocca «⏱️ Prova a tempo», apri subito la tessera dall\'icona sulla Home e aspetta lì.\n' +
+      '• <b>Se così arriva</b>, il telefono blocca Chrome quando non lo usi. Honor: Impostazioni → Batteria → Avvio app → Chrome: togli «Gestisci automaticamente» e accendi tutte e tre le voci. ' +
+      'Xiaomi/Redmi: Impostazioni → App → Gestisci app → Chrome: «Avvio automatico» acceso e Risparmio batteria «Nessuna restrizione».\n' +
+      '• <b>Se non arriva nemmeno così</b>, il telefono è iscritto a un indirizzo che il server non conosce: chiudi la tessera, riaprila dall\'icona due volte e riprova.';
+  }
+  const when = clockOf(a.at);
+  if (a.permission !== 'granted') {
+    return `📬 Arrivata sul telefono alle ${when}, ma <b>le notifiche sono spente</b> per Chrome o per l'app della tessera: Impostazioni → App → Chrome → Notifiche (e lo stesso per «Tessera …»).`;
+  }
+  if (!a.shown) return `📬 Arrivata sul telefono alle ${when}, ma il telefono non l'ha mostrata (${esc(a.error || 'errore')}).`;
+  return `✅ <b>Notifica web arrivata sul telefono alle ${when} e mostrata.</b> Se nella tendina non l'hai vista, la nasconde il telefono: ` +
+    'Impostazioni → Notifiche → Chrome (e «Tessera …»): consenti, con banner e schermata di blocco.';
+}
+
+async function sendAutoTest(chat, slug, code, key, delayMs = 0) {
   const ctx = M.get(slug);
   const c = ctx && ctx.db.findByCode(code);
   if (!c) return send(chat, 'Tessera non trovata.');
+  if (delayMs) {
+    const t = setTimeout(() => sendAutoTest(chat, slug, code, key).catch((err) => console.error(`[bot] ${err.message}`)), delayMs);
+    if (t.unref) t.unref();
+    return send(chat, `⏱️ <b>La prova parte tra ${Math.round(delayMs / 1000)} secondi.</b> Adesso apri la tessera dall'icona sulla Home e resta lì ad aspettare.\n` +
+      '<i>Con la tessera aperta il telefono non può fermare Chrome: se così la notifica arriva e a tessera chiusa no, la colpa è del risparmio batteria.</i>');
+  }
+  const since = Date.now();
   const r = await M.autoTest(ctx, c, key);
+  const keys = kb([[btn('🔁 Stato della tessera', `pplan:${slug}|${c.code}`), btn('⬅️ Automazioni', `auto:${slug}`)]]);
+  if (r.error) return send(chat, `⚠️ ${esc(r.error)}`, keys);
   const res = r.results || {};
-  const text = r.error ? `⚠️ ${esc(r.error)}`
-    : res.web && res.push ? '✅ Mandato <b>con notifica nel Wallet e sulla tessera web</b>: dovrebbero arrivarti sul telefono due avvisi entro un minuto. Poi tocca "Stato della tessera": vedi se il telefono ha mandato la ricevuta.'
-    : res.web ? '✅ Mandato <b>con notifica web</b> (tessera sulla Home): dovrebbe arrivarti sul telefono entro un minuto. Poi tocca "Stato della tessera": vedi se il telefono ha mandato la ricevuta.'
-    : res.webFailed ? '⚠️ La notifica web non è partita: forse le notifiche sono state disattivate sul telefono. Riattivale dalla tessera.'
-    : !r.walletEnabled ? '📩 Mandato, ma Google Wallet non è attivo su questo server: il messaggio è solo nella tessera web.'
-      : res.push ? '✅ Mandato <b>con notifica</b>: dovrebbe arrivarti sul telefono entro un minuto.'
-        : res.textOnly ? '📩 Mandato <b>senza notifica</b>: questa tessera ha già usato le 3 notifiche di oggi (limite di Google). Lo vedi aprendo la tessera nel Wallet.'
-          : res.failed ? '⚠️ Google ha rifiutato il messaggio: la tessera è salvata nel Wallet? Se no, il messaggio si vede solo nella tessera web.'
-            : '⚠️ Non mandato.';
-  return send(chat, text, kb([[btn('🔁 Stato della tessera', `pplan:${slug}|${c.code}`), btn('⬅️ Automazioni', `auto:${slug}`)]]));
+  const next = M.nextPushAt(ctx, c);
+  const lines = [];
+  // Google Wallet
+  if (!r.walletEnabled) lines.push('📱 Google Wallet non è attivo su questo server: il messaggio è solo nella tessera web.');
+  else if (res.push) {
+    lines.push('📱 <b>Wallet: notifica accettata da Google.</b> Se il telefono non suona entro un minuto: nell\'app Google Wallet apri la tessera, tocca ⋮ in alto a destra e controlla che le notifiche siano attive; ' +
+      'poi Impostazioni → App → Google Wallet → Notifiche. Honor: anche Batteria → Avvio app → Google Wallet, tutte e tre le voci accese.');
+  } else if (res.walletQuota) {
+    lines.push(`🔕 <b>Wallet: questa tessera ha già usato le 3 notifiche di oggi</b> (limite di Google): il messaggio è nella tessera, senza suono.${next ? ` La prossima sarà possibile il ${clockOf(next, true)}.` : ''}`);
+  } else if (res.failed) lines.push('⚠️ Wallet: Google ha rifiutato il messaggio. La tessera è salvata nel Wallet?');
+  else if (!c.walletSaved) lines.push('📱 Wallet: la tessera non risulta salvata nel Google Wallet.');
+  // Notifica web (tessera sulla Home)
+  if (res.web) lines.push(`🔔 <b>Notifica web partita.</b> Tra ${Math.round(ackWaitMs / 1000)} secondi ti dico se il telefono l'ha ricevuta.`);
+  else if (res.webFailed) lines.push('⚠️ La notifica web non è partita: l\'indirizzo del telefono non vale più. Riattiva le notifiche dalla tessera.');
+  else if (!(c.webPush || []).length) lines.push('🔔 Notifiche web non attivate su questa tessera.');
+  if (res.web) {
+    const t = setTimeout(() => {
+      const now = ctx.db.findByCode(code);
+      if (!now) return;
+      send(chat, ackVerdict(now, r.tag, since), kb([[btn('⏱️ Prova a tempo (30 s)', `pdelay:${slug}|${code}|${key}`), btn('🔁 Stato della tessera', `pplan:${slug}|${code}`)]]))
+        .catch((err) => console.error(`[bot] ${err.message}`));
+    }, ackWaitMs);
+    if (t.unref) t.unref();
+  }
+  return send(chat, lines.join('\n\n') || '⚠️ Non mandato.', keys);
 }
 
 async function listShops(chat) {
@@ -860,4 +923,7 @@ function alert(text, key = text, cooldownMs = 6 * 3600e3) {
 
 const enabled = () => !!M && !!ownerId && (!!TOKEN || call !== telegram);
 
-module.exports = { mount, start, handleUpdate, alert, enabled, sendBackup, sendWeeklyReports, sendMonthlyReports };
+module.exports = {
+  mount, start, handleUpdate, alert, enabled, sendBackup, sendWeeklyReports, sendMonthlyReports,
+  setAckWait: (ms) => { ackWaitMs = ms; }, // per i test: attesa della ricevuta dopo una prova
+};

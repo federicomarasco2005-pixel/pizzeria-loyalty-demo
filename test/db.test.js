@@ -92,6 +92,22 @@ test('Postgres: una riga per evento, dati ricaricati uguali', async () => {
   assert.strictEqual(left.rows[0].n, 0);
 });
 
+test('Postgres che non salva più: chi ascolta viene avvisato (il server lo manda sul bot)', async () => {
+  const mem = newDb();
+  const { Pool } = mem.adapters.createPg();
+  const pool = new Pool();
+  const db = freshDb();
+  await db.init({ pool });
+  const store = await db.openStore('guasto');
+  const errors = [];
+  db.onWriteError((err) => errors.push(err.message));
+  pool.query = async () => { throw new Error('database spento'); }; // come il database di Render sospeso
+  store.createCustomer({ name: 'Anna', email: 'anna@x.it' });
+  await db.flush();
+  assert.strictEqual(store.customers.length, 1, 'il cliente resta in memoria');
+  assert.ok(errors.length >= 1 && /database spento/.test(errors[0]), 'avviso al primo errore di scrittura');
+});
+
 test('Postgres: migrazione dal vecchio archivio "tutto in uno"', async () => {
   const mem = newDb();
   const { Pool } = mem.adapters.createPg();

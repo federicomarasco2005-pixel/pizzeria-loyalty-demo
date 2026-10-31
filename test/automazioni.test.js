@@ -172,7 +172,7 @@ test('notifiche web: il telefono si iscrive dalla tessera, i messaggi arrivano l
 
   // prova dal bot: arriva come notifica web, con il link alla tessera, subito anche col telefono in standby
   await tap(`psend:${bar.shop.slug}|${lia.code}|near`);
-  assert.match(sent.at(-1).text, /con notifica web/);
+  assert.match(sent.at(-1).text, /Notifica web partita/);
   assert.strictEqual(delivered.length, 1);
   assert.match(delivered[0].title, /Ti manca 1 timbro/);
   assert.ok(delivered[0].title.startsWith(`${bar.shop.name} · `), 'dalla tendina si vede quale locale scrive');
@@ -225,6 +225,45 @@ test('notifiche web: il telefono si iscrive dalla tessera, i messaggi arrivano l
   assert.ok(!JSON.stringify(exp).includes('segreto123'));
   assert.strictEqual((await post(`/api/card/${lia.token}/push/off`, { endpoint: sub.endpoint })).status, 200);
   assert.strictEqual(bar.db.findByToken(lia.token).webPush.length, 0);
+});
+
+test('prova dal bot: la notifica web parte anche dopo le 3 del giorno, il bot dice se è arrivata, mai due volte', async () => {
+  const B = `http://localhost:${PORT}/${bar.shop.slug}`;
+  const post = (p, body) => fetch(B + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const delivered = [];
+  notificheWeb.setSender(async (sub, payload) => {
+    await new Promise((r) => setTimeout(r, 30)); // come la rete vera: l'invio non è istantaneo
+    delivered.push(JSON.parse(payload));
+  });
+  const rita = customer(bar, 'Rita', [day(20), day(21)]);
+  const sub = { endpoint: 'https://push.example.com/rita', keys: { p256dh: 'BHx'.padEnd(87, 'b'), auth: 'segreto456' } };
+  await post(`/api/card/${rita.token}/push`, { subscription: sub });
+  for (let i = 0; i < 3; i++) bar.db.logNotification(rita.id, 'stamp', true); // tre "+1 timbro" oggi: limite raggiunto
+  assert.strictEqual(bar.db.canPush(rita.id), false);
+  assert.ok(Date.parse(manager.nextPushAt(bar, rita)) > Date.now() + 23 * 3600e3, 'la prossima notifica tra circa 24 ore');
+  bot.setAckWait(40);
+
+  // la prova parte lo stesso e non consuma il limite; il giro automatico, passato durante l'invio, non la rimanda
+  const tapped = tap(`psend:${bar.shop.slug}|${rita.code}|near`);
+  await fetch(`http://localhost:${PORT}/api/cron`);
+  await tapped;
+  assert.strictEqual(delivered.length, 1, 'una sola notifica, anche con il giro ogni 30 secondi in mezzo');
+  assert.strictEqual(bar.db.pushesLast24h(rita.id), 3, 'la prova web non conta nel limite');
+  assert.match(sent.at(-1).text, /Notifica web partita/);
+  assert.ok(delivered[0].ack.startsWith(`/${bar.shop.slug}/api/card/`), 'ricevuta allo stesso sito della tessera');
+
+  // il telefono manda la ricevuta con il tag del messaggio: il bot dice da solo che è arrivata
+  await post(`/api/card/${rita.token}/push/ack`, { permission: 'granted', shown: true, tag: delivered[0].tag });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.match(sent.at(-1).text, /arrivata sul telefono alle .* e mostrata/);
+  // nessuna ricevuta per la prova successiva: il bot spiega cosa controllare e propone la prova a tempo
+  await tap(`psend:${bar.shop.slug}|${rita.code}|near`);
+  await new Promise((r) => setTimeout(r, 100));
+  assert.match(sent.at(-1).text, /non è arrivata al telefono/);
+  assert.ok(sent.at(-1).kb.inline_keyboard.flat().some((b) => b.callback_data === `pdelay:${bar.shop.slug}|${rita.code}|near`));
+  await tap(`pdelay:${bar.shop.slug}|${rita.code}|near`);
+  assert.match(sent.at(-1).text, /parte tra 30 secondi/);
+  bot.setAckWait(45000);
 });
 
 test('kit di lancio e report del mese in PDF, anche dal bot', async () => {

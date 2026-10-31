@@ -43,9 +43,14 @@ const usingPostgres = () => !!pool;
 const fileOf = (key) => path.join(DATA_DIR, `${key.replace(/[^a-z0-9_-]/gi, '_')}.json`);
 
 // Scritture in coda: sempre nell'ordine in cui avvengono, mai in parallelo.
+// Una scrittura fallita lascia il dato solo in memoria (si perde al riavvio): chi ascolta (server.js) avvisa sul bot.
+let writeErrorHandler = null;
 function run(sql, params) {
   saving = saving.then(() => pool.query(sql, params))
-    .catch((err) => console.error(`[db] scrittura fallita: ${err.message}`));
+    .catch((err) => {
+      console.error(`[db] scrittura fallita: ${err.message}`);
+      if (writeErrorHandler) writeErrorHandler(err);
+    });
   return saving;
 }
 const flush = () => saving;
@@ -308,6 +313,13 @@ async function openStore(key, { codePrefix = 'PZ' } = {}) {
 
   const canPush = (customerId) => pushesLast24h(customerId) < PUSH_LIMIT;
 
+  // Quando torna libera una notifica: la più vecchia di quelle che fanno il limite compie 24 ore (null = libera ora)
+  function nextPushAt(customerId, now = Date.now()) {
+    const times = db.notifications.filter((n) => n.customerId === customerId && n.push && now - Date.parse(n.at) < DAY)
+      .map((n) => Date.parse(n.at)).sort((a, b) => a - b);
+    return times.length < PUSH_LIMIT ? null : new Date(times[times.length - PUSH_LIMIT] + DAY).toISOString();
+  }
+
   function logNotification(customerId, kind, push) {
     const n = { customerId, kind, push, at: new Date().toISOString() };
     db.notifications.push(n);
@@ -368,10 +380,13 @@ async function openStore(key, { codePrefix = 'PZ' } = {}) {
     createCustomer, updateCustomer, deleteCustomer, exportCustomer, findByEmail, findByCodeAndEmail, lastStampBy, findByToken, findByCode, search,
     addEvent, findByRequestId, stateOf, eventsOf, reset,
     getSettings, updateSettings,
-    PUSH_LIMIT, pushesLast24h, canPush, logNotification,
+    PUSH_LIMIT, pushesLast24h, canPush, nextPushAt, logNotification,
     createCampaign, findCampaign, updateCampaign, dueCampaigns, messagesFor, campaignsToClean, expiryOf, isActive,
     snapshot,
   };
 }
 
-module.exports = { init, loadKey, saveKey, deleteKey, openStore, flush, usingPostgres, PUSH_LIMIT };
+module.exports = {
+  init, loadKey, saveKey, deleteKey, openStore, flush, usingPostgres, PUSH_LIMIT,
+  onWriteError: (fn) => { writeErrorHandler = fn; },
+};

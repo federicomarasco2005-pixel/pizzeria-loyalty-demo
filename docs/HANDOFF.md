@@ -1,6 +1,6 @@
 # Passaggio di consegne — F5M tessere fedeltà
 
-*Aggiornato il 29 ottobre 2026. Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
+*Aggiornato il 31 ottobre 2026 (mattina). Leggi questo file per primo, poi `docs/SISTEMA.md` (architettura completa) e `CLAUDE.md` (regole).*
 
 ---
 
@@ -13,7 +13,7 @@
 
 ---
 
-## 2. Dove stiamo (stato al 30/10/2026)
+## 2. Dove stiamo (stato al 31/10/2026)
 
 | Cosa | Stato |
 |---|---|
@@ -30,7 +30,7 @@
 | Database | **Postgres gratuito di Render: sospeso il 31 ottobre 2026** (email di Render del 24/10, "[ACTION REQUIRED]": non fare l'upgrade, il piano è Neon), poi cancellato. Nessun backup automatico tranne quello settimanale sul bot. Federico ha fissato lo spostamento **entro il 28–29/10**: al 28/10 **non ancora fatto** (servono ~30 minuti) |
 | Validazione (21/10) | Analisi con il **Founder's Playbook** di Anthropic: il prodotto è da fase MVP, ma la fase Idea non è chiusa (nessuna intervista scritta, nessun locale vero, nessun ricavo). Piano: fermare le nuove funzioni, intervistare 10–12 locali, poi pilota con 3–5 locali paganti. **Kit interviste** pronto in un documento privato: https://claude.ai/artifact/N7H4vAeWMW5wPLTaGbG8q7 (scheda principale = kit; scheda "Trento nord" = 42 locali in 4 giri con stato, contatti e messaggi). Zona scelta da Federico: **Trento nord**. **Documento di scope** (21/10, privato): https://claude.ai/artifact/RBSZgKsgR2jffbS5eSSGnw (cosa fa F5M, cosa non fa, le tre prove per aggiungere una funzione, idee parcheggiate). Il 22/10: ipotesi, concorrenti e prezzo del pilota pronti nel kit |
 | Server | Render gratuito: si addormenta dopo 15 min e al risveglio Render mostra la sua pagina "SERVICE WAKING UP" (~30–50 s). Il 22/10 Federico ha approvato il server sveglio tra le correzioni prima del pilota: valori per cron-job.org pronti (`https://f5m.it/api/cron` ogni 10 min), **manca il suo account** (al 28/10). Serve anche ai messaggi automatici a fasce orarie |
-| Test | 45 test, tutti verdi (`npm test`) |
+| Test | 48 test, tutti verdi (`npm test`) |
 | Notifiche (23–25/10) | Messaggi automatici a **fasce orarie** per profilo (giorno: bar; sera: pizzeria), "Il tuo premio ti aspetta", al massimo 1 al giorno e 2 a settimana per cliente (`docs/SISTEMA.md` §4.12). **Prova dal bot**: Automazioni → 🔔 Prova le notifiche su una tessera. Notifiche con la tessera nel Google Wallet oppure con le **notifiche web** dalla tessera sulla Home (§4.13). **25/10: `VAPID_PRIVATE_KEY` messa su Render, notifiche web attive** (registro: "[notifiche web] attive"). Prima prova del 25/10: messaggio arrivato nella tessera Wallet ma **telefono muto**; causa probabile corretta lo stesso giorno (commit 682a392: il pass si riordina 2 minuti dopo il messaggio, non subito). **Da rifare la prova** (Federico): Wallet con la sua tessera; tessera web con una tessera **nuova, non salvata nel Wallet**, aperta dall'icona sulla Home (a una tessera nel Wallet la notifica va al Wallet) |
 | Statistiche (22/10) | Pagina con le statistiche di tutti i locali, **solo per Federico e Claude**. Federico: `/statistiche` al bot → link monouso di 10 minuti. Claude: `GET https://f5m.it/api/statistiche` con la chiave di `Clode/segreti/chiave-statistiche.txt` (header `Authorization: Bearer …`, mai stampare la chiave). **Dal 25/10 `STATS_KEY` e `TELEGRAM_OWNER_ID` (8808507400) sono su Render: l'entrata di Claude funziona.** Dettagli in `docs/SISTEMA.md` §4.11 |
 | Pubblicazione | `git push` da questo PC funziona; Render pubblica da solo dopo i test (app Render installata su GitHub) |
@@ -41,9 +41,10 @@
 
 ## 3. Cosa fare adesso (in ordine di urgenza)
 
-0. **🔴 Prossima sessione (stato al 29/10).**
-   - **Database su Neon, subito**: Render lo sospende il **31/10**. Federico entra su neon.tech con GitHub, Claude fa il resto (punto 1). Render è già collegato nel browser integrato di Claude (dal 25/10): Claude può aprire impostazioni, registri ed eventi del servizio, Federico incolla solo i valori segreti.
-   - **Esito della prova delle notifiche** (30/10 sera: né Honor né Redmi mostravano l'avviso). Dopo la correzione: aprire la tessera dall'icona (così prende il service worker nuovo), prova dal bot, poi "🔁 Stato della tessera" → riga 📬. Nessuna ricevuta = l'avviso non arriva (batteria/avvio automatico di Chrome); ricevuta ma tendina vuota = notifiche di Chrome o dell'app della tessera spente. Per il Wallet: interruttore delle notifiche nei dettagli della tessera.
+0. **🔴 Prossima sessione (stato al 31/10 mattina).**
+   - **Database su Neon, OGGI 31/10**: alle 12:19 del 31/10 il database era ancora attivo, ma Render lo sospende in giornata. Federico entra su neon.tech con GitHub, Claude fa il resto (punto 1). Render è già collegato nel browser integrato di Claude (dal 25/10): Claude può aprire impostazioni, registri ed eventi del servizio, Federico incolla solo i valori segreti.
+   - **🔴 Notifiche che non arrivano nella tendina** (Honor e Redmi di Federico: né Wallet né tessera web; il messaggio arriva solo dentro le tessere). **Analisi del 30/10 sera**: (1) dal registro di Render le prove delle 17:43 e 18:01 erano partite "solo testo": il limite di 3 notifiche al giorno (di Google, vale solo per il Wallet) fermava anche la notifica web e le prove; (2) alla prova delle 17:30 Google aveva accettato sia la notifica Wallet sia quella web, ma dal telefono nessuna ricevuta; (3) **prova completa sul PC** (`tools/prova-notifiche-pc.mjs`, Chrome con un profilo a parte): server → Google → Chrome → notifica mostrata + ricevuta in meno di 1 secondo, con la tessera aperta e chiusa. Il codice funziona: il blocco è nei telefoni (Honor ABR-NX1 con MagicOS e Android 16, Redmi 13C con HyperOS e Android 15: risparmio batteria che non lascia partire Chrome e Google Wallet) oppure in un indirizzo di iscrizione vecchio sul server. **Pubblicato il 31/10** dopo il "pubblica" di Federico (48 test verdi): le prove dal bot mandano sempre la notifica web e non consumano il limite; il Wallet ci prova e, se Google risponde che le 3 di oggi sono finite, il bot lo scrive con l'ora della prossima; dopo ogni prova il bot aspetta 45 secondi la ricevuta del telefono (con il tag del messaggio) e dice da solo com'è andata, con i passi per Honor e Xiaomi; pulsante **⏱️ Prova a tempo** (parte dopo 30 secondi: si apre la tessera e si aspetta lì); ricevuta mandata allo stesso sito da cui è aperta la tessera; niente invii doppi (`sendingNow` in `server.js`); avviso sul bot se il database non salva (`db.onWriteError`); più la diagnosi temporanea del 30/10 pomeriggio (`sendDiag` in `card.html`, righe `[diagnosi]` nel registro). **Prova da fare adesso**: Federico apre la tessera dall'icona due volte, poi bot → scheda del locale → Automazioni → Prova le notifiche → codice → «⏱️ Prova a tempo» con la tessera aperta, poi «Invia ora» con il telefono bloccato, e legge il verdetto del bot; Claude legge `[diagnosi]` su Render (`/logs?r=24h&q=diagnosi`). Se arriva solo a tessera aperta: impostazioni batteria (Honor: Impostazioni → Batteria → Avvio app → Chrome e Google Wallet, togliere "Gestisci automaticamente" e accendere le tre voci; Xiaomi: Avvio automatico di Chrome acceso e Risparmio batteria "Nessuna restrizione"). Poi togliere la diagnosi temporanea. Codici di prova: Honor AS-YV9YN (Wallet + web), Redmi AS-UVG2V (solo web).
+   - **Controllo generale del 30/10 sera**: rischi da chiudere prima del primo locale vero e idee per i locali, solo sul PC di Federico (privato).
    - **Server sveglio**: account cron-job.org di Federico (`https://f5m.it/api/cron` ogni 10 minuti). Senza, alla cassa si aspettano 30–50 s e i messaggi a fasce orarie saltano.
    - **Logo di un locale con scritte bianche**: il server lo appoggia su fondo bianco e le scritte spariscono (`docs/SISTEMA.md` §4.5). Si carica dal bot la versione scura del logo.
 1. **🔴 Database prima del 31 ottobre.** Piano scelto: **Neon gratuito** (non scade). Federico l'ha fissato **entro il 28–29/10**.
@@ -73,7 +74,7 @@
 
 ---
 
-## 4. Cosa è stato fatto in queste sessioni (9–30 ottobre)
+## 4. Cosa è stato fatto in queste sessioni (9–31 ottobre)
 
 - Progetto spostato sul nuovo PC, Node 24 + Git installati, cartella collegata a GitHub.
 - **Tessera web istantanea** (dati nella pagina, saldo nell'avviso live, niente attese di Google) e **Wallet più veloce** (GIF in un thread separato e preparate all'avvio, aggiornamenti in coda).
@@ -102,6 +103,7 @@
 - 28/10: **fetta di pizza** al posto della pizza tonda nel tema "pizza" (commit 017920a), con `DRAWINGS` per far riscaricare le immagini a Google.
 - 29/10: tessera web con timbri disposti in automatico e logo largo leggibile, Wallet con nome centrato e locale nel titolo delle notifiche (c65ae9f); documenti del 28/10 pubblicati. Sera: i telefoni mostravano sempre la tessera del giorno dell'iscrizione (copia salvata dal service worker): corretto `sw.js` (b331983).
 - 30/10: **canale delle notifiche** scelto dal bot per ogni locale (Wallet e web insieme / web solo senza Wallet / solo Wallet); documento di scope aggiornato (riga delle notifiche della tessera web) (36f72e4). Poi: riquadro "Salva sul telefono" a ogni apertura finché la tessera non è installata, anche con il Wallet; sparisce dopo l'installazione, ricompare dopo la disinstallazione.
+- 30/10 sera: **controllo generale** del sistema (rischi e idee, solo sul PC) e **notifiche**: trovato il limite che fermava anche le prove web, prova completa sul PC riuscita (`tools/prova-notifiche-pc.mjs`), correzioni (prove senza limite, verdetto del bot con la ricevuta, prova a tempo, niente invii doppi, avviso se il database non salva); 3 test nuovi (48). Pubblicate il 31/10 insieme alla diagnosi temporanea.
 
 ---
 
@@ -136,10 +138,13 @@
 | Notifica Wallet di un messaggio: messaggio nella tessera ma telefono muto (25/10) | Il pass veniva riscritto subito dopo `addMessage`; ora si riordina 2 minuti dopo. Google consente 3 notifiche al giorno per tessera, contando le prove |
 | Modifica alla tessera online ma il telefono mostra la pagina vecchia anche chiudendo le schede (29/10) | Il service worker salvava una copia per ogni indirizzo (`?welcome`, `?from=`) e mostrava sempre la prima, quella dell'iscrizione. Dal 29/10 una sola copia senza `?…` (cache `tessera-v4`): la pagina nuova si vede dalla seconda apertura. Se si cambia di nuovo il modo di salvare, cambiare il nome della cache |
 | Prova delle notifiche web su una tessera già nel Wallet | Fino al 29/10 non partiva: a chi ha la tessera nel Wallet la notifica andava solo al Wallet. Dal 30/10 parte se il locale ha "Wallet e tessera web insieme" (bot → Automazioni) |
-| Prova notifiche: messaggio nella tessera ma niente nella tendina, né sull'Honor né sul Redmi (30/10) | Google accettava Wallet e notifiche web (registro: push 1, nessun errore), ma non si sapeva se arrivavano al telefono. Dal 30/10 sera: notifiche web con priorità alta (`urgency: high`), la tessera rimanda a ogni apertura l'indirizzo attuale del telefono, e il telefono manda una **ricevuta** (📬 nella prova del bot, `arrivata sul telefono` nel registro). Esito della prova dopo la correzione: vedi "Cosa fare adesso" |
+| Prova notifiche: messaggio nella tessera ma niente nella tendina, né sull'Honor né sul Redmi (30/10) | Google accettava Wallet e notifiche web (registro: push 1, nessun errore), ma non si sapeva se arrivavano al telefono. Dal 30/10 sera: notifiche web con priorità alta (`urgency: high`), la tessera rimanda a ogni apertura l'indirizzo attuale del telefono, e il telefono manda una **ricevuta** (📬 nella prova del bot, `arrivata sul telefono` nel registro). Prova delle 17:30: nessuna ricevuta. Diagnosi temporanea preparata, vedi "Cosa fare adesso" |
 | Xiaomi/Redmi/Poco: tocco Installa ma l'icona non compare (30/10, telefono di Federico) | Permesso di Chrome spento di serie: tenere premuta l'icona di Chrome → Info app → Altre autorizzazioni → consentire le scorciatoie (collegamenti) sulla schermata Home, poi installare di nuovo; controllare anche Impostazioni → App ("Tessera …" c'è = installata, l'icona può essere tra le app). Nome esatto della voce non confermato da fonti. Dopo "Installa" la tessera lo spiega da sola ("Quasi fatto") |
 | Honor (Federico): "Installa", Chrome dice installata, ma l'icona non arriva (30/10) | Non era la tessera: il registro `[installa]` (diagnosi temporanea su Render, poi tolta) mostrava Chrome che accettava alle 14:58, 15:25, 15:33 e 15:35, poi le quattro app sono arrivate **tutte insieme** più tardi. Su Android l'app della tessera (WebAPK) la installa Google Play, in coda con gli altri download: sul suo telefono la coda era ferma. Ipotesi sbagliate prima: permesso delle scorciatoie (era già attivo), reinstallazione della stessa tessera (provata un'identità nuova, `?n=`: tolta perché creava un doppione). Dal 30/10 "Quasi fatto" dice che può volerci qualche minuto e di non toccare di nuovo Installa |
 | Android, tessera nel Wallet: non compare "Salva la tessera sul telefono" (30/10) | Il riquadro compariva solo se Chrome proponeva l'installazione; Chrome non lo fa se la tessera (o un'altra dello stesso locale) è già installata: nel menu ⋮ c'è "Apri app". Dal 30/10 compare a ogni apertura finché la tessera non è installata (anche con il Wallet o dopo "Più tardi"), grazie a `related_applications` nel manifest |
+| Prove delle notifiche: dalla quarta del giorno arrivava solo il testo, anche della notifica web (30/10) | Il limite di 3 al giorno (di Google, solo Wallet) valeva per tutto. Dalle correzioni pubblicate il 31/10 le prove web partono sempre e non contano; il bot dice quando torna libera la notifica Wallet |
+| Lo stesso messaggio poteva partire due volte | "Manda subito" dalla dashboard e la prova dal bot inviano mentre il giro ogni 30 secondi riprende gli invii rimasti a metà: ora un invio in corso non viene ripreso (`sendingNow` in `server.js`, test con il giro in mezzo) |
+| Prova delle notifiche web sul PC: il service worker non si installa ("CacheStorage: Unexpected internal error") | Profilo di Chrome in una cartella dal percorso troppo lungo (limite di Windows): usare un percorso corto in Temp, come fa `tools/prova-notifiche-pc.mjs` |
 
 ---
 
