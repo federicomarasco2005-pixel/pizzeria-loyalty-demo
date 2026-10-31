@@ -36,7 +36,7 @@ Un **solo server** ospita **tutti i locali**, ognuno con il suo indirizzo: `/<sl
 | Sito live | **https://f5m.it** (indirizzo principale dal 10/10/2026). https://pizzeria-loyalty-demo.onrender.com resta attivo: lo usano chip NFC, QR e tessere già emessi |
 | Dominio proprio | **f5m.it**, comprato su Aruba il 10/10/2026 (scade 10/10/2027, rinnovo automatico, solo dominio + DNS). Aggiunto a Render tramite `render.yaml` (`domains:`). DNS su Aruba fatti: A `@` → `216.24.57.1`, CNAME `www` → `pizzeria-loyalty-demo.onrender.com`, più `*`, `_acme-challenge` e `_cf-custom-hostname` per i sottodomini. `PUBLIC_URL=https://f5m.it`. Manca ancora il certificato di Render per `*.f5m.it` (verificato il 22/10). |
 | Google Wallet console | **Pubblicazione approvata da Google il 19/10/2026** (pratica 05701322). Nome pubblico **F5M**, profilo attività completo (MCC 5734, sito, assistenza, email e telefono), profilo pagamenti "Privato" collegato. Qualsiasi account Android può salvare la tessera. |
-| Database | Postgres gratuito di Render (`pizzeria-loyalty-db`), collegato con `DATABASE_URL`. **Scade il 31/10/2026**: spostamento su Neon fissato entro il 28–29/10 (`tools/copia-database.ps1`) |
+| Database | Postgres di Render (`pizzeria-loyalty-db`), collegato con `DATABASE_URL`. **A pagamento dal 31/10/2026**: piano `0.1c-256mb` (0,1 CPU, 256 MB, 1 GB di spazio, 6 $ al mese), copie automatiche con ripristino fino a 3 giorni. Il gratuito è scaduto il 31/10 (sito fermo per circa mezz'ora) |
 | Bot Telegram | **@GestioneFedelta_bot** (proprietario: Federico, il primo che ha scritto `/start`) |
 | Google Wallet | Issuer ID `3388000000023194584`, service account `wallet-issuer@pizzeria-loyalty-demo.iam.gserviceaccount.com` |
 | Keepalive | GitHub Actions `.github/workflows/keepalive.yml` chiama `/api/cron`: è programmato ogni 10 minuti, ma GitHub lo esegue solo ogni qualche ora, quindi il server gratuito si addormenta comunque |
@@ -358,9 +358,7 @@ render.yaml  Blueprint Render (servizio + database)
 
 ## 7. Cosa non va / limiti noti (in ordine di urgenza)
 
-1. **Database gratuito di Render**: scade il **31/10/2026** (poi viene cancellato verso il 14/11) e **non ha backup**.
-   - Se scade si perde tutto. L'unica copia è il backup settimanale su Telegram, più `/backup`.
-   - Soluzione scelta: **Neon gratuito** (non scade), copiando i dati con `tools/copia-database.ps1`. Fissato entro il 28–29/10/2026.
+1. **Database**: dal 31/10/2026 è a pagamento su Render (6 $ al mese, vedi sezione 2). Oltre alle copie automatiche di Render resta il backup settimanale su Telegram, più `/backup` dal bot.
 2. **Indirizzo onrender.com scritto ovunque**: nei chip NFC, nelle tessere Wallet, nei QR stampati e nelle icone. Se cambia l'hosting, tutto questo smette di funzionare.
    - In parte risolto: dal 10/10/2026 c'è **f5m.it** e i link nuovi usano quello. Chip e QR già fatti con onrender.com funzionano finché resta attivo il servizio su Render.
 3. **Google Wallet**: la modalità demo è finita. **Il 19/10/2026 Google ha approvato la pubblicazione**: chiunque con Android può salvare la tessera.
@@ -437,7 +435,7 @@ curl https://f5m.it/api/config
 
 **Prossimi passi possibili**, quando ci sarà budget:
 - ~~dominio proprio~~ fatto (f5m.it, 10/10);
-- database su Neon gratuito (entro il 28–29/10);
+- ~~database su Neon gratuito~~ database a pagamento su Render dal 31/10;
 - ~~richiesta di pubblicazione Google Wallet~~ fatta (approvata il 19/10);
 - verifica legale dei testi;
 - chip NTAG 424 DNA;

@@ -1,5 +1,5 @@
-# Blueprint Render: web service gratuito + Postgres gratuito (i dati sopravvivono ai riavvii).
-# Nota: il Postgres gratuito di Render scade dopo 30 giorni — sufficiente per demo e primo test.
+# Blueprint Render: web service gratuito + Postgres a pagamento (i dati sopravvivono ai riavvii).
+# Il Postgres gratuito è scaduto il 31/10/2026 (sospeso da Render, sito fermo fino al passaggio al piano a pagamento).
 services:
   - type: web
     name: pizzeria-loyalty-demo
@@ -70,5 +70,8 @@ services:
 
 databases:
   - name: pizzeria-loyalty-db
-    plan: free
+    # Piano a pagamento dal 31/10/2026 (6 $ al mese, scelto da Federico): 0,1 CPU, 256 MB, 1 GB di spazio.
+    # Deve restare uguale al pannello di Render, altrimenti il Blueprint prova a rimettere quello scritto qui.
+    plan: 0.1c-256mb
+    diskSizeGB: 1
     region: frankfurt
