@@ -61,9 +61,11 @@
   <script>
     applyBrand();
     const $ = (id) => document.getElementById(id);
+    const emailChecked = attachEmailHint($('email'));
     $('f').addEventListener('submit', async (e) => {
       e.preventDefault();
       $('err').textContent = '';
+      if (!emailChecked()) return; // prima la risposta a "Intendevi …?"
       $('go').disabled = true;
       try {
         const { token } = await api('api/signup', {

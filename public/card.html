@@ -112,6 +112,14 @@
     .more-panel .check { margin: 8px 0; color: var(--ink); }
     .more-panel a { color: var(--ink); text-decoration: none; font-size: .9rem; padding: 11px 0; border-top: 1px solid var(--line); }
     .more-panel a.danger { color: var(--brand); }
+    .email-row { display: flex; gap: 10px; align-items: baseline; font-size: .9rem; padding: 11px 0 4px; color: var(--ink); }
+    .email-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .more-panel .email-row a { border: 0; padding: 0; color: var(--brand); font-weight: 600; }
+    #emailForm { padding: 4px 0 8px; }
+    #emailForm input { width: 100%; background: transparent; color: var(--ink); border-color: var(--line); }
+    .email-actions { display: flex; gap: 16px; align-items: center; margin-top: 10px; }
+    .more-panel .email-actions a { border: 0; padding: 0; color: var(--muted); }
+    #emailForm .error:empty { display: none; }
     /* Notifiche della tessera (notifiche web) */
     .notify-ico { width: 52px; height: 52px; border-radius: 14px; flex: none; display: grid; place-items: center; font-size: 1.6rem;
       background: color-mix(in srgb, var(--brand) 18%, transparent); }
@@ -250,6 +258,19 @@
       <details class="more">
         <summary data-t="privacyMenu">Privacy e impostazioni</summary>
         <div class="more-panel">
+          <!-- Email dell'iscrizione: serve a ritrovare la tessera su un telefono nuovo, si può correggere -->
+          <div class="email-row">
+            <span><span data-t="emailLabel">La tua email</span>: <strong id="emailNow"></strong></span>
+            <a href="#" id="emailEdit" data-t="emailEdit">Cambia</a>
+          </div>
+          <form id="emailForm" class="hidden" novalidate>
+            <input id="emailNew" type="email" inputmode="email" autocomplete="email" maxlength="120">
+            <div class="email-actions">
+              <button class="btn" type="submit" data-t="emailSave">Salva</button>
+              <a href="#" id="emailCancel" data-t="emailCancel">Annulla</a>
+            </div>
+            <p class="error" id="emailErr"></p>
+          </form>
           <label class="check small">
             <input type="checkbox" id="consent"> <span data-t="consent">Voglio ricevere offerte e novità dal locale</span>
           </label>
@@ -405,6 +426,11 @@
       deletedTitle: ['Tessera eliminata', 'Card deleted'],
       deletedText: ["I tuoi dati sono stati cancellati. Se l'avevi aggiunta a Google Wallet, lì risulta disattivata: puoi toglierla dal Wallet.", 'Your data has been deleted. If you added the card to Google Wallet, it is now deactivated there: you can remove it.'],
       newCard: ['Crea una nuova tessera', 'Create a new card'],
+      emailLabel: ['La tua email', 'Your email'],
+      emailEdit: ['Cambia', 'Change'],
+      emailSave: ['Salva', 'Save'],
+      emailCancel: ['Annulla', 'Cancel'],
+      emailSaved: ['✅ Email aggiornata', '✅ Email updated'],
     };
     const t = (k, vars = {}) => (T[k] ? T[k][EN ? 1 : 0] : k).replace(/\{(\w+)\}/g, (_, v) => vars[v]);
     if (EN) {
@@ -935,7 +961,33 @@
       renderHistory(c.history || []);
       paintWallet(c);
       if (document.activeElement !== $('consent')) $('consent').checked = !!c.consentMarketing;
+      if (c.email) $('emailNow').textContent = c.email;
     }
+
+    // Cambio dell'email (scritta male all'iscrizione): stesso suggerimento "Intendevi …?" dell'iscrizione
+    let emailChecked = null;
+    const emailClose = () => { $('emailForm').classList.add('hidden'); $('emailEdit').classList.remove('hidden'); };
+    $('emailEdit').onclick = (e) => {
+      e.preventDefault();
+      if (!emailChecked) emailChecked = attachEmailHint($('emailNew'));
+      $('emailNew').value = $('emailNow').textContent;
+      $('emailErr').textContent = '';
+      $('emailForm').classList.remove('hidden');
+      $('emailEdit').classList.add('hidden');
+      $('emailNew').focus();
+    };
+    $('emailCancel').onclick = (e) => { e.preventDefault(); emailClose(); };
+    $('emailForm').onsubmit = async (e) => {
+      e.preventDefault();
+      $('emailErr').textContent = '';
+      if (!emailChecked()) return;
+      try {
+        const r = await api('api/card/' + encodeURIComponent(token) + '/email', { method: 'POST', body: { email: $('emailNew').value } });
+        $('emailNow').textContent = r.email;
+        emailClose();
+        toast(t('emailSaved'));
+      } catch (err) { $('emailErr').textContent = err.message; }
+    };
 
     $('exportLink').href = 'api/card/' + encodeURIComponent(token) + '/export';
     $('deleteLink').onclick = async (e) => {

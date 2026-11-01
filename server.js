@@ -12,6 +12,7 @@ const pdf = require('./pdf');
 const bot = require('./bot');
 const statistiche = require('./statistiche');
 const notificheWeb = require('./notifiche-web');
+const controlloEmail = require('./controllo-email');
 
 const PORT = Number(process.env.PORT) || 3000;
 // Su Render RENDER_EXTERNAL_URL è impostata automaticamente.
@@ -281,6 +282,8 @@ shop.post('/api/signup', wrap(async (req, res) => {
   const ctx = req.ctx;
   const data = readSignup(req.body);
   if (data.error) return res.status(400).json({ error: data.error });
+  const bad = await controlloEmail.problem(data.email);
+  if (bad) return res.status(400).json({ error: bad, badEmail: true });
 
   // Email già iscritta: la tessera NON viene restituita (chi conosce l'email di un altro non deve poterla aprire).
   // Per ritrovarla servono codice tessera + email (/api/recover).
@@ -340,6 +343,22 @@ shop.post('/api/card/:token/consent', (req, res) => {
   ctx.db.updateCustomer(customer.id, { consentMarketing: on, consentAt: new Date().toISOString() });
   res.json({ consentMarketing: on });
 });
+
+// Email sbagliata all'iscrizione: il cliente la corregge dalla tessera (diritto di rettifica). Serve a ritrovare
+// la tessera con il codice su un telefono nuovo, quindi due tessere dello stesso locale non possono avere la stessa.
+shop.post('/api/card/:token/email', wrap(async (req, res) => {
+  const { ctx } = req;
+  const customer = ctx.db.findByToken(req.params.token);
+  if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  const email = String(req.body.email || '').trim().toLowerCase().slice(0, 120);
+  if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Email non valida.' });
+  if (email === customer.email) return res.json({ email });
+  if (ctx.db.findByEmail(email)) return res.status(409).json({ error: 'Questa email è già usata da un\'altra tessera di questo locale.' });
+  const bad = await controlloEmail.problem(email);
+  if (bad) return res.status(400).json({ error: bad });
+  ctx.db.updateCustomer(customer.id, { email, emailChangedAt: new Date().toISOString() });
+  res.json({ email });
+}));
 
 // Notifiche web della tessera (vedi notifiche-web.js): il telefono si iscrive o si toglie con il token della tessera
 shop.post('/api/card/:token/push', (req, res) => {
@@ -502,6 +521,7 @@ async function cardData(ctx, customer) {
   return {
     name: customer.name,
     code: customer.code,
+    email: customer.email, // si vede e si cambia in "Privacy e impostazioni"
     stamps: state.stamps,
     rewards: state.rewards,
     stampsForReward: ctx.cfg.stampsForReward,
@@ -863,6 +883,8 @@ shop.post('/api/tap', wrap(async (req, res) => {
     // 2) cliente nuovo: si iscrive sul momento e riceve subito il primo timbro
     const data = readSignup(req.body.signup);
     if (data.error) return res.status(400).json({ error: data.error, needLogin: true });
+    const bad = await controlloEmail.problem(data.email);
+    if (bad) return res.status(400).json({ error: bad, badEmail: true, needLogin: true });
     if (ctx.db.findByEmail(data.email)) {
       return res.status(409).json({
         emailExists: true, needLogin: true,

@@ -84,6 +84,14 @@ input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 4px c
 .row > * { flex: 1; }
 .stack > * + * { margin-top: 12px; }
 .error { color: var(--brand); font-weight: 600; min-height: 1.2em; margin: 10px 0 0; }
+/* "Intendevi …@gmail.com?" sotto il campo email (attachEmailHint in common.js) */
+.email-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 0 0; padding: 10px 12px; border-radius: 12px;
+  background: #fff6d6; color: #5c4400; font-size: .9rem; }
+.email-hint.hidden { display: none; }
+.email-hint span { flex: 1 1 100%; overflow-wrap: anywhere; }
+.email-hint button { font: inherit; font-weight: 600; border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.email-hint .hint-yes { background: var(--brand); color: #fff; }
+.email-hint .hint-no { background: transparent; color: inherit; text-decoration: underline; }
 
 /* ---------- Timbri ---------- */
 .stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 10px; margin: 14px 0; }

@@ -124,6 +124,63 @@ function toast(msg, ms = 2200) {
   toast._t = setTimeout(() => t.classList.remove('show'), ms);
 }
 
+// Email con un errore di battitura nel dominio ("gmial.com", "gmail.con", "libero.ti"): propone quella giusta.
+// Il server controlla poi che il dominio esista (controllo-email.js); qui solo i domini più usati in Italia.
+const EMAIL_DOMAINS = ['gmail.com', 'hotmail.com', 'hotmail.it', 'libero.it', 'yahoo.com', 'yahoo.it', 'outlook.com', 'outlook.it',
+  'icloud.com', 'me.com', 'live.com', 'live.it', 'msn.com', 'alice.it', 'tiscali.it', 'virgilio.it', 'tim.it', 'email.it',
+  'fastwebnet.it', 'inwind.it', 'tin.it', 'aruba.it', 'protonmail.com', 'proton.me', 'gmx.com', 'googlemail.com'];
+function emailHint(raw) {
+  const email = String(raw || '').trim().toLowerCase();
+  const at = email.lastIndexOf('@');
+  if (at < 1) return null;
+  const domain = email.slice(at + 1);
+  if (!domain || EMAIL_DOMAINS.includes(domain)) return null;
+  const dist = (a, b) => { // differenza tra due parole: lettere da cambiare, aggiungere, togliere o scambiare
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+    return d[a.length][b.length];
+  };
+  let best = null, bestD = 3;
+  for (const ok of EMAIL_DOMAINS) { const x = dist(domain, ok); if (x < bestD) { best = ok; bestD = x; } }
+  return best ? email.slice(0, at + 1) + best : null;
+}
+// Collega il suggerimento a un campo email: compare sotto il campo quando lo si lascia. Restituisce una funzione
+// da chiamare prima dell'invio: false = c'è un suggerimento a cui il cliente non ha ancora risposto.
+function attachEmailHint(input) {
+  const en = document.documentElement.lang === 'en';
+  const box = document.createElement('p');
+  box.className = 'email-hint hidden';
+  input.insertAdjacentElement('afterend', box);
+  let accepted = '';
+  const check = () => {
+    const s = emailHint(input.value);
+    if (!s || input.value.trim().toLowerCase() === accepted) { box.classList.add('hidden'); return true; }
+    // già mostrato: non ridisegnarlo (il tocco su "Sì, correggi" toglie prima il fuoco al campo)
+    if (box.dataset.s === s && !box.classList.contains('hidden')) return false;
+    box.dataset.s = s;
+    box.innerHTML = '';
+    const q = document.createElement('span');
+    q.append(en ? 'Did you mean ' : 'Intendevi ');
+    const b = document.createElement('strong'); b.textContent = s; q.append(b, '?');
+    const yes = document.createElement('button'); yes.type = 'button'; yes.className = 'hint-yes';
+    yes.textContent = en ? 'Yes, fix it' : 'Sì, correggi';
+    yes.onclick = () => { input.value = s; box.classList.add('hidden'); };
+    const no = document.createElement('button'); no.type = 'button'; no.className = 'hint-no';
+    no.textContent = en ? "No, it's right" : 'No, è giusta';
+    no.onclick = () => { accepted = input.value.trim().toLowerCase(); box.classList.add('hidden'); };
+    box.append(q, yes, no);
+    box.classList.remove('hidden');
+    return false;
+  };
+  input.addEventListener('blur', check);
+  input.addEventListener('input', () => box.classList.add('hidden'));
+  return check;
+}
+
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
 // Ogni locale ha la sua memoria sul telefono (window.SHOP lo imposta il server nella pagina).

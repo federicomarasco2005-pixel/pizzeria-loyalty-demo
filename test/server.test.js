@@ -263,6 +263,23 @@ test('il blocco PIN resta dopo un riavvio del server', async () => {
   assert.strictEqual((await api(`${S}/api/staff/login`, { method: 'POST', pin: PIN })).status, 429);
 });
 
+test('email sbagliata all\'iscrizione: il cliente la corregge dalla tessera e ritrova la tessera con quella nuova', async () => {
+  const r = await api(`${S}/api/signup`, { method: 'POST', body: { name: 'Gino', email: 'gino@gmial.com', acceptTerms: true } });
+  const gino = r.data.token;
+  const page = await api(`${S}/card/${gino}`);
+  assert.match(page.text, /gino@gmial\.com/, 'l\'email si vede nella tessera');
+  const ch = (email) => api(`${S}/api/card/${gino}/email`, { method: 'POST', body: { email } });
+  assert.strictEqual((await ch('non-una-email')).status, 400);
+  assert.strictEqual((await ch('anna@x.it')).status, 409, 'email di un\'altra tessera dello stesso locale');
+  assert.strictEqual((await api(`${S}/api/card/nessuno/email`, { method: 'POST', body: { email: 'a@x.it' } })).status, 404);
+  const ok = await ch(' Gino@Gmail.com ');
+  assert.deepStrictEqual([ok.status, ok.data.email], [200, 'gino@gmail.com']);
+  assert.strictEqual((await api(`${S}/api/card/${gino}/export`)).data.cliente.email, 'gino@gmail.com');
+  // (il recupero con codice + email usa l'email salvata; qui non si prova perché il test sopra ha esaurito i tentativi)
+  const again = await api(`${S}/api/signup`, { method: 'POST', body: { name: 'Gino', email: 'gino@gmail.com', acceptTerms: true } });
+  assert.strictEqual(again.status, 409, 'la nuova email è quella della sua tessera');
+});
+
 test('privacy: export e cancellazione dalla tessera', async () => {
   const exp = await api(`${S}/api/card/${anna}/export`);
   assert.strictEqual(exp.data.cliente.email, 'anna@x.it');

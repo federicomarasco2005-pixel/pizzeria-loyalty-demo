@@ -136,8 +136,10 @@
       }
     }
 
+    const emailChecked = attachEmailHint($('sEmail'));
     $('signup').addEventListener('submit', (e) => {
       e.preventDefault();
+      if (!emailChecked()) return; // prima la risposta a "Intendevi …?"
       tap({ token: null, signup: { name: $('sName').value, email: $('sEmail').value, acceptTerms: $('sTerms').checked, consentMarketing: $('sMkt').checked } });
     });
     $('login').addEventListener('submit', (e) => {
