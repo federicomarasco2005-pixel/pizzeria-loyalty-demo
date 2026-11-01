@@ -4,6 +4,8 @@
 //   stamps/anim-<N>-reward.gif  premio pronto: i timbri saltano uno alla volta
 //   stamps/icon.png / icon-empty.png   timbro singolo per la tessera web
 //   icons/icon-192.png, icon-512.png, apple-touch-icon.png   icona della tessera installata sul telefono
+//                               (e delle notifiche web): il logo del locale se c'è, altrimenti il timbro
+//   icons/badge.png             sagoma bianca del timbro per la barra in alto del telefono (notifiche web)
 //   logo.png                    logo del programma (caricato dal gestore oppure generato)
 // Prima erano script PowerShell da lanciare a mano (tools/); ora ogni nuovo locale ha le sue in automatico.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -317,10 +319,27 @@ async function render(shop, file) {
   if ((m = file.match(/^icons\/(icon-192|icon-512|apple-touch-icon)\.png$/))) {
     const size = { 'icon-192': 192, 'icon-512': 512, 'apple-touch-icon': 180 }[m[1]];
     const c = createCanvas(size, size); const g = c.getContext('2d');
+    const logo = await logoImage(shop);
+    if (logo) {
+      // il logo del locale su fondo bianco (icona dell'app e delle notifiche), senza il suo bordo vuoto e più
+      // grande possibile: la diagonale sta nel cerchio che resta quando Android ritaglia l'icona
+      const t = trimLogo(logo);
+      const s = (size * 0.76) / Math.hypot(t.width, t.height);
+      g.fillStyle = '#ffffff'; g.fillRect(0, 0, size, size);
+      g.drawImage(t, (size - t.width * s) / 2, (size - t.height * s) / 2, t.width * s, t.height * s);
+      return png(c);
+    }
     g.fillStyle = shop.brandColor; g.fillRect(0, 0, size, size);
     // al 62%: resta nella "zona sicura" anche quando Android ritaglia l'icona a cerchio
     const d = Math.round(size * 0.62), s = stampSprite(draw, d, false);
     g.drawImage(s.canvas, (size - s.canvas.width) / 2, (size - s.canvas.height) / 2);
+    return png(c);
+  }
+  // icona piccola della barra in alto del telefono per le notifiche web: Android usa solo la sagoma (bianca)
+  if (file === 'icons/badge.png') {
+    const c = createCanvas(96, 96); const g = c.getContext('2d');
+    g.translate(8, 8); draw(g, 80); g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = 'source-in'; g.fillStyle = '#ffffff'; g.fillRect(0, 0, 96, 96);
     return png(c);
   }
   if (file === 'wide-logo.png') return png(await wideLogo(shop, draw));
@@ -399,6 +418,23 @@ function toCanvas(img) {
   const c = createCanvas(img.width, img.height);
   c.getContext('2d').drawImage(img, 0, 0);
   return c;
+}
+
+// Logo senza il bordo bianco o trasparente intorno (nell'icona dell'app deve venire più grande possibile)
+function trimLogo(img) {
+  const c = toCanvas(img); const { width: w, height: h } = c;
+  const px = c.getContext('2d').getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4;
+    if (px[i + 3] > 24 && (px[i] < 235 || px[i + 1] < 235 || px[i + 2] < 235)) {
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return c;
+  const t = createCanvas(x1 - x0 + 1, y1 - y0 + 1);
+  t.getContext('2d').drawImage(c, -x0, -y0);
+  return t;
 }
 
 const png = (canvas) => ({ buf: canvas.toBuffer('image/png'), type: 'image/png' });

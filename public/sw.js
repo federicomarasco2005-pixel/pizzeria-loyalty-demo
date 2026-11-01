@@ -61,7 +61,7 @@ self.addEventListener('push', (e) => {
     body: JSON.stringify({ permission: self.Notification ? Notification.permission : '?', tag: m.tag, ...r }),
   }).catch(() => {}) : null);
   e.waitUntil(self.registration.showNotification(m.title || 'La tua tessera', {
-    body: m.body || '', icon: m.icon, badge: m.icon, tag: m.tag, data: { url: m.url || '/' },
+    body: m.body || '', icon: m.icon, badge: m.badge || m.icon, tag: m.tag, data: { url: m.url || '/' },
   }).then(() => ack({ shown: true }), (err) => ack({ shown: false, error: String((err && err.message) || err) })));
 });
 

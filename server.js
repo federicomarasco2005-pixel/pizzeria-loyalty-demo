@@ -597,8 +597,9 @@ shop.get('/card/:token/manifest.webmanifest', (req, res) => {
   const base = `/${cfg.slug}`;
   const v = `?v=${cfg.imgVersion}`;
   res.type('application/manifest+json').json({
-    name: `Tessera ${cfg.pizzeriaName}`,
-    short_name: `Tessera ${cfg.emoji}`,
+    // solo il nome del locale: è il nome dell'app sotto l'icona e in testa alle notifiche web
+    name: cfg.pizzeriaName,
+    short_name: cfg.pizzeriaName,
     description: `${cfg.programName}: i tuoi timbri sempre a portata di mano`,
     id: `${base}/card/${req.params.token}`,
     start_url: `${base}/card/${req.params.token}`,
@@ -1230,6 +1231,7 @@ async function deliverCampaign(ctx, campaign) {
         const w = await notificheWeb.send(customer.webPush, {
           title: withShop(ctx.cfg, campaign.title), body: campaign.body, tag: `c_${campaign.id}`,
           url: `${ctx.cfg.baseUrl}/card/${encodeURIComponent(customer.token)}`, icon: `${ctx.cfg.baseUrl}/icons/icon-192.png?v=${ctx.cfg.imgVersion}`,
+          badge: `${ctx.cfg.baseUrl}/icons/badge.png?v=${ctx.cfg.imgVersion}`,
           // solo il percorso: il telefono lo manda al sito da cui ha aperto la tessera (f5m.it o il vecchio onrender.com)
           ack: `${new URL(ctx.cfg.baseUrl).pathname.replace(/\/$/, '')}/api/card/${encodeURIComponent(customer.token)}/push/ack`,
         });
