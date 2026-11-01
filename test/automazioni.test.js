@@ -7,8 +7,13 @@ const path = require('path');
 
 const PORT = 3700 + Math.floor(Math.random() * 90);
 const vapid = require('web-push').generateVAPIDKeys(); // chiavi di prova delle notifiche web
+const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tessere-auto-'));
+// Backup e report automatici già fatti oggi: il giro di /api/cron dei test non deve mandarli (il lunedì e il primo
+// del mese finivano tra i messaggi del bot finto e, preparando i PDF, rallentavano i tempi delle prove)
+const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome' }).format(new Date());
+fs.writeFileSync(path.join(DATA_DIR, 'jobs.json'), JSON.stringify({ weekly: today, monthly: today }));
 Object.assign(process.env, {
-  PORT: String(PORT), DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'tessere-auto-')), DATABASE_URL: '',
+  PORT: String(PORT), DATA_DIR, DATABASE_URL: '',
   GOOGLE_ISSUER_ID: '', TELEGRAM_BOT_TOKEN: '', STAFF_PIN: '222222', PUBLIC_URL: `http://localhost:${PORT}`,
   VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_KEY: vapid.privateKey,
 });
@@ -242,6 +247,10 @@ test('prova dal bot: la notifica web parte anche dopo le 3 del giorno, il bot di
   assert.strictEqual(bar.db.canPush(rita.id), false);
   assert.ok(Date.parse(manager.nextPushAt(bar, rita)) > Date.now() + 23 * 3600e3, 'la prossima notifica tra circa 24 ore');
   bot.setAckWait(40, 150);
+  // risposte del bot da un certo punto in poi: il giro automatico può mandare anche altro in mezzo
+  // (il primo del mese, per esempio, i report mensili)
+  let mark = sent.length;
+  const said = (re) => sent.slice(mark).find((m) => re.test(m.text));
 
   // la prova parte lo stesso e non consuma il limite; il giro automatico, passato durante l'invio, non la rimanda
   const tapped = tap(`psend:${bar.shop.slug}|${rita.code}|near`);
@@ -249,7 +258,7 @@ test('prova dal bot: la notifica web parte anche dopo le 3 del giorno, il bot di
   await tapped;
   assert.strictEqual(delivered.length, 1, 'una sola notifica, anche con il giro ogni 30 secondi in mezzo');
   assert.strictEqual(bar.db.pushesLast24h(rita.id), 3, 'la prova web non conta nel limite');
-  assert.match(sent.at(-1).text, /Notifica web partita/);
+  assert.ok(said(/Notifica web partita/));
   assert.ok(delivered[0].ack.startsWith(`/${bar.shop.slug}/api/card/`), 'ricevuta allo stesso sito della tessera');
   // testi che il filtro anti-spam di Chrome non scambia per pubblicità: niente "!", niente premio o "gratis";
   // e ogni prova ha l'ora nel testo, così due prove di fila non sono identiche
@@ -259,18 +268,21 @@ test('prova dal bot: la notifica web parte anche dopo le 3 del giorno, il bot di
   // il telefono manda la ricevuta con il tag del messaggio: il bot dice da solo che è arrivata
   await post(`/api/card/${rita.token}/push/ack`, { permission: 'granted', shown: true, tag: delivered[0].tag });
   await new Promise((r) => setTimeout(r, 100));
-  assert.match(sent.at(-1).text, /arrivata sul telefono alle .* e mostrata/);
+  assert.ok(said(/arrivata sul telefono alle .* e mostrata/));
   // nessuna ricevuta per la prova successiva: il bot spiega cosa controllare e propone la prova a tempo
+  mark = sent.length;
   await tap(`psend:${bar.shop.slug}|${rita.code}|near`);
   await new Promise((r) => setTimeout(r, 100));
-  assert.match(sent.at(-1).text, /non è ancora arrivata al telefono/);
-  assert.ok(sent.at(-1).kb.inline_keyboard.flat().some((b) => b.callback_data === `pdelay:${bar.shop.slug}|${rita.code}|near`));
+  const verdict = said(/non è ancora arrivata al telefono/);
+  assert.ok(verdict);
+  assert.ok(verdict.kb.inline_keyboard.flat().some((b) => b.callback_data === `pdelay:${bar.shop.slug}|${rita.code}|near`));
   // la ricevuta arriva dopo il verdetto (telefono che consegna solo quando si riapre Chrome): il bot lo scrive
   await post(`/api/card/${rita.token}/push/ack`, { permission: 'granted', shown: true, tag: delivered[1].tag });
   await new Promise((r) => setTimeout(r, 200));
-  assert.match(sent.at(-1).text, /Arrivata in ritardo.*risparmio batteria/s);
+  assert.ok(said(/Arrivata in ritardo.*risparmio batteria/s));
+  mark = sent.length;
   await tap(`pdelay:${bar.shop.slug}|${rita.code}|near`);
-  assert.match(sent.at(-1).text, /parte tra 30 secondi/);
+  assert.ok(said(/parte tra 30 secondi/));
   bot.setAckWait(90000);
 });
 
