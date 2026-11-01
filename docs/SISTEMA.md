@@ -194,7 +194,7 @@ render.yaml  Blueprint Render (servizio + database)
 
 ### 4.5 Immagini (images.js)
 - Generate al volo, tenute in memoria (fino a circa 400 file) e preparate in anticipo prima di passarle a Google. Generarne un set richiede circa 0,3 s.
-- Indirizzi per locale: `stamps/grid-N-k.png`, `stamps/anim-N-k.gif`, `stamps/anim-N-reward.gif`, `stamps/icon(-empty).png`, `icons/icon-192|512|apple-touch-icon.png`, `logo.png`, `wide-logo.png` (logo largo del Wallet: timbro + nome in Inter, font in `fonts/`, centrati insieme dal 29/10; il locale legacy usa il file `public/wide-logo.png`).
+- Indirizzi per locale: `stamps/grid-N-k.png`, `stamps/anim-N-k.gif`, `stamps/anim-N-reward.gif`, `stamps/icon(-empty).png`, `icons/icon-192|512|apple-touch-icon.png` (icona dell'app della tessera e delle notifiche web: dal 1/11 il logo del locale su fondo bianco, senza bordo vuoto; il timbro solo se il locale non ha un logo), `icons/badge.png` (sagoma bianca del timbro per la barra in alto delle notifiche web), `logo.png`, `wide-logo.png` (logo largo del Wallet: timbro + nome in Inter, font in `fonts/`, centrati insieme dal 29/10; il locale legacy usa il file `public/wide-logo.png`).
 - 6 temi disegnati come forme vettoriali, senza font né emoji sul server. Il tema "logo" usa il logo caricato. Dal 28/10 il tema "pizza" è una **fetta di margherita napoletana** (prima una pizza tonda).
 - Il logo caricato dal bot viene appoggiato su fondo bianco (`prepareLogo`): un logo con scritte bianche su fondo trasparente perde le scritte. Usare la versione scura del logo (es. Assaje, 28/10).
 - I timbri "spenti" sono la versione in grigio scuro di quelli pieni.
