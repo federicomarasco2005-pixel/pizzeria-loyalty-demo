@@ -392,6 +392,7 @@
       notifyDone: ['🔔 Fatto! Ti avviseremo noi.', "🔔 Done! We'll let you know."],
       notifyNo: ['Notifiche non attivate.', 'Notifications not turned on.'],
       notifyError: ['Non è stato possibile attivare le notifiche: riprova.', 'Could not turn on notifications: please try again.'],
+      notifyAppBlocked: ['Il telefono blocca le notifiche di questa app: apri Impostazioni → App → «{app}» → Notifiche → Consenti, poi riprova da qui.', 'Your phone blocks notifications for this app: open Settings → Apps → "{app}" → Notifications → Allow, then try again here.'],
       notifyOffDone: ['Notifiche disattivate.', 'Notifications turned off.'],
       later: ['Più tardi', 'Later'],
       sheetTitle: ['Salva la tessera in 3 tocchi', 'Save the card in 3 taps'],
@@ -686,6 +687,12 @@
       $('pushRow').classList.remove('hidden');
       if (document.activeElement !== $('pushToggle')) $('pushToggle').checked = !!sub && !c.pushOff;
       if (c.pushOff) return; // spente apposta: niente riquadro "Attiva le notifiche", si riaccendono dall'interruttore
+      // Passaggio al service worker del locale (4/11): notifiche già attive (permesso dato, il server ha un indirizzo)
+      // ma ancora nessuna iscrizione del locale. Si fa da sola, senza chiedere niente al cliente.
+      if (!sub && Notification.permission === 'granted' && c.webPush > 0 && !paintPush.moved) {
+        paintPush.moved = true;
+        if (await movePush()) return paintPush(c);
+      }
       if (sub) {
         $('notifyOn').classList.remove('hidden');
         // a ogni apertura il server riceve l'indirizzo attuale del telefono (cambia dopo una reinstallazione o quando
@@ -700,19 +707,35 @@
       $('notifyLater').classList.toggle('hidden', denied);
       box.classList.remove('hidden');
     }
+    // Nuova iscrizione nel service worker del locale; quella del vecchio /sw.js comune si toglie da questa tessera
+    // (replace), così il telefono non riceve la stessa notifica due volte. auto: il server non riaccende notifiche spente.
+    async function movePush() {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(pushKey) });
+        const old = await navigator.serviceWorker.getRegistration('/');
+        const oldSub = old && old.scope !== reg.scope ? await old.pushManager.getSubscription() : null;
+        await api('api/card/' + encodeURIComponent(token) + '/push', { method: 'POST', body: { subscription: sub.toJSON(), auto: true, replace: oldSub && oldSub.endpoint } });
+        return true;
+      } catch { return false; }
+    }
+    // Il telefono non concede il permesso anche se il cliente ha detto sì: su Android l'app della tessera ha le
+    // notifiche spente nelle impostazioni (succede per esempio dopo averla reinstallata)
+    const appBlocked = () => (device.standalone && /Android/i.test(ua) ? t('notifyAppBlocked', { app: (window.CFG && CFG.pizzeriaName) || '' }) : t('notifyNo'));
     // Attiva (dal riquadro o dall'interruttore): permesso del telefono, iscrizione, server
     async function pushOn() {
       if (Notification.permission === 'denied') { toast(t('notifyDenied'), 5000); return paintPush(pushCard); }
       try {
         // la richiesta di permesso deve partire subito dal tocco (iPhone)
-        if (await Notification.requestPermission() !== 'granted') { toast(t('notifyNo')); return paintPush(pushCard); }
+        if (await Notification.requestPermission() !== 'granted') { toast(appBlocked(), 7000); return paintPush(pushCard); }
         const reg = await navigator.serviceWorker.ready;
         const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(pushKey) });
         await api('api/card/' + encodeURIComponent(token) + '/push', { method: 'POST', body: { subscription: sub.toJSON() } });
         toast(t('notifyDone'), 3500);
         paintPush({ ...pushCard, webPush: 1, pushOff: false });
       } catch {
-        toast(t('notifyError'));
+        // permesso tolto subito dopo il sì (Android che blocca l'app) oppure iscrizione non riuscita
+        toast(Notification.permission === 'granted' ? t('notifyError') : appBlocked(), 7000);
         paintPush(pushCard);
       }
     }
@@ -881,7 +904,8 @@
     addEventListener('appinstalled', () => { installed = true; $('install').classList.add('hidden'); toast(t('installed'), 3500); });
     checkInstalled();
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkInstalled(); });
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+    // sw.js del locale (indirizzo relativo: /<slug>/sw.js, area /<slug>/), vedi server.js
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
     // Pagina aperta dalla copia salvata nel telefono (sw.js): i dati dentro possono essere vecchi.
     // Il primo aggiornamento dal server allora li sostituisce senza festeggiare timbri già visti.

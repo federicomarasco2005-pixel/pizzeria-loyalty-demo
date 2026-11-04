@@ -240,6 +240,12 @@ test('notifiche web: il telefono si iscrive dalla tessera, i messaggi arrivano l
   assert.strictEqual((await card()).pushOff, false);
   await tap(`psend:${bar.shop.slug}|${lia.code}|review`);
   assert.strictEqual(delivered.length, 3, 'di nuovo attive');
+
+  // passaggio al service worker del locale: la nuova iscrizione prende il posto di quella del /sw.js comune (niente doppioni)
+  assert.strictEqual((await fetch(`${B}/sw.js`)).status, 200, 'ogni locale ha il suo service worker');
+  const nuova = { ...sub, endpoint: 'https://push.example.com/lia-locale' };
+  await post(`/api/card/${lia.token}/push`, { subscription: nuova, auto: true, replace: sub.endpoint });
+  assert.deepStrictEqual(bar.db.findByToken(lia.token).webPush.map((s) => s.endpoint), [nuova.endpoint]);
 });
 
 test('prova dal bot: la notifica web parte anche dopo le 3 del giorno, il bot dice se è arrivata, mai due volte', async () => {

@@ -201,6 +201,10 @@ shop.get('/card/:token', page('card.html', async (req, res) => {
   return { CARD: await cardData(req.ctx, customer) };
 }));
 shop.get(['/privacy', '/privacy.html'], page('privacy.html'));
+// Service worker di ogni locale (/<slug>/sw.js, area /<slug>/): ognuno ha la sua iscrizione alle notifiche web, così
+// spegnere o reinstallare la tessera di un locale non tocca quelle degli altri locali sullo stesso telefono (dal 4/11;
+// prima c'era un solo /sw.js per tutto f5m.it). Sui sottodomini resta /sw.js: lì ogni locale è già un sito a sé.
+shop.get('/sw.js', (req, res) => res.set('Cache-Control', 'no-cache').sendFile(path.join(PUBLIC_DIR, 'sw.js')));
 shop.get('/tap/:secret', page('tap.html'));
 
 // Immagini del locale (generate al volo, vedi images.js)
@@ -369,9 +373,13 @@ shop.post('/api/card/:token/push', (req, res) => {
   if (!sub) return res.status(400).json({ error: 'Iscrizione non valida.' });
   // la tessera la rimanda da sola a ogni apertura (auto): non riaccende le notifiche spente dal cliente
   if (req.body.auto && customer.pushOff) return res.json({ ok: true, off: true, devices: (customer.webPush || []).length });
+  // replace: iscrizione del vecchio /sw.js comune, sostituita da quella del service worker del locale (card.html, movePush)
+  const replace = typeof req.body.replace === 'string' ? req.body.replace : null;
+  let list = customer.webPush || [];
+  if (replace && replace !== sub.endpoint) list = list.filter((s) => s.endpoint !== replace);
   // si salva solo se è nuova
-  const known = (customer.webPush || []).some((s) => s.endpoint === sub.endpoint && s.keys.p256dh === sub.keys.p256dh && s.keys.auth === sub.keys.auth);
-  if (!known) req.ctx.db.updateCustomer(customer.id, { webPush: notificheWeb.addTo(customer.webPush, sub) });
+  const known = list.some((s) => s.endpoint === sub.endpoint && s.keys.p256dh === sub.keys.p256dh && s.keys.auth === sub.keys.auth);
+  if (!known || list !== customer.webPush) req.ctx.db.updateCustomer(customer.id, { webPush: known ? list : notificheWeb.addTo(list, sub) });
   if (customer.pushOff) req.ctx.db.updateCustomer(customer.id, { pushOff: false });
   res.json({ ok: true, devices: customer.webPush.length });
 });
