@@ -367,9 +367,12 @@ shop.post('/api/card/:token/push', (req, res) => {
   if (!notificheWeb.enabled()) return res.status(503).json({ error: 'Notifiche non disponibili.' });
   const sub = notificheWeb.clean(req.body && req.body.subscription);
   if (!sub) return res.status(400).json({ error: 'Iscrizione non valida.' });
-  // la tessera la rimanda a ogni apertura: si salva solo se è nuova
+  // la tessera la rimanda da sola a ogni apertura (auto): non riaccende le notifiche spente dal cliente
+  if (req.body.auto && customer.pushOff) return res.json({ ok: true, off: true, devices: (customer.webPush || []).length });
+  // si salva solo se è nuova
   const known = (customer.webPush || []).some((s) => s.endpoint === sub.endpoint && s.keys.p256dh === sub.keys.p256dh && s.keys.auth === sub.keys.auth);
   if (!known) req.ctx.db.updateCustomer(customer.id, { webPush: notificheWeb.addTo(customer.webPush, sub) });
+  if (customer.pushOff) req.ctx.db.updateCustomer(customer.id, { pushOff: false });
   res.json({ ok: true, devices: customer.webPush.length });
 });
 // DIAGNOSI TEMPORANEA (30/10): come il telefono vede notifiche e iscrizione (card.html, sendDiag). Da togliere dopo la prova.
@@ -400,8 +403,10 @@ shop.post('/api/card/:token/push/ack', (req, res) => {
 shop.post('/api/card/:token/push/off', (req, res) => {
   const customer = req.ctx.db.findByToken(req.params.token);
   if (!customer) return res.status(404).json({ error: 'Tessera non trovata.' });
+  // Interruttore spento in "Privacy e impostazioni": niente più notifiche web per questa tessera, finché il cliente
+  // non lo riaccende. L'iscrizione del telefono resta (è unica per tutte le tessere F5M del telefono): si toglie solo da qui.
   const endpoint = req.body && req.body.endpoint;
-  req.ctx.db.updateCustomer(customer.id, { webPush: (customer.webPush || []).filter((s) => endpoint && s.endpoint !== endpoint) });
+  req.ctx.db.updateCustomer(customer.id, { pushOff: true, webPush: (customer.webPush || []).filter((s) => endpoint && s.endpoint !== endpoint) });
   res.json({ ok: true, devices: customer.webPush.length });
 });
 
@@ -532,6 +537,7 @@ async function cardData(ctx, customer) {
     webPushKey: channelOf(ctx) === 'wallet' ? null : notificheWeb.publicKey(), // null: notifiche web spente (server o locale)
     pushWithWallet: channelOf(ctx) === 'both', // la tessera propone le notifiche web anche a chi l'ha nel Wallet
     webPush: (customer.webPush || []).length,
+    pushOff: !!customer.pushOff, // notifiche spente dal cliente con l'interruttore della tessera
     reviewUrl: ctx.db.getSettings().reviewUrl || null,
     messages: ctx.db.messagesFor(customer.id).slice(0, 5),
     consentMarketing: !!customer.consentMarketing,
@@ -1227,7 +1233,7 @@ async function deliverCampaign(ctx, campaign) {
     if (done.has(customer.id)) continue;
     // Chi ha attivato le notifiche web le riceve lì, secondo il canale scelto per il locale (stesso limite di 3 al giorno:
     // un messaggio arrivato su Wallet e web conta una volta sola)
-    const viaWeb = notificheWeb.enabled() && (customer.webPush || []).length > 0
+    const viaWeb = notificheWeb.enabled() && (customer.webPush || []).length > 0 && !customer.pushOff
       && (channel === 'both' || (channel === 'split' && !customer.walletSaved));
     const canNotify = ctx.db.canPush(customer.id);
     // Prova dal bot (campaign.test): il limite di 3 notifiche al giorno è di Google e vale solo per il Wallet.

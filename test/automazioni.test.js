@@ -230,6 +230,16 @@ test('notifiche web: il telefono si iscrive dalla tessera, i messaggi arrivano l
   assert.ok(!JSON.stringify(exp).includes('segreto123'));
   assert.strictEqual((await post(`/api/card/${lia.token}/push/off`, { endpoint: sub.endpoint })).status, 200);
   assert.strictEqual(bar.db.findByToken(lia.token).webPush.length, 0);
+  assert.strictEqual((await card()).pushOff, true, 'l\'interruttore della tessera resta spento');
+  // la tessera rimanda da sola l'iscrizione a ogni apertura: non deve riaccenderle
+  assert.strictEqual((await (await post(`/api/card/${lia.token}/push`, { subscription: sub, auto: true })).json()).off, true);
+  assert.strictEqual(bar.db.findByToken(lia.token).webPush.length, 0);
+  // il cliente riaccende l'interruttore: tornano
+  await post(`/api/card/${lia.token}/push`, { subscription: sub });
+  assert.strictEqual(bar.db.findByToken(lia.token).webPush.length, 1);
+  assert.strictEqual((await card()).pushOff, false);
+  await tap(`psend:${bar.shop.slug}|${lia.code}|review`);
+  assert.strictEqual(delivered.length, 3, 'di nuovo attive');
 });
 
 test('prova dal bot: la notifica web parte anche dopo le 3 del giorno, il bot dice se è arrivata, mai due volte', async () => {

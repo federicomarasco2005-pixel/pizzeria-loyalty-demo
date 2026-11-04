@@ -274,7 +274,9 @@
           <label class="check small">
             <input type="checkbox" id="consent"> <span data-t="consent">Voglio ricevere offerte e novità dal locale</span>
           </label>
-          <a href="#" id="notifyOff" class="hidden" data-t="notifyOff">Disattiva le notifiche</a>
+          <label class="check small hidden" id="pushRow">
+            <input type="checkbox" id="pushToggle"> <span data-t="pushToggle">🔔 Notifiche della tessera su questo telefono</span>
+          </label>
           <a href="privacy" data-t="privacy">Informativa privacy</a>
           <a id="exportLink" download data-t="export">Scarica i miei dati</a>
           <a href="#" id="deleteLink" class="danger" data-t="delete">Elimina la tessera</a>
@@ -386,7 +388,7 @@
       notifyBtn: ['Attiva le notifiche', 'Turn on notifications'],
       notifyDenied: ['Le notifiche sono bloccate: riattivale dalle impostazioni del telefono, alla voce di questa tessera.', 'Notifications are blocked: turn them back on in your phone settings, under this card.'],
       notifyOn: ['🔔 Notifiche attive su questo telefono', '🔔 Notifications on for this phone'],
-      notifyOff: ['Disattiva le notifiche', 'Turn off notifications'],
+      pushToggle: ['🔔 Notifiche della tessera su questo telefono', '🔔 Card notifications on this phone'],
       notifyDone: ['🔔 Fatto! Ti avviseremo noi.', "🔔 Done! We'll let you know."],
       notifyNo: ['Notifiche non attivate.', 'Notifications not turned on.'],
       notifyError: ['Non è stato possibile attivare le notifiche: riprova.', 'Could not turn on notifications: please try again.'],
@@ -677,15 +679,18 @@
       const box = $('notify');
       box.classList.add('hidden');
       $('notifyOn').classList.add('hidden');
-      $('notifyOff').classList.add('hidden');
+      $('pushRow').classList.add('hidden');
       if (!pushKey || (inWallet && !pushWithWallet) || !pushSupported || !(device.standalone || !c.saveUrl)) return;
+      // interruttore in "Privacy e impostazioni": acceso = notifiche attive, spento = spente dal cliente (c.pushOff)
       const sub = Notification.permission === 'granted' ? await pushSub() : null;
+      $('pushRow').classList.remove('hidden');
+      if (document.activeElement !== $('pushToggle')) $('pushToggle').checked = !!sub && !c.pushOff;
+      if (c.pushOff) return; // spente apposta: niente riquadro "Attiva le notifiche", si riaccendono dall'interruttore
       if (sub) {
         $('notifyOn').classList.remove('hidden');
-        $('notifyOff').classList.remove('hidden');
         // a ogni apertura il server riceve l'indirizzo attuale del telefono (cambia dopo una reinstallazione o quando
         // Chrome lo rinnova). Prima lo riceveva solo se non ne aveva nessuno, e gli avvisi potevano andare a uno vecchio.
-        api('api/card/' + encodeURIComponent(token) + '/push', { method: 'POST', body: { subscription: sub.toJSON() } }).catch(() => {});
+        api('api/card/' + encodeURIComponent(token) + '/push', { method: 'POST', body: { subscription: sub.toJSON(), auto: true } }).catch(() => {});
         return;
       }
       if (Notification.permission !== 'denied' && Date.now() < pushLaterUntil()) return;
@@ -695,8 +700,9 @@
       $('notifyLater').classList.toggle('hidden', denied);
       box.classList.remove('hidden');
     }
-    $('notifyBtn').onclick = async () => {
-      $('notifyBtn').disabled = true;
+    // Attiva (dal riquadro o dall'interruttore): permesso del telefono, iscrizione, server
+    async function pushOn() {
+      if (Notification.permission === 'denied') { toast(t('notifyDenied'), 5000); return paintPush(pushCard); }
       try {
         // la richiesta di permesso deve partire subito dal tocco (iPhone)
         if (await Notification.requestPermission() !== 'granted') { toast(t('notifyNo')); return paintPush(pushCard); }
@@ -704,27 +710,33 @@
         const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(pushKey) });
         await api('api/card/' + encodeURIComponent(token) + '/push', { method: 'POST', body: { subscription: sub.toJSON() } });
         toast(t('notifyDone'), 3500);
-        paintPush({ ...pushCard, webPush: 1 });
+        paintPush({ ...pushCard, webPush: 1, pushOff: false });
       } catch {
         toast(t('notifyError'));
-      } finally {
-        $('notifyBtn').disabled = false;
+        paintPush(pushCard);
       }
+    }
+    $('notifyBtn').onclick = async () => {
+      $('notifyBtn').disabled = true;
+      await pushOn();
+      $('notifyBtn').disabled = false;
+    };
+    $('pushToggle').onchange = async () => {
+      const el = $('pushToggle');
+      el.disabled = true;
+      if (el.checked) await pushOn();
+      else {
+        // solo per questa tessera: l'iscrizione del telefono resta, serve alle altre tessere F5M dello stesso telefono
+        const sub = await pushSub();
+        await api('api/card/' + encodeURIComponent(token) + '/push/off', { method: 'POST', body: { endpoint: sub && sub.endpoint } }).catch(() => {});
+        toast(t('notifyOffDone'));
+        paintPush({ ...pushCard, webPush: 0, pushOff: true });
+      }
+      el.disabled = false;
     };
     $('notifyLater').onclick = () => {
       try { localStorage.setItem('pushLater', String(Date.now() + 7 * 86400e3)); } catch {}
       $('notify').classList.add('hidden');
-    };
-    $('notifyOff').onclick = async (e) => {
-      e.preventDefault();
-      const sub = await pushSub();
-      if (sub) {
-        await api('api/card/' + encodeURIComponent(token) + '/push/off', { method: 'POST', body: { endpoint: sub.endpoint } }).catch(() => {});
-        await sub.unsubscribe().catch(() => {});
-      }
-      try { localStorage.setItem('pushLater', String(Date.now() + 30 * 86400e3)); } catch {}
-      toast(t('notifyOffDone'));
-      paintPush({ ...pushCard, webPush: 0 });
     };
 
     // DIAGNOSI TEMPORANEA (30/10, notifiche web che non arrivano ai telefoni): all'apertura la tessera scrive nel
