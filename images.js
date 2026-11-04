@@ -591,4 +591,52 @@ async function warm(shop, { gifs = false } = {}) {
   }
 }
 
-module.exports = { THEMES, get, preview, prepareLogo, warm };
+// Colori del locale presi dal logo, per la dashboard: accento (il colore vivo più presente), secondo colore
+// (un'altra tinta vivace, se c'è) e inchiostro (il colore scuro delle scritte). null se il locale non ha un logo.
+const paletteCache = new Map();
+async function palette(shop) {
+  const key = `${shop.slug}|${shop.imgVersion || 1}`;
+  if (!paletteCache.has(key)) {
+    let out = null;
+    try { const img = await logoImage(shop); if (img) out = logoColors(img); } catch { out = null; }
+    if (paletteCache.size > 200) paletteCache.delete(paletteCache.keys().next().value);
+    paletteCache.set(key, out);
+  }
+  return paletteCache.get(key);
+}
+
+function logoColors(img) {
+  const S = 160, k = Math.min(1, S / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+  const c = createCanvas(w, h); c.getContext('2d').drawImage(img, 0, 0, w, h);
+  const px = c.getContext('2d').getImageData(0, 0, w, h).data;
+  const hues = Array.from({ length: 18 }, () => ({ n: 0, r: 0, g: 0, b: 0 })); // 18 tinte da 20°
+  const dark = { n: 0, r: 0, g: 0, b: 0 };
+  let used = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i], g = px[i + 1], b = px[i + 2];
+    if (px[i + 3] < 128) continue;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 510, d = (max - min) / 255;
+    if (l > 0.92) continue; // fondo bianco
+    used++;
+    const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    let bin = null;
+    if (sat > 0.2 && l > 0.12 && l < 0.85) {
+      const hue = max === r ? ((g - b) / (max - min)) % 6 : max === g ? (b - r) / (max - min) + 2 : (r - g) / (max - min) + 4;
+      bin = hues[Math.floor((((hue * 60) + 360) % 360) / 20) % 18];
+    } else if (l < 0.35) bin = dark;
+    if (bin) { bin.n++; bin.r += r; bin.g += g; bin.b += b; }
+  }
+  const hex = (x) => '#' + [x.r, x.g, x.b].map((v) => Math.round(v / x.n).toString(16).padStart(2, '0')).join('');
+  const ranked = hues.map((x, i) => ({ ...x, i })).filter((x) => x.n >= Math.max(4, used * 0.01)).sort((a, b) => b.n - a.n);
+  const near = (a, b) => Math.min(Math.abs(a - b), 18 - Math.abs(a - b)) <= 2; // tinte a meno di 60°
+  const first = ranked[0];
+  const second = first && ranked.find((x) => !near(x.i, first.i));
+  return {
+    accent: first ? hex(first) : null,
+    second: second ? hex(second) : null,
+    ink: dark.n >= Math.max(3, used * 0.05) ? hex(dark) : null,
+  };
+}
+
+module.exports = { THEMES, get, preview, prepareLogo, warm, palette };

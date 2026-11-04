@@ -16,6 +16,30 @@ async function applyBrand() {
   return cfg;
 }
 
+// Colori del locale per le pagine che vede il locale (dashboard, Cassa, QR da tavolo, /locale.css).
+// Dal logo (window.PALETTE, calcolata dal server con images.palette); senza logo dal colore della tessera.
+// L'accento si scurisce se è troppo chiaro per il fondo carta; l'inchiostro resta sempre molto scuro e caldo.
+function applyShopColors(cfg) {
+  const rgb = (h) => { const n = parseInt(String(h).replace('#', ''), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+  const toHex = (c) => '#' + c.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+  const mix = (a, b, t) => toHex(rgb(a).map((v, i) => v + (rgb(b)[i] - v) * t));
+  const lum = (h) => { const [r, g, b] = rgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const valid = (h) => /^#[0-9a-f]{6}$/i.test(h || '');
+  const P = window.PALETTE || {};
+  let accent = valid(P.accent) ? P.accent : valid(cfg && cfg.brandColor) ? cfg.brandColor : '#b3261e';
+  for (let i = 0; i < 6 && lum(accent) > 0.18; i++) accent = mix(accent, '#000000', 0.18);
+  let second = valid(P.second) ? P.second : mix(accent, '#29221d', 0.55);
+  for (let i = 0; i < 6 && lum(second) > 0.2; i++) second = mix(second, '#000000', 0.18);
+  const ink = valid(P.ink) && lum(P.ink) < 0.05 ? mix(P.ink, '#2b1d14', 0.45) : '#29221d';
+  const s = document.documentElement.style;
+  s.setProperty('--accent', accent);
+  s.setProperty('--accent-soft', mix(accent, '#f6f1e7', 0.86));
+  s.setProperty('--second', second);
+  s.setProperty('--ink', ink);
+  s.setProperty('--paper', mix('#f6f1e7', accent, 0.015));
+  return { accent, second, ink };
+}
+
 // Disegna i timbri; quelli appena ottenuti entrano con un'animazione.
 // Tessera grande: righe scelte perché i timbri vengano il più grandi possibile senza allungare troppo la tessera
 // (fino a 6 come una tessera da 6, cioè 3 per riga; fino a 10 al massimo due righe: 8 → 4+4, 9 → 5+4, 10 → 5+5;

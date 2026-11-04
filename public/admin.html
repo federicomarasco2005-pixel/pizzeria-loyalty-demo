@@ -5,129 +5,133 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dashboard</title>
   <link rel="preconnect" href="https://fonts.bunny.net">
-  <link href="https://fonts.bunny.net/css?family=anton:400|inter:400,500,600,700,800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/f5m.css">
+  <link href="https://fonts.bunny.net/css?family=anton:400|barlow-condensed:500,600,700|inter:400,500,600,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/locale.css">
   <style>
-    /* Dashboard del locale (versione demo): le regole comuni (colori, vetro, pulsanti, accesso) sono in /f5m.css */
+    /* Dashboard del locale: regole comuni (colori, campi, pulsanti, accesso, marchio) in /locale.css */
     /* ---------- struttura ---------- */
-    .app { display: grid; grid-template-columns: 250px 1fr; gap: 22px; padding: 22px; max-width: 1400px; margin: 0 auto; }
-    .side { position: sticky; top: 22px; align-self: start; display: flex; flex-direction: column; gap: 16px; }
-    .side .glass { padding: 20px 14px; }
-    .side .brand { padding: 0 10px; }
-    .shopname { color: var(--muted); font-size: .85rem; padding: 2px 10px 0; }
-    .menu { display: flex; flex-direction: column; gap: 4px; margin-top: 18px; }
-    .menu button, .menu a { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 12px; border-radius: 14px; border: 0; background: none;
-      color: var(--soft); font-size: .95rem; font-weight: 600; cursor: pointer; text-decoration: none; text-align: left; }
-    .menu button:hover:not(:disabled), .menu a:hover { background: var(--panel2); color: var(--ink); }
-    .menu .ico { width: 22px; text-align: center; font-size: 1.05rem; }
-    .menu button[aria-current="page"] { background: linear-gradient(92deg, rgba(91,140,255,.22), rgba(88,214,255,.12)); color: var(--ink); box-shadow: inset 0 0 0 1px rgba(91,140,255,.35); }
-    .menu button:disabled { opacity: .55; cursor: default; }
-    .soon { margin-left: auto; font-size: .66rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(255,210,94,.14); color: var(--yellow); letter-spacing: .03em; }
-    .menu hr { border: 0; border-top: 1px solid var(--line); margin: 10px 4px; }
+    .app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; max-width: 1360px; margin: 0 auto; }
+    .side { border-right: 1px solid var(--line); padding: 26px 18px; display: flex; flex-direction: column; gap: 22px; position: sticky; top: 0; height: 100vh; }
+    .side .brand { padding-left: 13px; }
+    .menu { display: flex; flex-direction: column; gap: 2px; }
+    .menu button, .menu a { display: block; width: 100%; padding: 8px 10px; border: 0; border-left: 3px solid transparent; background: none; border-radius: 0;
+      color: var(--soft); font-size: .95rem; font-weight: 500; cursor: pointer; text-decoration: none; text-align: left; }
+    .menu button:hover, .menu a:hover { color: var(--ink); background: var(--paper2); }
+    .menu button[aria-current="page"] { border-left-color: var(--accent); color: var(--ink); font-weight: 600; }
+    .menu .sep { height: 1px; background: var(--line); margin: 12px 0; }
 
-    .main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
-    .top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-    .top h1 { margin: 0; font-size: 1.55rem; font-weight: 800; }
-    .top .date { color: var(--muted); font-size: .88rem; }
-    .search { margin-left: auto; width: min(320px, 100%); position: relative; }
-    .search input { padding-left: 40px; border-radius: 999px; }
-    .search::before { content: "⌕"; position: absolute; left: 15px; top: 50%; transform: translateY(-52%); color: var(--muted); font-size: 1.15rem; }
-    .avatar { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #070910; background: var(--grad); flex: none; }
+    .main { padding: 30px 36px 60px; min-width: 0; }
+    .mbar { display: none; }
+    .top { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+    .top h1 { margin: 0; font-family: var(--cond); font-weight: 700; font-size: 2.4rem; line-height: 1; }
+    .top .date { color: var(--muted); font-size: .9rem; margin-top: 6px; }
+    .search { margin-left: auto; width: min(300px, 100%); }
 
-    /* panoramica */
-    .hero { padding: 26px 28px; display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; position: relative; overflow: hidden; }
-    .hero::after { content: ""; position: absolute; right: -60px; top: -60px; width: 240px; height: 240px; border-radius: 50%;
-      background: radial-gradient(circle at 35% 35%, rgba(88,214,255,.35), rgba(91,140,255,.12) 55%, transparent 70%); pointer-events: none; }
-    .pill { display: inline-flex; gap: 6px; align-items: center; font-size: .74rem; font-weight: 700; padding: 6px 11px; border-radius: 999px;
-      background: rgba(91,140,255,.16); color: #b9ccff; letter-spacing: .02em; }
-    .big { display: block; width: fit-content; padding-right: .06em; font-family: var(--display); font-size: clamp(4rem, 9vw, 6.2rem); line-height: .95; margin: 12px 0 2px; font-weight: 400; }
-    .hero h2 { margin: 0; font-size: 1.08rem; font-weight: 700; }
-    .hero p { margin: 6px 0 0; color: var(--muted); max-width: 460px; }
-    .mini { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 10px; position: relative; z-index: 1; }
-    .mini div { background: var(--panel2); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
-    .mini b { display: block; font-size: 1.5rem; font-weight: 800; }
-    .mini span { font-size: .78rem; color: var(--muted); }
+    /* ---------- oggi: tre numeri ---------- */
+    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); margin: 22px 0 34px; }
+    .kpis div { padding: 0 20px; border-left: 1px solid var(--line); }
+    .kpis div:first-child { padding-left: 0; border-left: 0; }
+    .kpis b { display: block; font-family: var(--cond); font-weight: 600; font-size: 3.4rem; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .kpis div:first-child b { color: var(--accent); }
+    .kpis span { font-size: .85rem; color: var(--muted); }
 
-    .cols { display: grid; grid-template-columns: 1.55fr 1fr; gap: 20px; }
-    .card { padding: 20px 20px 10px; min-width: 0; }
-    .card-h { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-    .card-h h3 { margin: 0; font-size: 1.05rem; }
-    .card-h .count { color: var(--muted); font-size: .85rem; }
-    .sort { margin-left: auto; background: var(--panel2); color: var(--ink); border: 1px solid var(--line2); border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .82rem; cursor: pointer; }
-    .sort:focus { outline: none; border-color: var(--cyan); }
-    .sort option { background: #141826; }
-    .list { display: flex; flex-direction: column; }
-    .row { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-top: 1px solid var(--line); }
-    .row:first-child { border-top: 0; }
-    .initial { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; flex: none; font-size: .95rem; }
+    .cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 48px; }
+    .sec { min-width: 0; }
+    .sec-h { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+    .sec-h h2 { margin: 0; font-family: var(--cond); font-weight: 700; font-size: 1.45rem; text-transform: uppercase; letter-spacing: .02em; }
+    .sec-h .count { color: var(--muted); font-size: .85rem; }
+    .sort { margin-left: auto; background: transparent; color: var(--ink); border: 1px solid var(--line2); border-radius: var(--r); padding: 5px 8px; font-size: .84rem; cursor: pointer; }
+
+    .row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
     .who { min-width: 0; flex: 1; }
-    .who b { display: block; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .who span { font-size: .78rem; color: var(--muted); }
-    .prog { width: 120px; flex: none; display: flex; flex-direction: column; align-items: flex-end; }
-    .prog .bar { width: 100%; }
-    .prog small { align-self: stretch; }
-    .bar { height: 7px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
-    .bar i { display: block; height: 100%; border-radius: 99px; background: var(--grad); }
-    .prog small { display: block; font-size: .72rem; color: var(--muted); margin-top: 5px; }
-    .gift { font-size: .72rem; font-weight: 700; color: #070910; background: var(--yellow); padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
-    .last { width: 92px; text-align: right; font-size: .78rem; color: var(--muted); flex: none; }
-    .del { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 6px; border-radius: 10px; }
-    .del:hover { background: rgba(255,94,122,.14); color: var(--pink); }
-    .empty { color: var(--muted); text-align: center; padding: 26px 10px; font-size: .92rem; }
-    .ev { display: flex; gap: 12px; align-items: flex-start; padding: 11px 2px; border-top: 1px solid var(--line); }
-    .ev:first-child { border-top: 0; }
-    .ev .dot { width: 34px; height: 34px; border-radius: 12px; display: grid; place-items: center; flex: none; font-size: .95rem; }
-    .ev b { font-size: .9rem; }
-    .ev span { display: block; font-size: .78rem; color: var(--muted); }
-    .ev.voided b { text-decoration: line-through; opacity: .6; }
-    .note { color: var(--muted); font-size: .78rem; text-align: center; margin: 2px 0 0; }
+    .who b { display: block; font-size: .95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .who span { font-size: .8rem; color: var(--muted); }
+    .prog { width: 116px; flex: none; }
+    .bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--accent); }
+    .prog small { display: block; font-size: .76rem; color: var(--muted); margin-top: 4px; white-space: nowrap; }
+    .gift { display: inline-block; font-size: .76rem; font-weight: 600; color: #fff; background: var(--second); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+    .last { width: 90px; text-align: right; font-size: .8rem; color: var(--muted); flex: none; }
+    .del { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 6px; border-radius: 4px; display: grid; place-items: center; }
+    .del:hover { color: var(--accent); background: var(--accent-soft); }
+    .del svg { width: 16px; height: 16px; }
 
-    /* impostazioni e notifiche */
-    .settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; align-items: start; }
-    .form { padding: 22px; display: flex; flex-direction: column; gap: 14px; }
-    .form h3 { margin: 0; font-size: 1.05rem; }
-    .form p.lead { margin: -6px 0 0; color: var(--muted); font-size: .88rem; }
-    label { display: grid; gap: 6px; font-size: .84rem; color: var(--soft); font-weight: 600; }
-    .hint { font-size: .78rem; color: var(--muted); font-weight: 400; }
-    .info { background: rgba(91,140,255,.1); border: 1px solid rgba(91,140,255,.22); border-radius: 16px; padding: 14px 16px; font-size: .86rem; color: var(--soft); line-height: 1.6; }
-    .info code { background: rgba(255,255,255,.08); padding: 1px 6px; border-radius: 6px; }
-    .soon-card { padding: 40px 28px; text-align: center; max-width: 620px; }
-    .soon-card .em { font-size: 2.4rem; }
-    .soon-card h2 { margin: 10px 0 6px; font-size: 1.4rem; }
-    .soon-card p { margin: 0; color: var(--muted); }
+    .ev { display: grid; grid-template-columns: 74px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .ev time { font-size: .8rem; color: var(--muted); padding-top: 1px; }
+    .ev p { margin: 0; font-size: .92rem; }
+    .ev p b { font-weight: 600; }
+    .ev small { display: block; font-size: .78rem; color: var(--muted); }
+    .ev.voided p { text-decoration: line-through; color: var(--muted); }
+    .ev.redeem p::before, .ev.signup p::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; vertical-align: 2px; background: var(--second); }
+    .ev.signup p::before { background: var(--accent); }
 
+    /* ---------- notifiche e impostazioni ---------- */
+    .page-h { font-family: var(--cond); font-weight: 700; font-size: 1.45rem; text-transform: uppercase; letter-spacing: .02em; margin: 26px 0 6px; }
+    .soon-text { color: var(--soft); max-width: 560px; margin: 0; }
+    .settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 40px; margin-top: 26px; align-items: start; }
+    .form { display: flex; flex-direction: column; gap: 14px; }
+    .form h2 { margin: 0; padding-bottom: 8px; border-bottom: 2px solid var(--ink); font-family: var(--cond); font-weight: 700; font-size: 1.3rem; text-transform: uppercase; letter-spacing: .02em; }
+    .form p.lead { margin: 0; color: var(--muted); font-size: .88rem; }
+    label { display: grid; gap: 6px; font-size: .85rem; color: var(--soft); font-weight: 600; }
+    .hint { font-size: .8rem; color: var(--muted); font-weight: 400; }
+    .info { border-left: 3px solid var(--second); padding: 2px 0 2px 14px; font-size: .87rem; color: var(--soft); line-height: 1.65; }
+    .info code { background: var(--paper2); padding: 1px 5px; border-radius: 3px; }
+    .links { display: flex; flex-direction: column; gap: 10px; }
+
+    .who .ago, .ev .when { display: none; }
+    .who span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+    .who span span { display: inline; }
 
     /* ---------- tablet e telefono ---------- */
-    @media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } }
+    @media (max-width: 1100px) { .cols { grid-template-columns: 1fr; gap: 36px; } }
     @media (max-width: 860px) {
-      .app { grid-template-columns: 1fr; padding: 14px 14px 96px; gap: 16px; }
-      .side { position: static; }
-      .side .glass.nav { position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 30; padding: 6px; border-radius: 20px; }
-      .side .nav .brand, .side .nav .shopname, .side .nav hr, .side .nav .extra { display: none; }
-      .menu { flex-direction: row; margin: 0; gap: 4px; }
-      .menu button { flex-direction: column; gap: 2px; padding: 8px 4px; font-size: .72rem; justify-content: center; text-align: center; }
-      .menu .ico { width: auto; font-size: 1.15rem; }
-      .soon { position: absolute; top: 2px; right: 4px; margin: 0; font-size: .52rem; padding: 2px 5px; }
-      .menu button { position: relative; }
-      .demo-box { display: none; }
-      .top h1 { font-size: 1.3rem; }
-      .search { width: 100%; margin-left: 0; order: 3; }
-      .hero { grid-template-columns: 1fr; padding: 22px; }
+      .app { grid-template-columns: 1fr; }
+      .side { position: fixed; left: 0; right: 0; bottom: 0; top: auto; height: auto; z-index: 30; padding: 0; border: 0; border-top: 1px solid var(--line2); background: var(--paper); }
+      /* in basso: Oggi, Messaggi, Impostazioni e Cassa, sopra la barra del telefono */
+      .side { padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -1px 0 var(--line2); border-top: 0; }
+      .side > .brand, .menu .sep, .menu .extra { display: none; }
+      .menu { flex-direction: row; gap: 0; }
+      .menu button, .menu .tabcash { flex: 1; display: block !important; text-align: center; border-left: 0; border-top: 3px solid transparent; padding: 13px 2px 15px; font-size: .86rem; line-height: 1.4; font-weight: 500; }
+      .menu button[aria-current="page"] { border-top-color: var(--accent); border-left: 0; }
+      .menu button:hover, .menu a:hover { background: none; }
+      /* in alto: marchio F5M ed Esci */
+      .mbar { display: flex; align-items: center; justify-content: space-between; margin: -18px -16px 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+      .mbar .brand { font-size: 1.5rem; }
+      .mbar a { font-size: .9rem; color: var(--soft); text-decoration: none; padding: 8px 0 8px 12px; }
+      .main { padding: 18px 16px calc(84px + env(safe-area-inset-bottom)); }
+      .top { padding-bottom: 14px; gap: 12px; }
+      .top h1 { font-size: 2.1rem; }
+      .search { width: 100%; margin-left: 0; }
+      .kpis { margin: 18px 0 28px; }
+      .kpis b { font-size: 2.6rem; }
+      .kpis div { padding: 0 12px; }
+      .sec-h h2 { font-size: 1.3rem; }
+      .sort { padding: 7px 8px; }
+      /* riga cliente: ultima visita sotto il nome, cestino più facile da toccare */
+      .row { gap: 10px; padding: 12px 0; }
       .last { display: none; }
-      .prog { width: auto; min-width: 84px; }
+      .who .ago { display: inline; }
+      .who .code { display: none; }
+      .prog { width: 86px; }
+      .del { width: 40px; height: 40px; margin-right: -8px; }
+      .ev { grid-template-columns: 1fr; gap: 0; }
+      .ev time { display: none; }
+      .ev .when { display: inline; }
+      .settings { gap: 32px; margin-top: 20px; }
+      .btn { padding: 13px 16px; }
     }
-    @media (max-width: 420px) { .prog { min-width: 70px; } .mini b { font-size: 1.25rem; } }
+    @media (max-width: 420px) { .kpis b { font-size: 2.3rem; } .kpis span { font-size: .78rem; } .kpis div { padding: 0 10px; } .prog { width: 72px; } }
   </style>
 </head>
 <body>
   <!-- ===== Accesso ===== -->
   <section id="login" class="login hidden">
-    <div class="glass">
+    <div class="box">
       <div class="brand">F5M<span>.</span></div>
-      <h1>Dashboard del locale</h1>
-      <p data-cfg="pizzeriaName"></p>
+      <h1 data-cfg="pizzeriaName"></h1>
+      <p>Inserisci il PIN del gestore.</p>
       <input id="pin" class="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN" aria-label="PIN del gestore">
-      <button class="btn full" id="loginBtn">Entra</button>
+      <button class="btn" id="loginBtn">Entra</button>
       <p class="error" id="err" role="alert"></p>
     </div>
   </section>
@@ -135,49 +139,39 @@
   <!-- ===== Dashboard ===== -->
   <div id="dash" class="app hidden">
     <aside class="side">
-      <div class="glass nav">
-        <div class="brand">F5M<span>.</span></div>
-        <div class="shopname" data-cfg="pizzeriaName"></div>
-        <nav class="menu" aria-label="Sezioni">
-          <button data-tab="overview" aria-current="page"><span class="ico">▦</span> Panoramica</button>
-          <button data-tab="notify"><span class="ico">✉</span> Notifiche <span class="soon">In arrivo</span></button>
-          <button data-tab="settings"><span class="ico">⚙</span> Impostazioni</button>
-          <hr>
-          <a class="extra" href="staff"><span class="ico">🍕</span> Cassa</a>
-          <a class="extra" href="poster" target="_blank" rel="noopener"><span class="ico">⎙</span> Stampa QR tavolo</a>
-          <a class="extra" href="#" id="logout"><span class="ico">⎋</span> Esci</a>
-        </nav>
-      </div>
+      <div class="brand">F5M<span>.</span></div>
+      <nav class="menu" aria-label="Sezioni">
+        <button data-tab="overview" aria-current="page">Oggi</button>
+        <button data-tab="notify">Messaggi</button>
+        <button data-tab="settings">Impostazioni</button>
+        <div class="sep"></div>
+        <a class="extra tabcash" href="staff">Cassa</a>
+        <a class="extra" href="poster" target="_blank" rel="noopener">Stampa il QR da tavolo</a>
+        <a class="extra" href="#" id="logout">Esci</a>
+      </nav>
     </aside>
 
     <main class="main">
+      <div class="mbar"><span class="brand">F5M<span>.</span></span><a href="#" id="logout3">Esci</a></div>
       <header class="top">
         <div>
-          <h1>Ciao, <span data-cfg="pizzeriaName"></span> 👋</h1>
+          <h1 data-cfg="pizzeriaName"></h1>
           <div class="date" id="today"></div>
         </div>
-        <div class="search" id="searchBox"><input type="search" id="q" placeholder="Cerca cliente o codice" aria-label="Cerca cliente"></div>
-        <div class="avatar" id="avatar" aria-hidden="true"></div>
+        <div class="search" id="searchBox"><input type="search" id="q" placeholder="Cerca un cliente o un codice" aria-label="Cerca un cliente"></div>
       </header>
 
-      <!-- Panoramica -->
-      <div id="tab-overview" class="main">
-        <section class="glass hero">
-          <div style="position:relative;z-index:1">
-            <span class="pill">✦ La tua tessera fedeltà</span>
-            <div class="big grad" id="members">0</div>
-            <h2>Iscritti alla tessera</h2>
-            <p>Clienti che hanno la tessera del tuo locale nel telefono.</p>
-          </div>
-          <div class="mini">
-            <div><b id="new7">0</b><span>nuovi negli ultimi 7 giorni</span></div>
-            <div><b id="today3">0</b><span>timbri oggi</span></div>
-          </div>
+      <!-- Oggi -->
+      <div id="tab-overview">
+        <section class="kpis" aria-label="Numeri">
+          <div><b id="members">0</b><span>iscritti</span></div>
+          <div><b id="new7">0</b><span>nuovi in 7 giorni</span></div>
+          <div><b id="today3">0</b><span>timbri oggi</span></div>
         </section>
 
         <div class="cols">
-          <section class="glass card">
-            <div class="card-h"><h3>Clienti</h3><span class="count" id="custCount"></span>
+          <section class="sec">
+            <div class="sec-h"><h2>Clienti</h2><span class="count" id="custCount"></span>
               <select id="sort" class="sort" aria-label="Ordina i clienti">
                 <option value="recent">Ultima visita</option>
                 <option value="visits">Più visite</option>
@@ -187,46 +181,42 @@
                 <option value="name">Nome (A–Z)</option>
               </select>
             </div>
-            <div class="list" id="customers"></div>
+            <div id="customers"></div>
           </section>
-          <section class="glass card">
-            <div class="card-h"><h3>Ultime operazioni</h3></div>
-            <div class="list" id="events"></div>
+          <section class="sec">
+            <div class="sec-h"><h2>Cosa è successo</h2></div>
+            <div id="events"></div>
           </section>
         </div>
-        <p class="note">Si aggiorna da sola ogni pochi secondi.</p>
       </div>
 
-      <!-- Notifiche: non disponibili nella versione demo -->
+      <!-- Messaggi: non ancora disponibili -->
       <div id="tab-notify" class="hidden">
-        <section class="glass soon-card">
-          <div class="em">✉️</div>
-          <h2>Notifiche: <span class="grad">in arrivo</span></h2>
-          <p>Presto potrai mandare offerte e avvisi direttamente nel telefono dei tuoi clienti. Ti avviseremo appena sono disponibili.</p>
-        </section>
+        <h2 class="page-h">Messaggi ai clienti</h2>
+        <p class="soon-text">Presto potrai mandare offerte e avvisi nella tessera dei tuoi clienti. Ti avviseremo quando sarà pronto.</p>
       </div>
 
       <!-- Impostazioni -->
       <div id="tab-settings" class="hidden">
         <div class="settings">
-          <section class="glass form">
-            <h3>⭐ Recensioni Google</h3>
-            <p class="lead">Il link compare nella tessera con il pulsante "Lascia una recensione su Google".</p>
+          <section class="form">
+            <h2>Recensioni Google</h2>
+            <p class="lead">Nella tessera compare il pulsante "Lascia una recensione su Google".</p>
             <label>Link diretto alla recensione
               <input id="reviewUrl" type="url" placeholder="https://g.page/r/.../review">
             </label>
             <div class="info">
-              <strong>Come trovarlo (1 minuto)</strong><br>
-              1. Cerca il tuo locale su Google o Google Maps, con l'account che gestisce la scheda.<br>
+              <strong>Dove trovarlo</strong><br>
+              1. Cerca il locale su Google o Google Maps, con l'account che gestisce la scheda.<br>
               2. Nel <strong>Profilo dell'attività</strong> tocca <strong>"Chiedi recensioni"</strong>.<br>
-              3. Copia il link (inizia di solito con <code>https://g.page/r/</code>) e incollalo qui.
+              3. Copia il link (di solito inizia con <code>https://g.page/r/</code>) e incollalo qui.
             </div>
-            <a class="btn ghost" id="testReview" target="_blank" rel="noopener">↗ Prova il link</a>
+            <a class="btn ghost" id="testReview" target="_blank" rel="noopener">Prova il link</a>
           </section>
 
-          <section class="glass form">
-            <h3>📍 Contatti nella tessera</h3>
-            <p class="lead">Compaiono nella tessera come "Come raggiungerci" e "Chiama / prenota".</p>
+          <section class="form">
+            <h2>Contatti nella tessera</h2>
+            <p class="lead">Compaiono come "Come raggiungerci" e "Chiama / prenota".</p>
             <label>Link Google Maps del locale
               <input id="mapsUrl" type="url" placeholder="https://maps.app.goo.gl/...">
               <span class="hint">Su Google Maps apri la scheda del locale → Condividi → Copia link.</span>
@@ -238,11 +228,13 @@
             <p class="error" id="sErr" role="alert"></p>
           </section>
 
-          <section class="glass form">
-            <h3>🧾 Collegamenti utili</h3>
-            <a class="btn ghost" href="staff">🍕 Apri la Cassa</a>
-            <a class="btn ghost" href="poster" target="_blank" rel="noopener">⎙ Stampa il QR da tavolo</a>
-            <a class="btn ghost" href="#" id="logout2">⎋ Esci dalla dashboard</a>
+          <section class="form">
+            <h2>Collegamenti</h2>
+            <div class="links">
+              <a class="btn ghost" href="staff">Apri la Cassa</a>
+              <a class="btn ghost" href="poster" target="_blank" rel="noopener">Stampa il QR da tavolo</a>
+              <a class="btn ghost" href="#" id="logout2">Esci dalla dashboard</a>
+            </div>
           </section>
         </div>
       </div>
@@ -255,15 +247,16 @@
     let pin = getPin();
     let tab = 'overview';
     let data = null;
-    applyBrand().then((cfg) => { $('avatar').textContent = (cfg.pizzeriaName || '?').trim().charAt(0).toUpperCase(); });
-    $('today').textContent = new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    applyBrand().then(applyShopColors);
+    const d = new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+    $('today').textContent = d.charAt(0).toUpperCase() + d.slice(1);
 
     // ---------- Sezioni ----------
     document.querySelectorAll('[data-tab]').forEach((b) => {
       b.onclick = () => {
         tab = b.dataset.tab;
-        document.querySelectorAll('[data-tab]').forEach((x) => x.toggleAttribute('aria-current', x === b));
-        document.querySelectorAll('[data-tab]').forEach((x) => { if (x === b) x.setAttribute('aria-current', 'page'); });
+        document.querySelectorAll('[data-tab]').forEach((x) => { if (x === b) x.setAttribute('aria-current', 'page'); else x.removeAttribute('aria-current'); });
         ['overview', 'notify', 'settings'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab));
         $('searchBox').classList.toggle('hidden', tab !== 'overview');
         if (tab === 'settings') loadSettings();
@@ -271,15 +264,7 @@
       };
     });
 
-    // ---------- Panoramica ----------
-    const COLORS = ['#5b8cff', '#58d6ff', '#ffd25e', '#ff8a3d', '#ff5e7a', '#34c47c'];
-    const colorOf = (s) => COLORS[[...s].reduce((n, ch) => n + ch.charCodeAt(0), 0) % COLORS.length];
-    const EVENTS = {
-      signup: ['🆕', 'Nuova iscrizione', '#58d6ff'],
-      stamp: ['🍕', 'Timbro', '#ffd25e'],
-      redeem: ['🎁', 'Premio consegnato', '#34c47c'],
-      void: ['↩', 'Operazione annullata', '#ff5e7a'],
-    };
+    // ---------- Oggi ----------
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
     const ago = (iso) => {
       if (!iso) return 'mai';
@@ -290,14 +275,36 @@
       const d = Math.round(m / 1440);
       return d === 1 ? 'ieri' : d + ' giorni fa';
     };
+    // Frase di un'operazione: "Francesco ha preso un timbro", con il nome in grassetto
+    const SENTENCES = {
+      signup: ' ha attivato la tessera',
+      stamp: ' ha preso un timbro',
+      redeem: ' ha ritirato il premio',
+      void: ': operazione annullata',
+    };
+    function sentence(e) {
+      const p = el('p');
+      p.append(el('b', '', e.name), document.createTextNode(SENTENCES[e.type] || ' · ' + e.type));
+      return p;
+    }
+    function detail(e) {
+      const parts = [];
+      if (e.by === 'nfc') parts.push('con il timbro NFC');
+      else if (e.by === 'customer') parts.push('dal suo telefono');
+      else if (e.who && e.who !== 'Gestore') parts.push('in cassa, da ' + e.who);
+      else if (e.type !== 'signup') parts.push('in cassa');
+      if (e.voided) parts.push('poi annullato');
+      return parts.join(' · ');
+    }
+    const TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>';
 
-    async function load() {
+    async function loadStats() {  // non "load": è già la funzione di common.js che legge il PIN salvato
       try {
         data = await api('api/admin/stats', { pin });
       } catch (err) {
         if (err.status === 401 || err.status === 403 || err.status === 429) {
           $('login').classList.remove('hidden'); $('dash').classList.add('hidden');
-          load.failed = err.status === 401 ? 'PIN errato.' : err.message;
+          loadStats.failed = err.status === 401 ? 'PIN errato.' : err.message;
         }
         return;
       }
@@ -318,48 +325,55 @@
       const q = $('q').value.trim().toLowerCase();
       const list = data.customers.filter((c) => !q || c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q) || (c.email || '').includes(q))
         .sort(SORTS[$('sort').value] || SORTS.recent);
-      $('custCount').textContent = q ? list.length + ' di ' + data.customers.length : data.customers.length + ' in totale';
+      $('custCount').textContent = q ? list.length + ' di ' + data.customers.length : String(data.customers.length);
       const box = $('customers');
       box.innerHTML = '';
-      if (!list.length) box.appendChild(el('div', 'empty', q ? 'Nessun cliente trovato.' : 'Ancora nessun iscritto: metti il QR sui tavoli e i primi clienti arriveranno qui.'));
+      if (!list.length) box.appendChild(el('div', 'empty', q ? 'Nessun cliente trovato.' : 'Ancora nessun iscritto. Metti il QR sui tavoli: i primi clienti compariranno qui.'));
       list.forEach((c) => {
         const row = el('div', 'row');
         const ini = el('div', 'initial', c.name.trim().charAt(0).toUpperCase());
-        ini.style.background = colorOf(c.name) + '33'; ini.style.color = colorOf(c.name);
         const who = el('div', 'who');
-        who.append(el('b', '', c.name), el('span', '', c.code + ' · ' + c.visits + (c.visits === 1 ? ' visita' : ' visite')));
+        // sul telefono: "4 visite · 6 giorni fa" (il codice si trova comunque con la ricerca)
+        const info = el('span');
+        info.append(el('span', 'code', c.code + ' · '), document.createTextNode(c.visits + (c.visits === 1 ? ' visita' : ' visite')), el('span', 'ago', ' · ' + ago(c.lastVisitAt)));
+        who.append(el('b', '', c.name), info);
         const prog = el('div', 'prog');
-        if (c.rewards > 0) prog.appendChild(el('span', 'gift', '🎁 ' + (c.rewards > 1 ? c.rewards + ' premi' : 'Premio pronto')));
+        if (c.rewards > 0) prog.appendChild(el('span', 'gift', c.rewards > 1 ? c.rewards + ' premi pronti' : 'Premio pronto'));
         else {
           const bar = el('div', 'bar'); const fill = el('i'); fill.style.width = Math.round(c.stamps / c.stampsForReward * 100) + '%'; bar.appendChild(fill);
-          prog.append(bar, el('small', '', c.stamps + ' / ' + c.stampsForReward + ' timbri'));
+          prog.append(bar, el('small', '', c.stamps + ' di ' + c.stampsForReward));
         }
         const last = el('div', 'last', ago(c.lastVisitAt));
         // cancellazione su richiesta del cliente (privacy): tessera disattivata e dati eliminati
-        const del = el('button', 'del', '🗑');
+        const del = el('button', 'del');
+        del.innerHTML = TRASH;
         del.title = 'Cancella i dati di ' + c.name;
         del.setAttribute('aria-label', 'Cancella ' + c.name);
         del.onclick = async () => {
           if (!confirm('Cancellare definitivamente ' + c.name + ' (' + c.code + ')?\nTessera, timbri e dati personali vengono eliminati. Non si può annullare.')) return;
-          try { await api('api/admin/customers/' + encodeURIComponent(c.token) + '/delete', { method: 'POST', pin }); toast('Cliente cancellato'); load(); }
+          try { await api('api/admin/customers/' + encodeURIComponent(c.token) + '/delete', { method: 'POST', pin }); toast("Cliente cancellato"); loadStats(); }
           catch (err) { toast(err.message); }
         };
         row.append(ini, who, prog, last, del);
         box.appendChild(row);
       });
 
-      // ultime operazioni
+      // cosa è successo
       const evBox = $('events');
       evBox.innerHTML = '';
       if (!data.events.length) evBox.appendChild(el('div', 'empty', 'Qui vedrai iscrizioni, timbri e premi man mano che arrivano.'));
       data.events.slice(0, 14).forEach((e) => {
-        const [icon, label, color] = EVENTS[e.type] || ['•', e.type, '#9ba4ba'];
-        const row = el('div', 'ev' + (e.voided ? ' voided' : ''));
-        const dot = el('div', 'dot', icon); dot.style.background = color + '22'; dot.style.color = color;
-        const how = e.by === 'nfc' ? ' · con NFC' : e.by === 'customer' ? ' · dal telefono del cliente' : e.who ? ' · ' + e.who : '';
+        const row = el('div', 'ev ' + e.type + (e.voided ? ' voided' : ''));
+        const t = el('time', '', ago(e.at)); t.dateTime = e.at;
         const txt = el('div');
-        txt.append(el('b', '', label + ' — ' + e.name), el('span', '', ago(e.at) + how + (e.voided ? ' · annullato' : '')));
-        row.append(dot, txt);
+        txt.appendChild(sentence(e));
+        // sotto la frase: come è successo; sul telefono anche quando (la colonna dell'ora è nascosta)
+        const more = detail(e);
+        const meta = el('small');
+        meta.appendChild(el('span', 'when', ago(e.at) + (more ? ' · ' : '')));
+        meta.appendChild(document.createTextNode(more));
+        txt.appendChild(meta);
+        row.append(t, txt);
         evBox.appendChild(row);
       });
     }
@@ -401,7 +415,7 @@
       $('saveSettings').disabled = true;
       try {
         await api('api/admin/settings', { method: 'POST', pin, body: { reviewUrl: $('reviewUrl').value, mapsUrl: $('mapsUrl').value, phone: $('phone').value } });
-        toast('✔ Salvato. Le tessere si aggiornano in pochi secondi.', 3500);
+        toast('Salvato. Le tessere si aggiornano in pochi secondi.', 3500);
       } catch (err) {
         $('sErr').textContent = err.message;
       }
@@ -410,15 +424,15 @@
 
     // ---------- Accesso ----------
     function doLogin() {
-      pin = $('pin').value; setPin(pin); $('err').textContent = ''; load.failed = '';
-      load().then(() => { if (!$('login').classList.contains('hidden')) $('err').textContent = load.failed || 'PIN errato.'; });
+      pin = $('pin').value; setPin(pin); $('err').textContent = ''; loadStats.failed = '';
+      loadStats().then(() => { if (!$('login').classList.contains('hidden')) $('err').textContent = loadStats.failed || 'PIN errato.'; });
     }
     $('loginBtn').onclick = doLogin;
     $('pin').onkeydown = (e) => { if (e.key === 'Enter') doLogin(); };
-    $('logout').onclick = $('logout2').onclick = (e) => { e.preventDefault(); setPin(''); location.reload(); };
+    $('logout').onclick = $('logout2').onclick = $('logout3').onclick = (e) => { e.preventDefault(); setPin(''); location.reload(); };
 
-    load();
-    setInterval(load, 5000);
+    loadStats();
+    setInterval(loadStats, 5000);
   </script>
 </body>
 </html>

@@ -45,7 +45,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 // ---------- Sottodomini dei locali (SHOP_DOMAIN, es. da-mario.f5m.it) ----------
 // Una richiesta a <slug>.f5m.it diventa internamente /<slug>/…: pagine e API sono le stesse dell'indirizzo con il percorso.
 // I file comuni (/style.css, /common.js…) restano comuni. Un indirizzo vecchio (locale rinominato) porta al nuovo.
-const GLOBAL_FILES = new Set(['/style.css', '/f5m.css', '/common.js', '/sw.js', '/wallet-button-it.svg', '/robots.txt', '/vendor/html5-qrcode.min.js']);
+const GLOBAL_FILES = new Set(['/style.css', '/f5m.css', '/locale.css', '/common.js', '/sw.js', '/wallet-button-it.svg', '/robots.txt', '/vendor/html5-qrcode.min.js']);
 app.use((req, res, next) => {
   const domain = shops.shopDomain();
   const host = String(req.hostname || '').toLowerCase();
@@ -191,8 +191,9 @@ shop.get('/', (req, res, next) => {
   if (!token || !req.ctx.db.findByToken(token)) return next();
   res.set('Cache-Control', 'no-store').redirect(`${req.subdomain ? '' : `/${req.ctx.shop.slug}`}/card/${encodeURIComponent(token)}${query(req)}`);
 }, page('index.html'));
+// Pagine del locale (Cassa, dashboard, QR da tavolo): con i colori presi dal logo (images.palette), se ne ha uno
 for (const name of ['staff', 'admin', 'poster']) {
-  shop.get([`/${name}`, `/${name}.html`], page(`${name}.html`));
+  shop.get([`/${name}`, `/${name}.html`], page(`${name}.html`, async (req) => ({ PALETTE: await images.palette(shops.imageSpec(req.ctx.shop)) })));
 }
 shop.get('/card/:token', page('card.html', async (req, res) => {
   const customer = req.ctx.db.findByToken(req.params.token);

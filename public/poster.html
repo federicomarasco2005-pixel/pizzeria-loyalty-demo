@@ -5,56 +5,56 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QR da tavolo</title>
   <link rel="preconnect" href="https://fonts.bunny.net">
-  <link href="https://fonts.bunny.net/css?family=anton:400|inter:400,500,600,700,800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/f5m.css">
+  <link href="https://fonts.bunny.net/css?family=anton:400|barlow-condensed:500,600,700|inter:400,500,600,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/locale.css">
   <style>
-    /* QR da tavolo in stile F5M. Il foglio è bianco perché si stampa (il nero consumerebbe tutto l'inchiostro);
-       sullo schermo compare come anteprima su fondo scuro. */
-    .page { max-width: 640px; margin: 0 auto; padding: 18px 14px 40px; display: flex; flex-direction: column; gap: 16px; align-items: center; }
-    .bar { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 18px; }
-    .bar .brand { font-size: 1.35rem; }
-    .bar .shop { color: var(--muted); font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-    .bar .btn { margin-left: auto; padding: 10px 16px; flex: none; }
+    /* QR da tavolo, con i colori del locale (regole comuni in /locale.css). Il foglio è bianco perché si stampa;
+       intorno, sullo schermo, il fondo carta delle altre pagine del locale. */
+    .top { border-bottom: 1px solid var(--line); padding: 10px 16px; }
+    .top-in { max-width: 640px; margin: 0 auto; display: flex; align-items: center; gap: 10px; }
+    .top .brand { font-size: 1.5rem; flex: none; }
+    .top .shop { font-family: var(--cond); font-weight: 600; font-size: 1.1rem; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .top .btn { margin-left: auto; padding: 9px 16px; flex: none; }
+    .page { max-width: 640px; margin: 0 auto; padding: 22px 16px 40px; display: flex; flex-direction: column; gap: 18px; align-items: center; }
 
-    .sheet { width: 100%; max-width: 560px; aspect-ratio: 210 / 297; background: #fff; color: #14161d; border-radius: 18px; overflow: hidden;
-      display: flex; flex-direction: column; align-items: center; text-align: center; box-shadow: 0 30px 70px rgba(0,0,0,.5); position: relative; }
-    .sheet .band { width: 100%; height: 12px; background: var(--grad); flex: none; }
-    .sheet .inner { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 6% 8% 5%; }
-    .sheet .logo { width: 17%; aspect-ratio: 1; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 3px #fff, 0 0 0 5px #e7e9f0; }
-    .sheet .name { font-weight: 800; font-size: clamp(1rem, 3.6vw, 1.35rem); margin-top: 3%; }
-    .sheet h1 { font-family: var(--display); font-weight: 400; text-transform: uppercase; line-height: .95; letter-spacing: .01em;
-      font-size: clamp(2.2rem, 9.5vw, 3.9rem); margin: 0;
-      /* stessa sfumatura F5M, toni più intensi: su carta bianca il giallo chiaro non si leggerebbe */
-      background: linear-gradient(92deg, #2f66f0, #0aa6d6 35%, #e09a00 68%, #f06418); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .sheet .reward { font-size: clamp(.95rem, 3.4vw, 1.2rem); color: #3a3f4d; margin: 2% 0 0; }
-    .sheet .reward b { color: #14161d; }
-    .frame { padding: 7px; border-radius: 22px; background: var(--grad); -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 58%; }
-    .frame div { background: #fff; border-radius: 16px; padding: 6%; }
+    .sheet { width: 100%; max-width: 560px; aspect-ratio: 210 / 297; background: #fff; color: var(--ink); border: 1px solid var(--line2);
+      display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; }
+    .sheet .band { width: 100%; height: 14px; background: var(--accent); flex: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .sheet .inner { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 7% 9% 5%; }
+    .sheet .logo { width: 30%; aspect-ratio: 1; object-fit: contain; }
+    .sheet .name { font-family: var(--cond); font-weight: 700; font-size: clamp(1.1rem, 4vw, 1.5rem); text-transform: uppercase; letter-spacing: .04em; margin-top: 1%; }
+    .sheet h1 { font-family: var(--cond); font-weight: 700; text-transform: uppercase; line-height: .95; letter-spacing: .01em;
+      font-size: clamp(2.3rem, 10vw, 4.1rem); margin: 0; color: var(--accent); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .sheet .reward { font-size: clamp(.95rem, 3.4vw, 1.2rem); color: var(--soft); margin: 2% 0 0; }
+    .sheet .reward b { color: var(--ink); }
+    .frame { width: 56%; border: 3px solid var(--ink); padding: 5%; }
     .frame img { width: 100%; display: block; }
-    .sheet .how { font-weight: 800; font-size: clamp(1rem, 3.6vw, 1.3rem); margin: 0; }
-    .sheet .note { color: #5b6170; font-size: clamp(.8rem, 2.8vw, .95rem); margin: 1% 0 0; }
-    .sheet .foot { display: flex; justify-content: space-between; align-items: center; width: 100%; color: #8a90a0; font-size: clamp(.62rem, 2.2vw, .78rem); margin-top: 3%; }
-    .sheet .foot .brand { font-size: 1rem; color: #14161d; }
-    .tip { color: var(--muted); font-size: .85rem; text-align: center; max-width: 520px; margin: 0; }
+    .sheet .how { font-weight: 700; font-size: clamp(1rem, 3.6vw, 1.3rem); margin: 0; }
+    .sheet .note { color: var(--muted); font-size: clamp(.8rem, 2.8vw, .95rem); margin: 1% 0 0; }
+    .sheet .foot { display: flex; justify-content: space-between; align-items: center; width: 100%; color: var(--muted); font-size: clamp(.62rem, 2.2vw, .78rem);
+      margin-top: 3%; padding-top: 3%; border-top: 1px solid var(--line); }
+    .sheet .foot .brand { font-size: 1rem; }
+    .tip { color: var(--muted); font-size: .86rem; text-align: center; max-width: 520px; margin: 0; }
 
     @media print {
       @page { size: A4; margin: 0; }
       body { background: #fff; }
-      body::before, .bar, .tip { display: none !important; }
+      .top, .tip { display: none !important; }
       .page { padding: 0; max-width: none; }
-      .sheet { max-width: none; width: 210mm; height: 297mm; aspect-ratio: auto; border-radius: 0; box-shadow: none; }
-      .band { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .sheet { max-width: none; width: 210mm; height: 297mm; aspect-ratio: auto; border: 0; }
     }
   </style>
 </head>
 <body>
-  <div class="page">
-    <header class="glass bar">
+  <header class="top">
+    <div class="top-in">
       <span class="brand">F5M<span>.</span></span>
       <span class="shop">QR da tavolo · <span data-cfg="pizzeriaName"></span></span>
-      <button class="btn" onclick="print()">⎙ Stampa</button>
-    </header>
+      <button class="btn" onclick="print()">Stampa</button>
+    </div>
+  </header>
 
+  <div class="page">
     <article class="sheet">
       <div class="band"></div>
       <div class="inner">
@@ -64,16 +64,15 @@
         </div>
         <div>
           <h1>La tua tessera fedeltà</h1>
-          <p class="reward">Ogni <b data-cfg="stampsForReward"></b> visite: <b data-cfg="rewardText"></b> 🍕</p>
+          <p class="reward">Ogni <b data-cfg="stampsForReward"></b> visite: <b data-cfg="rewardText"></b></p>
         </div>
-        <div class="frame"><div><img id="qr" alt="QR per iscriversi alla tessera"></div></div>
+        <div class="frame"><img id="qr" alt="QR per iscriversi alla tessera"></div>
         <div>
           <p class="how">Inquadra il QR con la fotocamera</p>
           <p class="note">Ti iscrivi in 20 secondi. Niente app da scaricare: la tessera va nel telefono.</p>
         </div>
-        <div class="foot"><span id="url"></span><span class="brand">F5M<span style="color:var(--orange)">.</span></span></div>
+        <div class="foot"><span id="url"></span><span class="brand">F5M<span>.</span></span></div>
       </div>
-      <div class="band"></div>
     </article>
 
     <p class="tip">Stampa in A4 e metti il foglio sul tavolo o vicino alla cassa (va bene anche dentro un portamenù). Per avere i colori, nella finestra di stampa attiva "Grafica di sfondo".</p>
@@ -81,7 +80,7 @@
 
   <script src="/common.js"></script>
   <script>
-    applyBrand();
+    applyBrand().then(applyShopColors);
     api('api/poster-qr').then((d) => {
       document.getElementById('qr').src = d.qr;
       document.getElementById('url').textContent = d.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
