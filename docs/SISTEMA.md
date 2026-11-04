@@ -76,7 +76,7 @@ Tutti e tre sono esclusi da `.gitignore`.
 
 ### Novità del 13–22 ottobre 2026
 - **Sito f5m.it** con particelle 3D, demo interattiva, modulo "Richiedi una demo" (arriva sul bot) e assistenza.
-- **Nuova grafica F5M** per dashboard, Cassa e QR da tavolo (stile comune in `public/f5m.css`).
+- **Nuova grafica F5M** per dashboard, Cassa e QR da tavolo (stile comune in `public/f5m.css`). Sostituita il 4/11 dallo stile color carta (`public/locale.css`, vedi 4.7).
 - **Tessera web "carta vera"** e **Wallet** con logo largo per tutti i locali, testi in inglese e buono premio (15–16/10).
 - **Google Wallet approvato** per tutti il 19/10.
 - **Plancia sul PC** e **agente del mattino** nel cloud con avvisi Telegram (18/10, fuori dal repository).
@@ -90,7 +90,7 @@ Tutti e tre sono esclusi da `.gitignore`.
 
 Dal 10 ottobre 2026 (nuovo PC) `loyalty-demo` è una copia git collegata a GitHub (`origin/main`). Node 24 e Git sono installati.
 
-1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 48.
+1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 53.
 2. Pubblica con git: `git add …`, `git commit`, `git push`.
    - Il login GitHub (account **federicomarasco2005-pixel**) è già salvato su questo PC: `git push` funziona.
    - Ripiego, se git non va: caricare i file dal browser su `github.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/upload/main/<cartella>` (una cartella per commit).
@@ -221,7 +221,8 @@ render.yaml  Blueprint Render (servizio + database)
 | tap.html | `/<slug>/tap/<segreto>` | Timbro NFC (vedi 4.6). |
 | staff.html | `/<slug>/staff` | Cassa: PIN, scanner QR (libreria servita da `/vendor/html5-qrcode.min.js`), ricerca (il codice completo apre subito la tessera), +1 timbro, consegna premio, annulla, feed live dei timbri NFC. I dipendenti non vedono il link alla dashboard. |
 | admin.html | `/<slug>/admin` | Dashboard, **solo con il PIN del gestore**. **Panoramica**: numeri, clienti (con 🗑️ per cancellarli; ordinabili per ultima visita, più visite, più vicini al premio, da più tempo assenti, iscritti di recente, nome — la scelta resta sul dispositivo), storico con chi ha timbrato. **Notifiche**: segmenti, consenso, durata del messaggio (1/3/7/14 giorni), programmazione, storico, annulla, "elimina dalle tessere". **Impostazioni**: link recensione, Maps, telefono, NFC. |
-| poster.html | `/<slug>/poster` | QR da tavolo da stampare. |
+| poster.html | `/<slug>/poster` | QR da tavolo da stampare, con fascia e titolo nel colore del locale. |
+| locale.css | `/locale.css` | **Stile delle pagine del locale** (dashboard, Cassa, QR; dal 4/11): fondo color carta, marchio F5M, niente sfumature né emoji, angoli di 6 px, titoli in Barlow Condensed. I colori li mette `applyShopColors()` di `common.js`: dal logo del locale (`window.PALETTE`, calcolata dal server con `images.palette`: colore vivo più presente, seconda tinta, colore scuro delle scritte; inserita dal server solo in queste tre pagine), altrimenti dal colore della tessera; un colore troppo chiaro viene scurito. Le statistiche usano ancora `f5m.css` (scuro). Nelle pagine non definire funzioni con lo stesso nome di quelle di `common.js` (es. `load`): la dashboard perdeva il PIN salvato (corretto il 4/11, controllato da `test/dashboard.test.js`). |
 | privacy.html | `/<slug>/privacy` | Informativa e regolamento del locale. |
 | sw.js | `/sw.js` | Service worker. La tessera si apre subito dalla copia salvata (una sola per tessera, senza `?…`; cache `tessera-v4`) e intanto si scarica quella nuova: una modifica alla pagina si vede dalla seconda apertura. Il resto: prima la rete, la copia solo offline. Fino al 29/10 la copia arrivata con `?welcome` restava la prima trovata e il telefono mostrava per sempre la pagina del giorno dell'iscrizione. |
 
@@ -353,7 +354,7 @@ render.yaml  Blueprint Render (servizio + database)
 - Bot Telegram: online (webhook), creazione dei locali verificata dal vivo. Dipendenti, gestori, report, backup e avvisi sono coperti dai test, **non ancora provati dal vivo** da Federico.
 - Postgres a tabelle e migrazione: eseguiti dal vivo l'8 ottobre 2026, senza perdite.
 - Sicurezza (email già usata, blocco PIN e recupero) e privacy (export, cancellazione): coperti dai test e pubblicati.
-- 48 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
+- 53 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
 
 ---
 
@@ -390,7 +391,7 @@ render.yaml  Blueprint Render (servizio + database)
 - Cambiare il numero di timbri su un locale con clienti **ricalcola** i saldi dal ledger: per esempio da 6 a 8 timbri, chi aveva 7 timbri non ha più il premio.
 - **Le classi Google non si possono cancellare.** Se elimini un locale, la sua classe resta su Google (innocua).
 - Prima di ogni pubblicazione: `npm test`. Dopo: controlla i log di Render.
-- Le pagine usano indirizzi **relativi** (`api/...`, `card/...`, `logo.png`) per via di `<base href>`. Un percorso nuovo che inizia con `/` salta il locale. Gli unici assoluti voluti sono `/style.css`, `/f5m.css`, `/common.js`, `/sw.js`, `/wallet-button-it.svg` e `/vendor/html5-qrcode.min.js`.
+- Le pagine usano indirizzi **relativi** (`api/...`, `card/...`, `logo.png`) per via di `<base href>`. Un percorso nuovo che inizia con `/` salta il locale. Gli unici assoluti voluti sono `/style.css`, `/locale.css`, `/f5m.css`, `/common.js`, `/sw.js`, `/wallet-button-it.svg` e `/vendor/html5-qrcode.min.js`.
 
 ---
 
