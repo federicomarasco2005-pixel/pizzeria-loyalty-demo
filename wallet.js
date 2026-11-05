@@ -54,7 +54,7 @@ function describe(err) {
 // un campo vuoto (per esempio nessun messaggio o nessun telefono) Google non lo mostra.
 const LINK_IDS = ['web', 'review', 'maps', 'tel'];
 // Da aumentare quando cambiano i campi delle tessere: al prossimo avvio il server le riscrive tutte, una volta sola
-const LAYOUT_VERSION = 3;
+const LAYOUT_VERSION = 4;
 function detailsItems() {
   // i pulsanti tutti insieme, in un blocco solo, per averli più vicini; se Google non lo accetta, uno per uno
   const links = linkGroupSupported ? ['object.linksModuleData'] : LINK_IDS.map((id) => `object.linksModuleData.uris['${id}']`);
@@ -156,6 +156,7 @@ const heroUri = (c, state, animated) => `${c.stampsImageBase}/${heroFile(c, stat
 // Testi in italiano con la traduzione inglese: Google mostra quella della lingua del telefono.
 // Se Google rifiutasse i campi tradotti si torna ai soli testi italiani (vedi upsertObject).
 let i18nSupported = true;
+let accountIdHidden = true; // niente striscia col codice sul fronte
 let qrImageSupported = true; // QR per la cassa come immagine sotto la tessera
 const loc = (it, en) => ({
   defaultValue: { language: 'it-IT', value: it },
@@ -189,7 +190,9 @@ function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = 
     id: objectId(customer),
     classId: classId(c),
     state: 'ACTIVE',
-    accountId: customer.code,
+    // Il codice in accountId compariva sul fronte in una grande striscia bianca: ora è solo sotto il QR.
+    // Se Google lo pretendesse (400) si rimette, fino al riavvio.
+    ...(!accountIdHidden && { accountId: customer.code }),
     accountName: customer.name,
     // saldo dei timbri: Google lo usa per l'avviso a ogni timbro (notifyOnUpdate). "Premi disponibili" tolto il 5/11
     loyaltyPoints: { label: 'Timbri', ...(i18n && { localizedLabel: loc('Timbri', 'Stamps') }), balance: { string: `${state.stamps} / ${n}` } },
@@ -267,6 +270,9 @@ async function upsertObject(c, customer, state, { notifyOnUpdate = false, messag
       if (/\.gif(\?|$)/.test(body.heroImage.sourceUri.uri)) {
         gifSupported = false;
         console.warn(`[wallet] GIF animata rifiutata (${describe(err)}): uso le immagini fisse`);
+      } else if (accountIdHidden) {
+        accountIdHidden = false;
+        console.warn(`[wallet] tessera senza accountId rifiutata (${describe(err)}): rimesso`);
       } else if (body.imageModulesData) {
         qrImageSupported = false;
         console.warn(`[wallet] QR come immagine rifiutato (${describe(err)}): tessere senza`);

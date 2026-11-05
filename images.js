@@ -646,17 +646,16 @@ function logoColors(img) {
   };
 }
 
-// QR per la cassa sotto la tessera nel Wallet: targhetta bianca arrotondata con il codice in piccolo.
-// Intorno l'immagine è trasparente, così si vede il fondo di Google invece di una fascia bianca.
+// QR per la cassa sotto la tessera nel Wallet: immagine tutta bianca, con il codice in piccolo. Google la mette in un
+// riquadro arrotondato semitrasparente: con il fondo trasparente quel riquadro si vedeva come un'ombra intorno al QR.
 async function walletQr(code) {
-  const W_QR = 1032, QR = 420, pad = 36, margin = 20, textH = 58;
+  const W_QR = 1032, QR = 420, top = 28, textH = 56;
   const qr = await loadImage(await require('qrcode').toBuffer(code, { margin: 1, width: QR }));
-  const pw = QR + 2 * pad, ph = pad + QR + textH;
-  const c = createCanvas(W_QR, ph + 2 * margin); const g = c.getContext('2d');
-  roundRect(g, (W_QR - pw) / 2, margin, pw, ph, 44, '#ffffff');
-  g.drawImage(qr, (W_QR - QR) / 2, margin + pad, QR, QR);
+  const c = createCanvas(W_QR, top + QR + textH); const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W_QR, c.height);
+  g.drawImage(qr, (W_QR - QR) / 2, top, QR, QR);
   g.font = '28px "F5M Inter SB"'; g.fillStyle = '#5b5148'; g.textAlign = 'center'; g.textBaseline = 'top';
-  g.fillText(code, W_QR / 2, margin + pad + QR + 8);
+  g.fillText(code, W_QR / 2, top + QR + 6);
   return c.toBuffer('image/png');
 }
 

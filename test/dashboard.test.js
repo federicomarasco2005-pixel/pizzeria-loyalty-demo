@@ -46,7 +46,7 @@ test('Wallet: sul fronte il nome del cliente; sotto la tessera QR, messaggio e p
   const qr = await loadImage(await images.walletQr('AS-F7D44'));
   assert.strictEqual(qr.width, 1032);
   const qc = createCanvas(qr.width, qr.height); const qg = qc.getContext('2d'); qg.drawImage(qr, 0, 0);
-  assert.strictEqual(qg.getImageData(5, 5, 1, 1).data[3], 0, 'intorno alla targhetta è trasparente');
+  assert.deepStrictEqual([...qg.getImageData(5, 5, 1, 1).data], [255, 255, 255, 255], 'fondo bianco pieno, senza ombra del riquadro di Google');
 
   const { classBody, objectBody, setCfg } = require('../wallet')._forTest;
   setCfg({ issuerId: '1' });
@@ -62,6 +62,7 @@ test('Wallet: sul fronte il nome del cliente; sotto la tessera QR, messaggio e p
   const o = objectBody(c, { code: 'AS-1', name: 'Anna', token: 't', id: '1' }, { stamps: 2, rewards: 0 }, { phone: '+39 1' });
   assert.deepStrictEqual(o.textModulesData.map((t) => t.id), ['cliente', 'timbri', 'premio']);
   assert.strictEqual(o.textModulesData[0].body, 'Anna');
+  assert.strictEqual(o.accountId, undefined, 'niente striscia bianca col codice sul fronte');
   assert.deepStrictEqual(o.linksModuleData.uris.map((u) => u.id), ['web', 'tel'], 'il QR è già sotto la tessera: niente pulsante');
   assert.strictEqual(o.imageModulesData[0].mainImage.sourceUri.uri, `https://x/y/qr-tessera/AS-1.png?v=${require('../wallet').LAYOUT_VERSION}`);
   assert.ok(!JSON.stringify(o.imageModulesData).includes('/card/'), 'il QR non contiene il token');
