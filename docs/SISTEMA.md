@@ -90,7 +90,7 @@ Tutti e tre sono esclusi da `.gitignore`.
 
 Dal 10 ottobre 2026 (nuovo PC) `loyalty-demo` è una copia git collegata a GitHub (`origin/main`). Node 24 e Git sono installati.
 
-1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 53.
+1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 55.
 2. Pubblica con git: `git add …`, `git commit`, `git push`.
    - Il login GitHub (account **federicomarasco2005-pixel**) è già salvato su questo PC: `git push` funziona.
    - Ripiego, se git non va: caricare i file dal browser su `github.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/upload/main/<cartella>` (una cartella per commit).
@@ -176,7 +176,7 @@ render.yaml  Blueprint Render (servizio + database)
   - `cardTemplateOverride`, una riga "Timbri · Premio" sul fronte (dal 5/11; prima c'era anche il codice, ora nei dettagli).
 - **Un oggetto per cliente** (`loyaltyObject`, id `<issuer>.c_<customerId>`):
   - aggiornato con **PUT completo**, senza leggerlo prima;
-  - dal 5/11 niente "Premi disponibili" (`secondaryLoyaltyPoints`) né emoji; dettagli in ordine: prossimo premio, codice tessera, timbri, premio, come funziona, link. Il saldo `loyaltyPoints` resta: serve all'avviso a ogni timbro (`notifyOnUpdate`);
+  - dal 5/11 niente "Premi disponibili" (`secondaryLoyaltyPoints`) né emoji. Testi solo per il fronte (timbri, premio). Sotto la tessera, con `detailsTemplateOverride`: logo grande (`class.imageModulesData['logo']`, file `logo-big.png`, solo con un logo), ultimo messaggio (`object.messages[0]`), pulsanti (`object.linksModuleData.uris[...]`). Se Google rifiuta logo grande o dettagli (400) si torna allo schema normale fino al riavvio (`richClassSupported`). Il saldo `loyaltyPoints` resta: serve all'avviso a ogni timbro (`notifyOnUpdate`). Con un logo, anche l'intestazione (`wide-logo.png`) è il logo vero su targhetta bianca, tranne il locale legacy che usa il suo file;
   - i messaggi del pass li decide il server: resta solo l'ultimo messaggio attivo, con scadenza. Dopo un messaggio con notifica (`addMessage` TEXT_AND_NOTIFY) il pass si riordina **2 minuti dopo**, come dopo un timbro: riscriverlo subito riportava il messaggio a semplice testo e il telefono non suonava (25/10);
   - QR del Wallet spento di default (`WALLET_QR=on` per riaccenderlo); se acceso contiene il codice tessera, non il token.
   - Testi anche in inglese (`localizedHeader/Body`, `localizedLabel`, `localizedDescription`): Google mostra la lingua del telefono. Il testo del premio resta quello scritto dal locale.
@@ -355,7 +355,7 @@ render.yaml  Blueprint Render (servizio + database)
 - Bot Telegram: online (webhook), creazione dei locali verificata dal vivo. Dipendenti, gestori, report, backup e avvisi sono coperti dai test, **non ancora provati dal vivo** da Federico.
 - Postgres a tabelle e migrazione: eseguiti dal vivo l'8 ottobre 2026, senza perdite.
 - Sicurezza (email già usata, blocco PIN e recupero) e privacy (export, cancellazione): coperti dai test e pubblicati.
-- 53 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
+- 55 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
 
 ---
 
