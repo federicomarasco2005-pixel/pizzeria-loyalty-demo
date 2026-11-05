@@ -51,6 +51,7 @@ test('Wallet: sul fronte il nome del cliente; sotto la tessera QR, messaggio e p
   const c = { classSuffix: 'x', pizzeriaName: 'Prova', programName: 'Tessera fedeltà Prova', rewardText: 'Pizza gratis', rewardShort: 'Pizza', stampsForReward: 6, baseUrl: 'https://x/y', stampsImageBase: 'https://x/y/stamps', imgVersion: '1', brandColor: '#112233', logoUrl: 'l', wideLogoUrl: 'w' };
   const body = classBody(c);
   assert.strictEqual(body.programName, 'Prova');
+  assert.deepStrictEqual(body.imageModulesData, [], 'il vecchio logo grande va tolto dalla classe');
   const paths = body.classTemplateInfo.detailsTemplateOverride.detailsItemInfos.map((i) => i.item.firstValue.fields[0].fieldPath);
   assert.deepStrictEqual(paths.slice(0, 2), ["object.imageModulesData['qr']", 'object.messages[0]']);
   assert.ok(body.classTemplateInfo.cardTemplateOverride.cardRowTemplateInfos[0].oneItem);

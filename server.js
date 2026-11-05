@@ -1650,6 +1650,17 @@ async function refreshLinksIfMoved() {
   db.saveKey('baseUrls', now);
 }
 
+// Nuovi campi delle tessere Wallet: si riscrivono tutte una volta sola, senza notifiche, invece di aspettare il
+// prossimo timbro di ognuna. La versione fatta si salva, così i riavvii del server non ripetono il giro.
+async function refreshWalletLayout() {
+  if (!wallet.enabled() || (await db.loadKey('walletLayout')) === wallet.LAYOUT_VERSION) return;
+  for (const ctx of shops.all()) {
+    console.log(`[wallet] ${ctx.shop.slug}: nuovi campi, aggiorno ${ctx.db.customers.length} tessere`);
+    await syncAll(ctx);
+  }
+  await db.saveKey('walletLayout', wallet.LAYOUT_VERSION);
+}
+
 // Aggiorna in background tutte le tessere di un locale (es. dopo un cambio di premio, colore o link)
 async function syncAll(ctx) {
   for (const c of [...ctx.db.customers]) await syncWallet(ctx, c);
@@ -1884,6 +1895,7 @@ const ready = (async () => {
     }
     for (const ctx of shops.all()) await warmGifs(ctx);
     await refreshLinksIfMoved();
+    await refreshWalletLayout();
   })();
   resumeSettles();
   setInterval(processDueCampaigns, 30000);

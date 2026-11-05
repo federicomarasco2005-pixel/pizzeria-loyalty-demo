@@ -53,6 +53,8 @@ function describe(err) {
 // Sotto la tessera (dal 5/11): QR per la cassa, ultimo messaggio e pulsanti, nient'altro. Sono indirizzi di campi:
 // un campo vuoto (per esempio nessun messaggio o nessun telefono) Google non lo mostra.
 const LINK_IDS = ['qr', 'web', 'review', 'maps', 'tel'];
+// Da aumentare quando cambiano i campi delle tessere: al prossimo avvio il server le riscrive tutte, una volta sola
+const LAYOUT_VERSION = 2;
 function detailsItems() {
   const fields = ["object.imageModulesData['qr']", 'object.messages[0]', ...LINK_IDS.map((id) => `object.linksModuleData.uris['${id}']`)];
   return fields.map((fieldPath) => ({ item: { firstValue: { fields: [{ fieldPath }] } } }));
@@ -80,6 +82,8 @@ function classBody(c) {
         contentDescription: { defaultValue: { language: 'it-IT', value: c.pizzeriaName } },
       },
     }),
+    // Vuoto di proposito: toglie dalla classe il vecchio logo grande, sostituito dal QR di ogni tessera
+    ...(rich && { imageModulesData: [] }),
     hexBackgroundColor: c.brandColor,
     countryCode: 'IT',
     reviewStatus: 'UNDER_REVIEW',
@@ -426,6 +430,6 @@ function saveUrl(customer) {
 }
 
 module.exports = {
-  init, enabled, ensureClass, upsertObject, notify, saveUrl, isSaved, heroFile, deactivate,
+  init, enabled, ensureClass, upsertObject, notify, saveUrl, isSaved, heroFile, deactivate, LAYOUT_VERSION,
   _forTest: { classBody, objectBody, setCfg: (v) => { cfg = v; } },
 };
