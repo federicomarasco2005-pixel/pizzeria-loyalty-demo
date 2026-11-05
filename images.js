@@ -344,7 +344,7 @@ async function render(shop, file) {
   }
   if (file === 'wide-logo.png') {
     const logo = await logoImage(shop);
-    return png(logo ? realLogoHeader(logo) : await wideLogo(shop, draw));
+    return png(logo ? realLogoHeader(logo, shop.brandColor) : await wideLogo(shop, draw));
   }
   if (file === 'logo.png') {
     const logo = await logoImage(shop);
@@ -364,17 +364,42 @@ async function render(shop, file) {
   return null;
 }
 
-// Intestazione del Wallet per chi ha un logo (dal 5/11): il logo vero del locale, senza bordo vuoto, su una targhetta
-// bianca centrata, così si legge su qualsiasi colore di tessera. Il resto dell'immagine è trasparente.
-function realLogoHeader(logo) {
-  const WL = 1280, HL = 400, pad = 28, maxW = WL - 80, maxH = HL - 40;
+// Intestazione del Wallet per chi ha un logo (dal 5/11): il logo vero del locale, senza bordo vuoto e senza fondo bianco,
+// grande quanto l'immagine permette. Il bianco diventa trasparente in modo graduale, così i bordi restano puliti.
+// Se una parte del logo si confonde col colore della tessera, tutto il logo prende un sottile contorno bianco.
+function realLogoHeader(logo, brandColor) {
+  const WL = 1280, HL = 400, margin = 8;
   const t = trimLogo(logo);
-  const s = Math.min((maxW - 2 * pad) / t.width, (maxH - 2 * pad) / t.height);
-  const w = t.width * s, h = t.height * s, pw = w + 2 * pad, ph = h + 2 * pad;
+  const s = Math.min((WL - 2 * margin) / t.width, (HL - 2 * margin) / t.height);
+  const w = t.width * s, h = t.height * s;
   const c = createCanvas(WL, HL); const g = c.getContext('2d');
-  roundRect(g, (WL - pw) / 2, (HL - ph) / 2, pw, ph, 24, '#ffffff');
   g.drawImage(t, (WL - w) / 2, (HL - h) / 2, w, h);
-  return c;
+  const img = g.getImageData(0, 0, WL, HL), p = img.data;
+  for (let i = 0; i < p.length; i += 4) {
+    if (!p[i + 3]) continue;
+    const a = 1 - Math.min(p[i], p[i + 1], p[i + 2]) / 255;
+    if (a <= 0) { p[i + 3] = 0; continue; }
+    for (let k = 0; k < 3; k++) p[i + k] = Math.round((p[i + k] - (1 - a) * 255) / a);
+    p[i + 3] = Math.round(p[i + 3] * a);
+  }
+  g.putImageData(img, 0, 0);
+  // parte del logo troppo simile al colore della tessera?
+  const b = parseInt(String(brandColor || '#000000').slice(1), 16), br = b >> 16 & 255, bg = b >> 8 & 255, bb = b & 255;
+  let seen = 0, close = 0;
+  for (let i = 0; i < p.length; i += 4) {
+    if (p[i + 3] < 128) continue;
+    seen++;
+    if (Math.hypot(p[i] - br, p[i + 1] - bg, p[i + 2] - bb) < 110) close++;
+  }
+  if (!seen || close / seen < 0.05) return c;
+  const mask = createCanvas(WL, HL), mg = mask.getContext('2d');
+  mg.drawImage(c, 0, 0);
+  mg.globalCompositeOperation = 'source-in'; mg.fillStyle = '#ffffff'; mg.fillRect(0, 0, WL, HL);
+  const out = createCanvas(WL, HL), og = out.getContext('2d');
+  const R = 6;
+  for (let k = 0; k < 32; k++) { const t = (k / 32) * Math.PI * 2; og.drawImage(mask, Math.cos(t) * R, Math.sin(t) * R); }
+  og.drawImage(c, 0, 0);
+  return out;
 }
 
 // Senza logo: logo largo per l'intestazione Google Wallet (1280x400, trasparente): timbro del locale a sinistra,

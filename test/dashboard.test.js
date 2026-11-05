@@ -41,6 +41,19 @@ test('pagine del locale: stile comune, colori del locale e nessuna load() che co
   assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public', 'common.js'), 'utf8').includes('window.PALETTE'));
 });
 
+test('Wallet: contorno bianco solo se il logo si confonde col colore della tessera', async () => {
+  const { loadImage } = require('@napi-rs/canvas');
+  const edge = async (slug, brandColor) => {
+    const r = await images.get({ slug, imgVersion: 1, name: 'P', theme: 'pizza', stampsForReward: 6, brandColor, logo: fakeLogo() }, 'wide-logo.png');
+    const img = await loadImage(r.buf); const c = createCanvas(img.width, img.height); const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 200, img.width, 1).data; // riga al centro: dal bordo sinistro del rosso
+    for (let x = 0; x < img.width; x++) if (d[x * 4 + 3] > 200) return [d[x * 4], d[x * 4 + 1], d[x * 4 + 2]];
+    return null;
+  };
+  assert.deepStrictEqual(await edge('prova-rosso', '#b3261e'), [255, 255, 255], 'su rosso il bordo del rosso è bianco');
+  assert.notDeepStrictEqual(await edge('prova-blu', '#1e4fb3'), [255, 255, 255], 'su blu niente contorno');
+});
+
 test('Wallet: sul fronte il nome del cliente; sotto la tessera QR, messaggio e pulsanti', async () => {
   const { loadImage } = require('@napi-rs/canvas');
   const qr = await loadImage(await images.walletQr('AS-F7D44'));
@@ -69,13 +82,14 @@ test('Wallet: sul fronte il nome del cliente; sotto la tessera QR, messaggio e p
   setCfg(null);
 });
 
-test('Wallet: con un logo, l\'intestazione mostra il logo vero su targhetta bianca', async () => {
+test('Wallet: con un logo, l\'intestazione mostra il logo vero senza fondo bianco', async () => {
   const { loadImage } = require('@napi-rs/canvas');
   const head = await images.get({ slug: 'prova-testa', imgVersion: 1, name: 'Prova', theme: 'pizza', stampsForReward: 6, brandColor: '#112233', logo: fakeLogo() }, 'wide-logo.png');
   const img = await loadImage(head.buf);
   const c = createCanvas(img.width, img.height); const g = c.getContext('2d'); g.drawImage(img, 0, 0);
   assert.strictEqual(img.width, 1280);
-  assert.strictEqual(g.getImageData(5, 5, 1, 1).data[3], 0, 'fuori dalla targhetta è trasparente');
+  assert.strictEqual(g.getImageData(5, 5, 1, 1).data[3], 0, 'intorno è trasparente');
+  assert.strictEqual(g.getImageData(300, 100, 1, 1).data[3], 0, 'anche il bianco del logo è trasparente');
   const mid = g.getImageData(640, 200, 1, 1).data;
-  assert.ok(mid[3] === 255 && near('#' + [...mid].slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join(''), '#ad0303'), 'al centro c\'è il logo');
+  assert.ok(mid[3] > 240 && near('#' + [...mid].slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join(''), '#ad0303'), 'al centro c\'è il logo');
 });
