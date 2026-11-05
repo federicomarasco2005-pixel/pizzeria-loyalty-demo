@@ -52,17 +52,20 @@ function describe(err) {
 
 // Sotto la tessera (dal 5/11): QR per la cassa, ultimo messaggio e pulsanti, nient'altro. Sono indirizzi di campi:
 // un campo vuoto (per esempio nessun messaggio o nessun telefono) Google non lo mostra.
-const LINK_IDS = ['qr', 'web', 'review', 'maps', 'tel'];
+const LINK_IDS = ['web', 'review', 'maps', 'tel'];
 // Da aumentare quando cambiano i campi delle tessere: al prossimo avvio il server le riscrive tutte, una volta sola
-const LAYOUT_VERSION = 2;
+const LAYOUT_VERSION = 3;
 function detailsItems() {
-  const fields = ["object.imageModulesData['qr']", 'object.messages[0]', ...LINK_IDS.map((id) => `object.linksModuleData.uris['${id}']`)];
+  // i pulsanti tutti insieme, in un blocco solo, per averli più vicini; se Google non lo accetta, uno per uno
+  const links = linkGroupSupported ? ['object.linksModuleData'] : LINK_IDS.map((id) => `object.linksModuleData.uris['${id}']`);
+  const fields = ["object.imageModulesData['qr']", 'object.messages[0]', ...links];
   return fields.map((fieldPath) => ({ item: { firstValue: { fields: [{ fieldPath }] } } }));
 }
 const textField = (id) => ({ firstValue: { fields: [{ fieldPath: `object.textModulesData['${id}']` }] } });
 // Riga col nome del cliente e dettagli su misura: se Google li rifiuta (400) si torna allo schema normale
 // fino al riavvio, così le tessere continuano ad aggiornarsi.
 let richClassSupported = true;
+let linkGroupSupported = true;
 
 function classBody(c) {
   const rich = richClassSupported;
@@ -106,6 +109,11 @@ async function writeClass(method, url, c) {
     await request(method, url, classBody(c));
   } catch (err) {
     if (status(err) !== 400 || !richClassSupported) throw err;
+    if (linkGroupSupported) {
+      linkGroupSupported = false;
+      console.warn(`[wallet] pulsanti in un blocco solo rifiutati (${describe(err)}): uno per uno`);
+      return writeClass(method, url, c);
+    }
     richClassSupported = false;
     console.warn(`[wallet] nome del cliente e dettagli su misura rifiutati (${describe(err)}): schema normale`);
     await request(method, url, classBody(c));
@@ -170,7 +178,6 @@ function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = 
   const cardUrl = `${c.baseUrl}/card/${customer.token}`;
   const links = [];
   // pulsanti sotto la tessera, senza emoji; gli id sono quelli di LINK_IDS
-  if (!c.walletQr) links.push(link('qr', `${cardUrl}?qr=1`, ['Mostra il QR per la cassa', 'Show the QR code at the till'], i18n));
   links.push(link('web', cardUrl, ['Apri la tessera', 'Open the card'], i18n));
   if (extras.reviewUrl) links.push(link('review', extras.reviewUrl, ['Lascia una recensione su Google', 'Leave a Google review'], i18n));
   if (extras.mapsUrl) links.push(link('maps', extras.mapsUrl, ['Come raggiungerci', 'How to find us'], i18n));
@@ -211,7 +218,7 @@ function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = 
       imageModulesData: [{
         id: 'qr',
         mainImage: {
-          sourceUri: { uri: `${c.baseUrl}/qr-tessera/${customer.code}.png` },
+          sourceUri: { uri: `${c.baseUrl}/qr-tessera/${customer.code}.png?v=${LAYOUT_VERSION}` },
           contentDescription: loc('QR della tessera per la cassa', 'Card QR code for the till'),
         },
       }],

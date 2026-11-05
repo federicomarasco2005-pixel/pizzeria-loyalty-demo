@@ -45,6 +45,8 @@ test('Wallet: sul fronte il nome del cliente; sotto la tessera QR, messaggio e p
   const { loadImage } = require('@napi-rs/canvas');
   const qr = await loadImage(await images.walletQr('AS-F7D44'));
   assert.strictEqual(qr.width, 1032);
+  const qc = createCanvas(qr.width, qr.height); const qg = qc.getContext('2d'); qg.drawImage(qr, 0, 0);
+  assert.strictEqual(qg.getImageData(5, 5, 1, 1).data[3], 0, 'intorno alla targhetta è trasparente');
 
   const { classBody, objectBody, setCfg } = require('../wallet')._forTest;
   setCfg({ issuerId: '1' });
@@ -54,12 +56,14 @@ test('Wallet: sul fronte il nome del cliente; sotto la tessera QR, messaggio e p
   assert.deepStrictEqual(body.imageModulesData, [], 'il vecchio logo grande va tolto dalla classe');
   const paths = body.classTemplateInfo.detailsTemplateOverride.detailsItemInfos.map((i) => i.item.firstValue.fields[0].fieldPath);
   assert.deepStrictEqual(paths.slice(0, 2), ["object.imageModulesData['qr']", 'object.messages[0]']);
+  assert.strictEqual(paths[2], 'object.linksModuleData');
   assert.ok(body.classTemplateInfo.cardTemplateOverride.cardRowTemplateInfos[0].oneItem);
 
   const o = objectBody(c, { code: 'AS-1', name: 'Anna', token: 't', id: '1' }, { stamps: 2, rewards: 0 }, { phone: '+39 1' });
   assert.deepStrictEqual(o.textModulesData.map((t) => t.id), ['cliente', 'timbri', 'premio']);
   assert.strictEqual(o.textModulesData[0].body, 'Anna');
-  assert.strictEqual(o.imageModulesData[0].mainImage.sourceUri.uri, 'https://x/y/qr-tessera/AS-1.png');
+  assert.deepStrictEqual(o.linksModuleData.uris.map((u) => u.id), ['web', 'tel'], 'il QR è già sotto la tessera: niente pulsante');
+  assert.strictEqual(o.imageModulesData[0].mainImage.sourceUri.uri, `https://x/y/qr-tessera/AS-1.png?v=${require('../wallet').LAYOUT_VERSION}`);
   assert.ok(!JSON.stringify(o.imageModulesData).includes('/card/'), 'il QR non contiene il token');
   setCfg(null);
 });
