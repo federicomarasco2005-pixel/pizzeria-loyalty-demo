@@ -41,14 +41,6 @@
     /* Logo largo (una scritta): targhetta bianca al posto del cerchio, e il nome scritto non si ripete */
     .passcard .top img.wide { width: auto; height: 46px; max-width: 62%; border-radius: 12px; padding: 5px 10px; object-fit: contain; }
     .passcard .top.wide-logo strong { visibility: hidden; }
-    /* Riflesso lucido: segue il dito o l'inclinazione del telefono */
-    .shine {
-      position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2;
-      background:
-        radial-gradient(circle at var(--mx, 20%) var(--my, 0%), rgba(255,255,255,.2), rgba(255,255,255,0) 42%),
-        linear-gradient(calc(105deg + var(--sx, 0deg)), rgba(255,255,255,0) 38%, rgba(255,255,255,.09) 48%, rgba(255,255,255,0) 58%);
-      mix-blend-mode: soft-light; transition: opacity .3s;
-    }
     .passcard .top { position: relative; z-index: 3; }
     .pass-reward { text-align: right; min-width: 0; }
     .passcard .top { min-height: 46px; }
@@ -82,6 +74,7 @@
     .visits li { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
     .visits li .dot { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center;
       background: color-mix(in srgb, var(--brand) 14%, transparent); font-size: 1.05rem; }
+    .visits li .dot { background: color-mix(in srgb, var(--brand) 14%, transparent) var(--stamp-on) center / 68% no-repeat; }
     .visits li .when { margin-left: auto; color: var(--muted); font-size: .85rem; white-space: nowrap; }
 
     /* ---------- Schermata "PREMIO VALIDO": colori in movimento e orologio coi secondi, così uno screenshot non basta ---------- */
@@ -121,10 +114,10 @@
     .more-panel .email-actions a { border: 0; padding: 0; color: var(--muted); }
     #emailForm .error:empty { display: none; }
     /* Notifiche della tessera (notifiche web) */
-    .notify-ico { width: 52px; height: 52px; border-radius: 14px; flex: none; display: grid; place-items: center; font-size: 1.6rem;
+    .notify-ico { width: 52px; height: 52px; border-radius: 14px; flex: none; display: grid; place-items: center; font-size: 1.6rem; color: var(--brand);
       background: color-mix(in srgb, var(--brand) 18%, transparent); }
 
-    @media (prefers-reduced-motion: reduce) { .flip-inner { transition: none; } .shine { display: none; } }
+    @media (prefers-reduced-motion: reduce) { .flip-inner { transition: none; } }
   </style>
   <script>
     // manifest della singola tessera: l'icona installata riapre proprio questa tessera
@@ -135,21 +128,19 @@
   <main class="wrap stack">
     <div id="notfound" class="panel hidden">
       <h2 data-t="notFound">Tessera non trovata</h2>
-      <a class="btn" href="./"><span class="ico">🍕</span> <span data-t="signUp">Iscriviti</span></a>
+      <a class="btn" href="./"><span data-t="signUp">Iscriviti</span></a>
     </div>
 
     <div id="card" class="hidden stack">
-      <p class="muted" style="margin:0"><span data-t="hello">Ciao</span> <strong id="hello"></strong> 👋</p>
+      <p class="muted" style="margin:0"><span data-t="hello">Ciao</span> <strong id="hello"></strong></p>
 
       <!-- Tessera: fronte con i timbri, retro con il QR per la cassa. Si gira toccandola. -->
       <div class="flip" id="flip" role="button" tabindex="0" aria-label="Gira la tessera">
         <div class="flip-inner">
           <section class="passcard face front" id="pass">
-            <div class="shine"></div>
             <div class="top">
               <img src="logo.png" alt="">
               <strong data-cfg="pizzeriaName" style="flex:1"></strong>
-              <span class="live" id="live">live</span>
             </div>
 
             <div class="stamps tiles" id="stamps"></div>
@@ -164,7 +155,7 @@
                 <div class="pass-label" data-t="reward">Premio</div>
                 <div class="pass-value" id="rewardName"></div>
               </div>
-              <div id="reward" class="hidden"><span class="badge">🎁 <span id="rewardsN"></span> <span id="rewardsLabel"></span></span></div>
+              <div id="reward" class="hidden"><span class="badge"><span id="rewardsN"></span> <span id="rewardsLabel"></span></span></div>
             </div>
 
             <div class="pass-foot">
@@ -174,7 +165,6 @@
           </section>
 
           <section class="passcard face back" id="back" aria-hidden="true">
-            <div class="shine"></div>
             <div class="top">
               <img src="logo.png" alt="">
               <strong data-cfg="pizzeriaName" style="flex:1"></strong>
@@ -184,14 +174,14 @@
               <div class="qrwhite"><img id="qr" alt="QR della tessera"></div>
               <div class="hint" data-t="orSayCode">oppure di' il codice in cassa</div>
               <div class="bigcode" id="code"></div>
-              <button class="fullbtn" id="fullBtn" type="button">⛶ <span data-t="fullScreen">Schermo intero</span></button>
+              <button class="fullbtn" id="fullBtn" type="button"><span data-t="fullScreen">Schermo intero</span></button>
             </div>
           </section>
         </div>
       </div>
 
       <!-- Premio pronto: il cliente lo ritira da solo, davanti al personale -->
-      <button class="btn ok big pulse hidden" id="useReward"><span class="ico">🎁</span> <span data-t="useReward">Usa il premio</span></button>
+      <button class="btn ok big pulse hidden" id="useReward"><span data-t="useReward">Usa il premio</span></button>
 
       <a id="save" class="gwallet hidden" target="_blank" rel="noopener" aria-label="Aggiungi a Google Wallet">
         <img src="/wallet-button-it.svg" alt="Aggiungi a Google Wallet">
@@ -208,23 +198,23 @@
             <div class="small muted" id="installSub"></div>
           </div>
         </div>
-        <button class="btn" id="installBtn"><span class="ico">📲</span> <span data-t="installBtn">Salva sul telefono</span></button>
+        <button class="btn" id="installBtn"><span data-t="installBtn">Salva sul telefono</span></button>
         <button class="install-later small" id="installLater" data-t="later">Più tardi</button>
       </section>
 
       <!-- Notifiche della tessera: dalla tessera salvata sulla Home (iPhone compreso); con il Wallet solo se il locale le manda su tutti e due -->
       <section id="notify" class="install hidden">
         <div class="install-row">
-          <div class="notify-ico" aria-hidden="true">🔔</div>
+          <div class="notify-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></div>
           <div>
             <strong data-t="notifyTitle">Attiva le notifiche</strong>
             <div class="small muted" id="notifySub"></div>
           </div>
         </div>
-        <button class="btn" id="notifyBtn"><span class="ico">🔔</span> <span data-t="notifyBtn">Attiva le notifiche</span></button>
+        <button class="btn" id="notifyBtn"><span data-t="notifyBtn">Attiva le notifiche</span></button>
         <button class="install-later small" id="notifyLater" data-t="later">Più tardi</button>
       </section>
-      <p id="notifyOn" class="muted small center hidden" style="margin:0" data-t="notifyOn">🔔 Notifiche attive su questo telefono</p>
+      <p id="notifyOn" class="muted small center hidden" style="margin:0" data-t="notifyOn">Notifiche attive su questo telefono</p>
 
       <!-- Istruzioni passo passo (iPhone e telefoni senza installazione automatica) -->
       <div id="installSheet" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
@@ -234,23 +224,23 @@
           <p class="small muted hidden" id="stepsNote" style="margin:0"></p>
           <button class="btn" id="sheetOk" data-t="gotIt">Ho capito</button>
         </div>
-        <div class="sheet-arrow hidden" id="sheetArrow">⬇️</div>
+        <div class="sheet-arrow hidden" id="sheetArrow">↓</div>
       </div>
 
       <!-- QR per la cassa: gira la tessera -->
       <button class="btn dark" id="qrBtn"><span class="ico">▦</span> <span id="qrBtnText"></span></button>
 
       <a id="review" class="btn ghost hidden" target="_blank" rel="noopener">
-        <span class="ico">⭐</span> <span data-t="review">Lascia una recensione su Google</span>
+        <span data-t="review">Lascia una recensione su Google</span>
       </a>
 
       <section id="news" class="panel hidden">
-        <h2>📣 <span data-t="news">Dal locale</span></h2>
+        <h2><span data-t="news">Dal locale</span></h2>
         <div id="messages" class="stack"></div>
       </section>
 
       <details class="panel visits hidden" id="visits">
-        <summary>🧾 <span data-t="visits" style="flex:1;margin-left:8px">Le tue visite</span></summary>
+        <summary><span data-t="visits" style="flex:1">Le tue visite</span></summary>
         <ul id="visitList"></ul>
       </details>
 
@@ -275,7 +265,7 @@
             <input type="checkbox" id="consent"> <span data-t="consent">Voglio ricevere offerte e novità dal locale</span>
           </label>
           <label class="check small hidden" id="pushRow">
-            <input type="checkbox" id="pushToggle"> <span data-t="pushToggle">🔔 Notifiche della tessera su questo telefono</span>
+            <input type="checkbox" id="pushToggle"> <span data-t="pushToggle">Notifiche della tessera su questo telefono</span>
           </label>
           <a href="privacy" data-t="privacy">Informativa privacy</a>
           <a id="exportLink" download data-t="export">Scarica i miei dati</a>
@@ -308,7 +298,7 @@
     <div id="deleted" class="panel hidden center">
       <h2 data-t="deletedTitle">Tessera eliminata</h2>
       <p class="muted" data-t="deletedText">I tuoi dati sono stati cancellati. Se l'avevi aggiunta a Google Wallet, lì risulta disattivata: puoi toglierla dal Wallet.</p>
-      <a class="btn" href="./"><span class="ico">🍕</span> <span data-t="newCard">Crea una nuova tessera</span></a>
+      <a class="btn" href="./"><span data-t="newCard">Crea una nuova tessera</span></a>
     </div>
   </main>
 
@@ -387,9 +377,9 @@
       notifySub: ['Ti avvisiamo quando ti manca un timbro o il premio ti aspetta. Al massimo un messaggio al giorno.', "We'll tell you when you're one stamp away or your reward is waiting. At most one message a day."],
       notifyBtn: ['Attiva le notifiche', 'Turn on notifications'],
       notifyDenied: ['Le notifiche sono bloccate: riattivale dalle impostazioni del telefono, alla voce di questa tessera.', 'Notifications are blocked: turn them back on in your phone settings, under this card.'],
-      notifyOn: ['🔔 Notifiche attive su questo telefono', '🔔 Notifications on for this phone'],
-      pushToggle: ['🔔 Notifiche della tessera su questo telefono', '🔔 Card notifications on this phone'],
-      notifyDone: ['🔔 Fatto! Ti avviseremo noi.', "🔔 Done! We'll let you know."],
+      notifyOn: ['Notifiche attive su questo telefono', 'Notifications on for this phone'],
+      pushToggle: ['Notifiche della tessera su questo telefono', 'Card notifications on this phone'],
+      notifyDone: ['Fatto! Ti avviseremo noi.', "Done! We'll let you know."],
       notifyNo: ['Notifiche non attivate.', 'Notifications not turned on.'],
       notifyError: ['Non è stato possibile attivare le notifiche: riprova.', 'Could not turn on notifications: please try again.'],
       notifyAppBlocked: ['Il telefono blocca le notifiche di questa app: apri Impostazioni → App → «{app}» → Notifiche → Consenti, poi riprova da qui.', 'Your phone blocks notifications for this app: open Settings → Apps → "{app}" → Notifications → Allow, then try again here.'],
@@ -419,12 +409,12 @@
       confirmRedeem: ['Usare il premio adesso?\n\nFallo davanti al personale: mostra lo schermo che compare e il premio risulterà consegnato.', 'Use your reward now?\n\nDo it in front of the staff: show them the screen that appears and the reward will be marked as collected.'],
       undone: ['Ritiro annullato: il premio è ancora tuo.', 'Cancelled: the reward is still yours.'],
       rewardUnlocked: ['Premio sbloccato! ', 'Reward unlocked! '],
-      stampAdded: ['Timbro aggiunto! 🍕', 'Stamp added! 🍕'],
-      rewardGiven: ['Premio consegnato. Buon appetito! 🍕', 'Reward collected. Enjoy! 🍕'],
-      welcome: ['🎉 Benvenuto! Ecco il tuo primo timbro', '🎉 Welcome! Here is your first stamp'],
-      installed: ['✅ Tessera salvata sul telefono!', '✅ Card saved on your phone!'],
+      stampAdded: ['Timbro aggiunto!', 'Stamp added!'],
+      rewardGiven: ['Premio consegnato. Buon appetito!', 'Reward collected. Enjoy!'],
+      welcome: ['Benvenuto! Ecco il tuo primo timbro', 'Welcome! Here is your first stamp'],
+      installed: ['Tessera salvata sul telefono!', 'Card saved on your phone!'],
       confirmDelete: ['Eliminare la tessera e tutti i tuoi dati (timbri e premi compresi)? Non si può annullare.', 'Delete the card and all your data (stamps and rewards included)? This cannot be undone.'],
-      consentOn: ['✅ Riceverai le offerte del locale', "✅ You'll receive our offers"],
+      consentOn: ['Riceverai le offerte del locale', "You'll receive our offers"],
       consentOff: ['Non riceverai più offerte', "You won't receive offers anymore"],
       deletedTitle: ['Tessera eliminata', 'Card deleted'],
       deletedText: ["I tuoi dati sono stati cancellati. Se l'avevi aggiunta a Google Wallet, lì risulta disattivata: puoi toglierla dal Wallet.", 'Your data has been deleted. If you added the card to Google Wallet, it is now deactivated there: you can remove it.'],
@@ -433,7 +423,7 @@
       emailEdit: ['Cambia', 'Change'],
       emailSave: ['Salva', 'Save'],
       emailCancel: ['Annulla', 'Cancel'],
-      emailSaved: ['✅ Email aggiornata', '✅ Email updated'],
+      emailSaved: ['Email aggiornata', 'Email updated'],
     };
     const t = (k, vars = {}) => (T[k] ? T[k][EN ? 1 : 0] : k).replace(/\{(\w+)\}/g, (_, v) => vars[v]);
     if (EN) {
@@ -598,7 +588,7 @@
         // Premio: si riempiono tutti i timbri, festa, poi si riparte da zero.
         setFlipped(false);
         paint({ ...next, stamps: n, rewards: prev.rewards });
-        plusOne('🎉'); confetti(); vibrate([80, 60, 80, 60, 200]);
+        plusOne('+1'); confetti(); vibrate([80, 60, 80, 60, 200]);
         toast(t('rewardUnlocked') + cfg.rewardText, 3500);
         setTimeout(() => {
           [...$('stamps').children].forEach((d) => d.classList.add('gone'));
@@ -638,7 +628,6 @@
       list.forEach((h) => {
         const li = document.createElement('li');
         const dot = document.createElement('span'); dot.className = 'dot';
-        dot.textContent = h.type === 'redeem' ? '🎁' : h.reward ? '🎉' : '🍕';
         const what = document.createElement('span');
         what.textContent = t(h.type === 'redeem' ? 'vRedeem' : h.reward ? 'vReward' : 'vStamp');
         const when = document.createElement('span'); when.className = 'when'; when.textContent = fmtWhen(h.at);
@@ -830,21 +819,21 @@
         steps = EN ? [
           'Tap ' + SHARE_ICON + ' <strong>Share</strong> ' + (device.iosOtherBrowser ? '(top right, in the address bar)' : '(bottom centre of the screen)') + '.',
           'Scroll and tap ' + ADD_ICON + ' <strong>"Add to Home Screen"</strong>.',
-          'Tap <strong>"Add"</strong> at the top right. Done: you\'ll find the 🍕 icon among your apps!',
+          'Tap <strong>"Add"</strong> at the top right. Done: you\'ll find the card icon among your apps!',
         ] : [
           'Tocca ' + SHARE_ICON + ' <strong>Condividi</strong> ' + (device.iosOtherBrowser ? '(in alto a destra, nella barra dell\'indirizzo)' : '(in basso al centro dello schermo)') + '.',
           'Scorri e tocca ' + ADD_ICON + ' <strong>"Aggiungi alla schermata Home"</strong>.',
-          'Tocca <strong>"Aggiungi"</strong> in alto a destra. Fatto: trovi l\'icona 🍕 tra le tue app!',
+          'Tocca <strong>"Aggiungi"</strong> in alto a destra. Fatto: trovi l\'icona della tessera tra le tue app!',
         ];
       } else {
         steps = EN ? [
           'Tap the <strong>⋮</strong> menu at the top right of the browser.',
           'Choose <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.',
-          'Confirm: you\'ll find the 🍕 icon among your apps!',
+          'Confirm: you\'ll find the card icon among your apps!',
         ] : [
           'Tocca il menu <strong>⋮</strong> in alto a destra del browser.',
           'Scegli <strong>"Installa app"</strong> oppure <strong>"Aggiungi a schermata Home"</strong>.',
-          'Conferma: trovi l\'icona 🍕 tra le tue app!',
+          'Conferma: trovi l\'icona della tessera tra le tue app!',
         ];
       }
       $('sheetTitle').textContent = t('sheetTitle');
@@ -1054,16 +1043,16 @@
       if (!window.EventSource) return;
       es = new EventSource('api/card/' + encodeURIComponent(token) + '/stream');
       // a ogni (ri)connessione si rilegge la tessera una volta: recupera ciò che è successo nel frattempo
-      es.onopen = () => { $('live').classList.remove('off'); load(); };
+      es.onopen = () => load();
       es.onmessage = (e) => {
         let ev = {};
         try { ev = JSON.parse(e.data); } catch {}
-        if (ev.type === 'message') { toast('📣 ' + ev.title, 4000); vibrate(120); }
+        if (ev.type === 'message') { toast(ev.title, 4000); vibrate(120); }
         if (state && ev.stamps !== undefined) applyState(ev, { quiet: ev.type === 'undo' || (ev.type === 'redeem' && !$('valid').classList.contains('hidden')) });
         clearTimeout(reloadT);
         reloadT = setTimeout(load, /^(message|message-removed|wallet)$/.test(ev.type) ? 0 : 3000);
       };
-      es.onerror = () => $('live').classList.add('off'); // EventSource si riconnette da solo
+      es.onerror = () => {}; // EventSource si riconnette da solo
     }
 
     applyBrand().then((c) => {

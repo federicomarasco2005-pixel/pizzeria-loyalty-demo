@@ -69,15 +69,14 @@ function classBody(c) {
     hexBackgroundColor: c.brandColor,
     countryCode: 'IT',
     reviewStatus: 'UNDER_REVIEW',
-    // Fronte della tessera: una sola riga "Timbri · Premio · Codice".
-    // Con una sola riga Google mette l'immagine delle pizze subito sopra.
+    // Fronte della tessera: una sola riga con i due valori che contano, "Timbri · Premio" (dal 5/11; prima c'era
+    // anche il codice, ora nei dettagli). Con una sola riga Google mette l'immagine dei timbri subito sopra.
     classTemplateInfo: {
       cardTemplateOverride: {
         cardRowTemplateInfos: [{
-          threeItems: {
+          twoItems: {
             startItem: { firstValue: { fields: [{ fieldPath: "object.textModulesData['timbri']" }] } },
-            middleItem: { firstValue: { fields: [{ fieldPath: "object.textModulesData['premio']" }] } },
-            endItem: { firstValue: { fields: [{ fieldPath: "object.textModulesData['codice']" }] } },
+            endItem: { firstValue: { fields: [{ fieldPath: "object.textModulesData['premio']" }] } },
           },
         }],
       },
@@ -143,13 +142,14 @@ function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = 
   const reward = c.rewardText.toLowerCase();
   const cardUrl = `${c.baseUrl}/card/${customer.token}`;
   const links = [];
-  if (!c.walletQr) links.push(link('qr', `${cardUrl}?qr=1`, ['🔳 Mostra il QR per la cassa', '🔳 Show the QR code at the till'], i18n));
-  links.push(link('web', cardUrl, [`${c.emoji} Apri la tessera animata`, `${c.emoji} Open the animated card`], i18n));
-  if (extras.reviewUrl) links.push(link('review', extras.reviewUrl, ['⭐ Lascia una recensione su Google', '⭐ Leave a Google review'], i18n));
-  if (extras.mapsUrl) links.push(link('maps', extras.mapsUrl, ['📍 Come raggiungerci', '📍 How to find us'], i18n));
+  // dettagli della tessera: link senza emoji (dal 5/11)
+  if (!c.walletQr) links.push(link('qr', `${cardUrl}?qr=1`, ['Mostra il QR per la cassa', 'Show the QR code at the till'], i18n));
+  links.push(link('web', cardUrl, ['Apri la tessera', 'Open the card'], i18n));
+  if (extras.reviewUrl) links.push(link('review', extras.reviewUrl, ['Lascia una recensione su Google', 'Leave a Google review'], i18n));
+  if (extras.mapsUrl) links.push(link('maps', extras.mapsUrl, ['Come raggiungerci', 'How to find us'], i18n));
   if (extras.phone) {
     links.push(link('tel', `tel:${extras.phone.replace(/[^\d+]/g, '')}`,
-      [`📞 Chiama / prenota (${extras.phone})`, `📞 Call / book (${extras.phone})`], i18n));
+      [`Chiama / prenota (${extras.phone})`, `Call / book (${extras.phone})`], i18n));
   }
   return {
     id: objectId(customer),
@@ -157,10 +157,8 @@ function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = 
     state: 'ACTIVE',
     accountId: customer.code,
     accountName: customer.name,
+    // saldo dei timbri: Google lo usa per l'avviso a ogni timbro (notifyOnUpdate). "Premi disponibili" tolto il 5/11
     loyaltyPoints: { label: 'Timbri', ...(i18n && { localizedLabel: loc('Timbri', 'Stamps') }), balance: { string: `${state.stamps} / ${n}` } },
-    secondaryLoyaltyPoints: {
-      label: 'Premi disponibili', ...(i18n && { localizedLabel: loc('Premi disponibili', 'Rewards available') }), balance: { int: state.rewards },
-    },
     ...(extras.offerId && { linkedOfferIds: [extras.offerId] }),
     // QR nel Wallet facoltativo (WALLET_QR=on): Google non permette di spostarlo né rimpicciolirlo,
     // quindi di default si toglie per lasciare spazio alle pizze. In cassa si usa il codice cliente
@@ -174,26 +172,24 @@ function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = 
       sourceUri: { uri: heroUri(c, state, extras.animated === true) },
       contentDescription: { defaultValue: { language: 'it-IT', value: `${state.stamps} timbri su ${n}` } },
     },
+    // Dettagli, in ordine di importanza. "timbri" e "premio" sono anche sul fronte (vedi classTemplateInfo).
     textModulesData: [
-      // i primi tre compaiono sul fronte della tessera (vedi classTemplateInfo)
-      textModule('timbri', ['Timbri', 'Stamps'], [`${state.stamps} / ${n}`], i18n),
-      textModule('premio', ['Premio', 'Reward'],
-        state.rewards > 0 ? [`🎁 ${state.rewards} da ritirare`, `🎁 ${state.rewards} to collect`] : [c.rewardShort], i18n),
-      textModule('codice', ['Codice', 'Code'], [customer.code], i18n),
       state.rewards > 0
-        ? textModule('stato', ['Hai un premio da ritirare!', 'You have a reward to collect!'],
+        ? textModule('stato', ['Hai un premio da ritirare', 'You have a reward to collect'],
           [`Mostra questa tessera in cassa: ${reward}.`, `Show this card at the till: ${reward}.`], i18n)
         : textModule('stato', ['Prossimo premio', 'Next reward'], [
           `Ti ${missing === 1 ? 'manca 1 timbro' : `mancano ${missing} timbri`} per: ${reward}.`,
           `${missing === 1 ? '1 more stamp' : `${missing} more stamps`} for: ${reward}.`,
         ], i18n),
+      textModule('codice', ['Codice tessera', 'Card code'], [customer.code], i18n),
+      textModule('timbri', ['Timbri', 'Stamps'], [`${state.stamps} / ${n}`], i18n),
+      textModule('premio', ['Premio', 'Reward'],
+        state.rewards > 0 ? [`${state.rewards} da ritirare`, `${state.rewards} to collect`] : [c.rewardShort], i18n),
       textModule('regole', ['Come funziona', 'How it works'], c.walletQr
-        ? [`Mostra il QR a ogni visita: ricevi 1 timbro. Ogni ${n} timbri: ${reward}.`,
-          `Show the QR code at every visit to get 1 stamp. Every ${n} stamps: ${reward}.`]
-        : [`A ogni visita apri questa tessera e avvicina il telefono in cassa: con il timbro NFC ricevi subito il punto. ` +
-            `In alternativa di' il codice ${customer.code}. Ogni ${n} timbri: ${reward}.`,
-          `At every visit open this card and hold your phone near the NFC tag at the till to get your stamp. ` +
-            `Or just say your code ${customer.code}. Every ${n} stamps: ${reward}.`], i18n),
+        ? [`1 timbro a ogni visita, mostrando il QR. Ogni ${n} timbri: ${reward}.`,
+          `1 stamp at every visit by showing the QR code. Every ${n} stamps: ${reward}.`]
+        : [`1 timbro a ogni visita, con il timbro NFC o dicendo il codice in cassa. Ogni ${n} timbri: ${reward}.`,
+          `1 stamp at every visit, with the NFC tag or by saying your code at the till. Every ${n} stamps: ${reward}.`], i18n),
     ],
     linksModuleData: { uris: links },
   };
@@ -318,8 +314,8 @@ async function syncOffer(c, customer, state, selfRedeem = true) {
       // il ritiro dal telefono, apre il QR a tutto schermo da mostrare in cassa). Vedi card.html (?premio=1).
       linksModuleData: {
         uris: [link('ritira', `${c.baseUrl}/card/${customer.token}?premio=1`, selfRedeem
-          ? ['🎁 Ritira il premio', '🎁 Collect your reward']
-          : ['🔳 Mostra il QR in cassa per ritirarlo', '🔳 Show the QR code at the till to collect it'], i18nSupported)],
+          ? ['Ritira il premio', 'Collect your reward']
+          : ['Mostra il QR in cassa per ritirarlo', 'Show the QR code at the till to collect it'], i18nSupported)],
       },
     };
     try {
