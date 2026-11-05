@@ -7,6 +7,7 @@
 //                               (e delle notifiche web): il logo del locale se c'è, altrimenti il timbro
 //   icons/badge.png             sagoma bianca del timbro per la barra in alto del telefono (notifiche web)
 //   logo.png                    logo del programma (caricato dal gestore oppure generato)
+//   logo-big.png                logo grande su fondo bianco, sotto la tessera nel Wallet (solo se il locale ha un logo)
 // Prima erano script PowerShell da lanciare a mano (tools/); ora ogni nuovo locale ha le sue in automatico.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const path = require('path');
@@ -342,7 +343,23 @@ async function render(shop, file) {
     g.globalCompositeOperation = 'source-in'; g.fillStyle = '#ffffff'; g.fillRect(0, 0, 96, 96);
     return png(c);
   }
-  if (file === 'wide-logo.png') return png(await wideLogo(shop, draw));
+  if (file === 'wide-logo.png') {
+    const logo = await logoImage(shop);
+    return png(logo ? realLogoHeader(logo) : await wideLogo(shop, draw));
+  }
+  // Logo grande e centrale sotto la tessera nel Wallet: su fondo bianco, senza il suo bordo vuoto.
+  // Larghezza fissa e altezza secondo il logo, così una scritta larga non lascia fasce bianche enormi.
+  if (file === 'logo-big.png') {
+    const logo = await logoImage(shop);
+    if (!logo) return null;
+    const t = trimLogo(logo), WB = 1032, pad = 96, maxH = 840;
+    const s = Math.min((WB - 2 * pad) / t.width, maxH / t.height);
+    const w = t.width * s, h = t.height * s, HB = Math.round(h + 2 * pad);
+    const c = createCanvas(WB, HB); const g = c.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, WB, HB);
+    g.drawImage(t, (WB - w) / 2, pad, w, h);
+    return png(c);
+  }
   if (file === 'logo.png') {
     const logo = await logoImage(shop);
     if (logo && shop.logoFile) return png(toCanvas(logo));
@@ -361,7 +378,20 @@ async function render(shop, file) {
   return null;
 }
 
-// Logo largo per l'intestazione Google Wallet (1280x400, trasparente): timbro del locale a sinistra,
+// Intestazione del Wallet per chi ha un logo (dal 5/11): il logo vero del locale, senza bordo vuoto, su una targhetta
+// bianca centrata, così si legge su qualsiasi colore di tessera. Il resto dell'immagine è trasparente.
+function realLogoHeader(logo) {
+  const WL = 1280, HL = 400, pad = 28, maxW = WL - 80, maxH = HL - 40;
+  const t = trimLogo(logo);
+  const s = Math.min((maxW - 2 * pad) / t.width, (maxH - 2 * pad) / t.height);
+  const w = t.width * s, h = t.height * s, pw = w + 2 * pad, ph = h + 2 * pad;
+  const c = createCanvas(WL, HL); const g = c.getContext('2d');
+  roundRect(g, (WL - pw) / 2, (HL - ph) / 2, pw, ph, 24, '#ffffff');
+  g.drawImage(t, (WL - w) / 2, (HL - h) / 2, w, h);
+  return c;
+}
+
+// Senza logo: logo largo per l'intestazione Google Wallet (1280x400, trasparente): timbro del locale a sinistra,
 // nome in bianco e "TESSERA FEDELTÀ" in oro. Un nome lungo va su due righe.
 async function wideLogo(shop, draw) {
   const WL = 1280, HL = 400;

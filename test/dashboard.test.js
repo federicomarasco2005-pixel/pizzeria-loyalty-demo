@@ -40,3 +40,35 @@ test('pagine del locale: stile comune, colori del locale e nessuna load() che co
   }
   assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public', 'common.js'), 'utf8').includes('window.PALETTE'));
 });
+
+test('Wallet: logo grande solo con un logo vero; sotto la tessera logo, messaggio e pulsanti', async () => {
+  const big = await images.get({ slug: 'prova-grande', imgVersion: 1, name: 'Prova', theme: 'pizza', stampsForReward: 6, brandColor: '#112233', logo: fakeLogo() }, 'logo-big.png');
+  assert.strictEqual(big.type, 'image/png');
+  assert.strictEqual(await images.get({ slug: 'prova-senza', imgVersion: 1, name: 'Prova', theme: 'pizza', stampsForReward: 6, brandColor: '#112233' }, 'logo-big.png'), null);
+
+  const { classBody, objectBody, setCfg } = require('../wallet')._forTest;
+  setCfg({ issuerId: '1' });
+  const c = { classSuffix: 'x', pizzeriaName: 'Prova', programName: 'P', rewardText: 'Pizza gratis', rewardShort: 'Pizza', stampsForReward: 6, baseUrl: 'https://x/y', stampsImageBase: 'https://x/y/stamps', imgVersion: '1', brandColor: '#112233', logoUrl: 'l', wideLogoUrl: 'w', bigLogoUrl: 'https://x/y/logo-big.png' };
+  const paths = (b) => b.classTemplateInfo.detailsTemplateOverride.detailsItemInfos.map((i) => i.item.firstValue.fields[0].fieldPath);
+  assert.strictEqual(paths(classBody(c))[0], "class.imageModulesData['logo']");
+  assert.strictEqual(paths(classBody(c))[1], 'object.messages[0]');
+  const senzaLogo = classBody({ ...c, bigLogoUrl: '' });
+  assert.strictEqual(senzaLogo.imageModulesData, undefined);
+  assert.strictEqual(paths(senzaLogo)[0], 'object.messages[0]');
+
+  const o = objectBody(c, { code: 'AS-1', name: 'Anna', token: 't', id: '1' }, { stamps: 2, rewards: 0 }, { phone: '+39 1' });
+  assert.deepStrictEqual(o.textModulesData.map((t) => t.id), ['timbri', 'premio']);
+  assert.deepStrictEqual(o.linksModuleData.uris.map((u) => u.id), ['qr', 'web', 'tel']);
+  setCfg(null);
+});
+
+test('Wallet: con un logo, l\'intestazione mostra il logo vero su targhetta bianca', async () => {
+  const { loadImage } = require('@napi-rs/canvas');
+  const head = await images.get({ slug: 'prova-testa', imgVersion: 1, name: 'Prova', theme: 'pizza', stampsForReward: 6, brandColor: '#112233', logo: fakeLogo() }, 'wide-logo.png');
+  const img = await loadImage(head.buf);
+  const c = createCanvas(img.width, img.height); const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  assert.strictEqual(img.width, 1280);
+  assert.strictEqual(g.getImageData(5, 5, 1, 1).data[3], 0, 'fuori dalla targhetta è trasparente');
+  const mid = g.getImageData(640, 200, 1, 1).data;
+  assert.ok(mid[3] === 255 && near('#' + [...mid].slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join(''), '#ad0303'), 'al centro c\'è il logo');
+});

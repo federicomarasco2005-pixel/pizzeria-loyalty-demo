@@ -50,7 +50,23 @@ function describe(err) {
   return body ? JSON.stringify(body.error || body) : err.message;
 }
 
+// Sotto la tessera (dal 5/11): logo grande, ultimo messaggio e pulsanti, nient'altro. Sono indirizzi di campi:
+// un campo vuoto (per esempio nessun messaggio o nessun telefono) Google non lo mostra.
+const LINK_IDS = ['qr', 'web', 'review', 'maps', 'tel'];
+function detailsItems(c) {
+  const fields = [
+    ...(c.bigLogoUrl ? ["class.imageModulesData['logo']"] : []),
+    'object.messages[0]',
+    ...LINK_IDS.map((id) => `object.linksModuleData.uris['${id}']`),
+  ];
+  return fields.map((fieldPath) => ({ item: { firstValue: { fields: [{ fieldPath }] } } }));
+}
+// Logo grande e dettagli su misura: se Google li rifiuta (400) si torna allo schema normale fino al riavvio,
+// così le tessere continuano ad aggiornarsi.
+let richClassSupported = true;
+
 function classBody(c) {
+  const rich = richClassSupported;
   return {
     id: classId(c),
     issuerName: c.pizzeriaName,
@@ -66,6 +82,15 @@ function classBody(c) {
         contentDescription: { defaultValue: { language: 'it-IT', value: c.pizzeriaName } },
       },
     }),
+    ...(rich && c.bigLogoUrl && {
+      imageModulesData: [{
+        id: 'logo',
+        mainImage: {
+          sourceUri: { uri: c.bigLogoUrl },
+          contentDescription: { defaultValue: { language: 'it-IT', value: `Logo ${c.pizzeriaName}` } },
+        },
+      }],
+    }),
     hexBackgroundColor: c.brandColor,
     countryCode: 'IT',
     reviewStatus: 'UNDER_REVIEW',
@@ -80,8 +105,20 @@ function classBody(c) {
           },
         }],
       },
+      ...(rich && { detailsTemplateOverride: { detailsItemInfos: detailsItems(c) } }),
     },
   };
+}
+
+async function writeClass(method, url, c) {
+  try {
+    await request(method, url, classBody(c));
+  } catch (err) {
+    if (status(err) !== 400 || !richClassSupported) throw err;
+    richClassSupported = false;
+    console.warn(`[wallet] logo grande e dettagli su misura rifiutati (${describe(err)}): schema normale`);
+    await request(method, url, classBody(c));
+  }
 }
 
 // Crea la classe del programma se non esiste, altrimenti la aggiorna (nome, logo, colore).
@@ -91,11 +128,11 @@ async function ensureClass(c) {
     await request('GET', url);
   } catch (err) {
     if (status(err) !== 404) throw new Error(`lettura classe fallita: ${describe(err)}`);
-    await request('POST', `${BASE}/loyaltyClass`, classBody(c));
+    await writeClass('POST', `${BASE}/loyaltyClass`, c);
     console.log(`[wallet] classe creata: ${classId(c)}`);
     return;
   }
-  await request('PATCH', url, classBody(c));
+  await writeClass('PATCH', url, c);
   console.log(`[wallet] classe aggiornata: ${classId(c)}`);
 }
 
@@ -138,11 +175,9 @@ function link(id, uri, description, i18n) {
 // extras.offerId: buono premio collegato (vedi syncOffer)
 function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = {}) {
   const n = c.stampsForReward;
-  const missing = n - state.stamps;
-  const reward = c.rewardText.toLowerCase();
   const cardUrl = `${c.baseUrl}/card/${customer.token}`;
   const links = [];
-  // dettagli della tessera: link senza emoji (dal 5/11)
+  // pulsanti sotto la tessera, senza emoji; gli id sono quelli di LINK_IDS
   if (!c.walletQr) links.push(link('qr', `${cardUrl}?qr=1`, ['Mostra il QR per la cassa', 'Show the QR code at the till'], i18n));
   links.push(link('web', cardUrl, ['Apri la tessera', 'Open the card'], i18n));
   if (extras.reviewUrl) links.push(link('review', extras.reviewUrl, ['Lascia una recensione su Google', 'Leave a Google review'], i18n));
@@ -172,24 +207,11 @@ function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = 
       sourceUri: { uri: heroUri(c, state, extras.animated === true) },
       contentDescription: { defaultValue: { language: 'it-IT', value: `${state.stamps} timbri su ${n}` } },
     },
-    // Dettagli, in ordine di importanza. "timbri" e "premio" sono anche sul fronte (vedi classTemplateInfo).
+    // Solo i due valori del fronte (vedi classTemplateInfo): sotto la tessera ci sono logo, messaggio e pulsanti
     textModulesData: [
-      state.rewards > 0
-        ? textModule('stato', ['Hai un premio da ritirare', 'You have a reward to collect'],
-          [`Mostra questa tessera in cassa: ${reward}.`, `Show this card at the till: ${reward}.`], i18n)
-        : textModule('stato', ['Prossimo premio', 'Next reward'], [
-          `Ti ${missing === 1 ? 'manca 1 timbro' : `mancano ${missing} timbri`} per: ${reward}.`,
-          `${missing === 1 ? '1 more stamp' : `${missing} more stamps`} for: ${reward}.`,
-        ], i18n),
-      textModule('codice', ['Codice tessera', 'Card code'], [customer.code], i18n),
       textModule('timbri', ['Timbri', 'Stamps'], [`${state.stamps} / ${n}`], i18n),
       textModule('premio', ['Premio', 'Reward'],
         state.rewards > 0 ? [`${state.rewards} da ritirare`, `${state.rewards} to collect`] : [c.rewardShort], i18n),
-      textModule('regole', ['Come funziona', 'How it works'], c.walletQr
-        ? [`1 timbro a ogni visita, mostrando il QR. Ogni ${n} timbri: ${reward}.`,
-          `1 stamp at every visit by showing the QR code. Every ${n} stamps: ${reward}.`]
-        : [`1 timbro a ogni visita, con il timbro NFC o dicendo il codice in cassa. Ogni ${n} timbri: ${reward}.`,
-          `1 stamp at every visit, with the NFC tag or by saying your code at the till. Every ${n} stamps: ${reward}.`], i18n),
     ],
     linksModuleData: { uris: links },
   };
@@ -402,4 +424,7 @@ function saveUrl(customer) {
   return `https://pay.google.com/gp/v/save/${token}`;
 }
 
-module.exports = { init, enabled, ensureClass, upsertObject, notify, saveUrl, isSaved, heroFile, deactivate };
+module.exports = {
+  init, enabled, ensureClass, upsertObject, notify, saveUrl, isSaved, heroFile, deactivate,
+  _forTest: { classBody, objectBody, setCfg: (v) => { cfg = v; } },
+};

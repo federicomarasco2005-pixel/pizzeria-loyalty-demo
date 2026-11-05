@@ -215,6 +215,7 @@ async function sendImage(req, res, file) {
   res.type(img.type).set('Cache-Control', 'public, max-age=3600').send(img.buf);
 }
 shop.get('/logo.png', wrap((req, res) => sendImage(req, res, 'logo.png')));
+shop.get('/logo-big.png', wrap((req, res) => sendImage(req, res, 'logo-big.png')));
 shop.get('/stamps/:file', wrap((req, res) => sendImage(req, res, `stamps/${req.params.file}`)));
 shop.get('/icons/:file', wrap((req, res) => sendImage(req, res, `icons/${req.params.file}`)));
 // Logo largo dell'intestazione Wallet: il locale legacy ha il suo file, gli altri lo hanno generato
@@ -1579,6 +1580,7 @@ async function ensureClass(ctx, { force = false } = {}) {
   if (!wallet.enabled() || (classReady.has(ctx.shop.slug) && !force)) return;
   // loghi pronti prima che Google li scarichi
   await images.get(shops.imageSpec(ctx.shop), 'logo.png');
+  await images.get(shops.imageSpec(ctx.shop), 'logo-big.png');
   if (!ctx.shop.legacy) await images.get(shops.imageSpec(ctx.shop), 'wide-logo.png');
   await wallet.ensureClass(ctx.cfg);
   classReady.add(ctx.shop.slug);
