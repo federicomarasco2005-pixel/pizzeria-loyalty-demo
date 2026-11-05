@@ -7,7 +7,6 @@
 //                               (e delle notifiche web): il logo del locale se c'è, altrimenti il timbro
 //   icons/badge.png             sagoma bianca del timbro per la barra in alto del telefono (notifiche web)
 //   logo.png                    logo del programma (caricato dal gestore oppure generato)
-//   logo-big.png                logo grande su fondo bianco, sotto la tessera nel Wallet (solo se il locale ha un logo)
 // Prima erano script PowerShell da lanciare a mano (tools/); ora ogni nuovo locale ha le sue in automatico.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const path = require('path');
@@ -347,19 +346,6 @@ async function render(shop, file) {
     const logo = await logoImage(shop);
     return png(logo ? realLogoHeader(logo) : await wideLogo(shop, draw));
   }
-  // Logo grande e centrale sotto la tessera nel Wallet: su fondo bianco, senza il suo bordo vuoto.
-  // Larghezza fissa e altezza secondo il logo, così una scritta larga non lascia fasce bianche enormi.
-  if (file === 'logo-big.png') {
-    const logo = await logoImage(shop);
-    if (!logo) return null;
-    const t = trimLogo(logo), WB = 1032, pad = 96, maxH = 840;
-    const s = Math.min((WB - 2 * pad) / t.width, maxH / t.height);
-    const w = t.width * s, h = t.height * s, HB = Math.round(h + 2 * pad);
-    const c = createCanvas(WB, HB); const g = c.getContext('2d');
-    g.fillStyle = '#ffffff'; g.fillRect(0, 0, WB, HB);
-    g.drawImage(t, (WB - w) / 2, pad, w, h);
-    return png(c);
-  }
   if (file === 'logo.png') {
     const logo = await logoImage(shop);
     if (logo && shop.logoFile) return png(toCanvas(logo));
@@ -392,7 +378,7 @@ function realLogoHeader(logo) {
 }
 
 // Senza logo: logo largo per l'intestazione Google Wallet (1280x400, trasparente): timbro del locale a sinistra,
-// nome in bianco e "TESSERA FEDELTÀ" in oro. Un nome lungo va su due righe.
+// nome in bianco. Un nome lungo va su due righe.
 async function wideLogo(shop, draw) {
   const WL = 1280, HL = 400;
   const c = createCanvas(WL, HL); const g = c.getContext('2d');
@@ -417,16 +403,11 @@ async function wideLogo(shop, draw) {
   } else {
     while (size > 40 && !fit(name, size)) size -= 4;
   }
-  const tagSize = Math.round(Math.min(size, 100) * 0.4);
-  const lineH = size * 1.08, gap = size * 0.22;
-  const block = lines.length * lineH + gap + tagSize;
+  const lineH = size * 1.08;
+  const block = lines.length * lineH;
   // timbro e scritte centrati insieme nell'intestazione (il timbro visibile parte a ~40 px, le scritte a 345)
   g.font = `${size}px "F5M Inter XB"`;
-  let textW = Math.max(...lines.map((t) => g.measureText(t).width));
-  g.font = `${tagSize}px "F5M Inter SB"`;
-  if ('letterSpacing' in g) g.letterSpacing = `${Math.round(tagSize * 0.12)}px`;
-  textW = Math.max(textW, g.measureText('TESSERA FEDELTÀ').width + 3);
-  if ('letterSpacing' in g) g.letterSpacing = '0px';
+  const textW = Math.max(...lines.map((t) => g.measureText(t).width));
   const dx = Math.max(0, (WL - (345 + textW - 40)) / 2 - 40), x = 345 + dx;
   g.drawImage(s.canvas, 30 + 140 + dx - s.canvas.width / 2, HL / 2 - s.canvas.height / 2);
   let y = (HL - block) / 2;
@@ -437,10 +418,6 @@ async function wideLogo(shop, draw) {
     g.fillStyle = '#ffffff'; g.fillText(t, x, y);
     y += lineH;
   }
-  g.font = `${tagSize}px "F5M Inter SB"`;
-  g.fillStyle = '#ffcf4a';
-  if ('letterSpacing' in g) g.letterSpacing = `${Math.round(tagSize * 0.12)}px`;
-  g.fillText('TESSERA FEDELTÀ', x + 3, y + gap);
   return c;
 }
 
@@ -669,4 +646,17 @@ function logoColors(img) {
   };
 }
 
-module.exports = { THEMES, get, preview, prepareLogo, warm, palette };
+// QR per la cassa sotto la tessera nel Wallet: non troppo grande, su fondo bianco, con il codice in piccolo sotto.
+// Google allarga l'immagine a tutta la larghezza: il QR occupa circa il 40%. Contiene solo il codice tessera.
+async function walletQr(code) {
+  const W_QR = 1032, QR = 420, top = 56;
+  const qr = await loadImage(await require('qrcode').toBuffer(code, { margin: 1, width: QR }));
+  const c = createCanvas(W_QR, top + QR + 94); const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W_QR, c.height);
+  g.drawImage(qr, (W_QR - QR) / 2, top, QR, QR);
+  g.font = '30px "F5M Inter SB"'; g.fillStyle = '#5b5148'; g.textAlign = 'center'; g.textBaseline = 'top';
+  g.fillText(code, W_QR / 2, top + QR + 16);
+  return c.toBuffer('image/png');
+}
+
+module.exports = { THEMES, get, preview, prepareLogo, warm, palette, walletQr };

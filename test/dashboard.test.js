@@ -41,24 +41,25 @@ test('pagine del locale: stile comune, colori del locale e nessuna load() che co
   assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public', 'common.js'), 'utf8').includes('window.PALETTE'));
 });
 
-test('Wallet: logo grande solo con un logo vero; sotto la tessera logo, messaggio e pulsanti', async () => {
-  const big = await images.get({ slug: 'prova-grande', imgVersion: 1, name: 'Prova', theme: 'pizza', stampsForReward: 6, brandColor: '#112233', logo: fakeLogo() }, 'logo-big.png');
-  assert.strictEqual(big.type, 'image/png');
-  assert.strictEqual(await images.get({ slug: 'prova-senza', imgVersion: 1, name: 'Prova', theme: 'pizza', stampsForReward: 6, brandColor: '#112233' }, 'logo-big.png'), null);
+test('Wallet: sul fronte il nome del cliente; sotto la tessera QR, messaggio e pulsanti', async () => {
+  const { loadImage } = require('@napi-rs/canvas');
+  const qr = await loadImage(await images.walletQr('AS-F7D44'));
+  assert.strictEqual(qr.width, 1032);
 
   const { classBody, objectBody, setCfg } = require('../wallet')._forTest;
   setCfg({ issuerId: '1' });
-  const c = { classSuffix: 'x', pizzeriaName: 'Prova', programName: 'P', rewardText: 'Pizza gratis', rewardShort: 'Pizza', stampsForReward: 6, baseUrl: 'https://x/y', stampsImageBase: 'https://x/y/stamps', imgVersion: '1', brandColor: '#112233', logoUrl: 'l', wideLogoUrl: 'w', bigLogoUrl: 'https://x/y/logo-big.png' };
-  const paths = (b) => b.classTemplateInfo.detailsTemplateOverride.detailsItemInfos.map((i) => i.item.firstValue.fields[0].fieldPath);
-  assert.strictEqual(paths(classBody(c))[0], "class.imageModulesData['logo']");
-  assert.strictEqual(paths(classBody(c))[1], 'object.messages[0]');
-  const senzaLogo = classBody({ ...c, bigLogoUrl: '' });
-  assert.strictEqual(senzaLogo.imageModulesData, undefined);
-  assert.strictEqual(paths(senzaLogo)[0], 'object.messages[0]');
+  const c = { classSuffix: 'x', pizzeriaName: 'Prova', programName: 'Tessera fedeltà Prova', rewardText: 'Pizza gratis', rewardShort: 'Pizza', stampsForReward: 6, baseUrl: 'https://x/y', stampsImageBase: 'https://x/y/stamps', imgVersion: '1', brandColor: '#112233', logoUrl: 'l', wideLogoUrl: 'w' };
+  const body = classBody(c);
+  assert.strictEqual(body.programName, 'Prova');
+  const paths = body.classTemplateInfo.detailsTemplateOverride.detailsItemInfos.map((i) => i.item.firstValue.fields[0].fieldPath);
+  assert.deepStrictEqual(paths.slice(0, 2), ["object.imageModulesData['qr']", 'object.messages[0]']);
+  assert.ok(body.classTemplateInfo.cardTemplateOverride.cardRowTemplateInfos[0].oneItem);
 
   const o = objectBody(c, { code: 'AS-1', name: 'Anna', token: 't', id: '1' }, { stamps: 2, rewards: 0 }, { phone: '+39 1' });
-  assert.deepStrictEqual(o.textModulesData.map((t) => t.id), ['timbri', 'premio']);
-  assert.deepStrictEqual(o.linksModuleData.uris.map((u) => u.id), ['qr', 'web', 'tel']);
+  assert.deepStrictEqual(o.textModulesData.map((t) => t.id), ['cliente', 'timbri', 'premio']);
+  assert.strictEqual(o.textModulesData[0].body, 'Anna');
+  assert.strictEqual(o.imageModulesData[0].mainImage.sourceUri.uri, 'https://x/y/qr-tessera/AS-1.png');
+  assert.ok(!JSON.stringify(o.imageModulesData).includes('/card/'), 'il QR non contiene il token');
   setCfg(null);
 });
 

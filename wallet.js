@@ -50,19 +50,16 @@ function describe(err) {
   return body ? JSON.stringify(body.error || body) : err.message;
 }
 
-// Sotto la tessera (dal 5/11): logo grande, ultimo messaggio e pulsanti, nient'altro. Sono indirizzi di campi:
+// Sotto la tessera (dal 5/11): QR per la cassa, ultimo messaggio e pulsanti, nient'altro. Sono indirizzi di campi:
 // un campo vuoto (per esempio nessun messaggio o nessun telefono) Google non lo mostra.
 const LINK_IDS = ['qr', 'web', 'review', 'maps', 'tel'];
-function detailsItems(c) {
-  const fields = [
-    ...(c.bigLogoUrl ? ["class.imageModulesData['logo']"] : []),
-    'object.messages[0]',
-    ...LINK_IDS.map((id) => `object.linksModuleData.uris['${id}']`),
-  ];
+function detailsItems() {
+  const fields = ["object.imageModulesData['qr']", 'object.messages[0]', ...LINK_IDS.map((id) => `object.linksModuleData.uris['${id}']`)];
   return fields.map((fieldPath) => ({ item: { firstValue: { fields: [{ fieldPath }] } } }));
 }
-// Logo grande e dettagli su misura: se Google li rifiuta (400) si torna allo schema normale fino al riavvio,
-// così le tessere continuano ad aggiornarsi.
+const textField = (id) => ({ firstValue: { fields: [{ fieldPath: `object.textModulesData['${id}']` }] } });
+// Riga col nome del cliente e dettagli su misura: se Google li rifiuta (400) si torna allo schema normale
+// fino al riavvio, così le tessere continuano ad aggiornarsi.
 let richClassSupported = true;
 
 function classBody(c) {
@@ -70,7 +67,8 @@ function classBody(c) {
   return {
     id: classId(c),
     issuerName: c.pizzeriaName,
-    programName: c.programName,
+    // Il titolo sotto il logo non si può togliere né cambiare per ogni cliente: il nome del locale, non "Tessera fedeltà…"
+    programName: c.pizzeriaName,
     programLogo: {
       sourceUri: { uri: c.logoUrl },
       contentDescription: { defaultValue: { language: 'it-IT', value: `Logo ${c.pizzeriaName}` } },
@@ -82,30 +80,19 @@ function classBody(c) {
         contentDescription: { defaultValue: { language: 'it-IT', value: c.pizzeriaName } },
       },
     }),
-    ...(rich && c.bigLogoUrl && {
-      imageModulesData: [{
-        id: 'logo',
-        mainImage: {
-          sourceUri: { uri: c.bigLogoUrl },
-          contentDescription: { defaultValue: { language: 'it-IT', value: `Logo ${c.pizzeriaName}` } },
-        },
-      }],
-    }),
     hexBackgroundColor: c.brandColor,
     countryCode: 'IT',
     reviewStatus: 'UNDER_REVIEW',
-    // Fronte della tessera: una sola riga con i due valori che contano, "Timbri · Premio" (dal 5/11; prima c'era
-    // anche il codice, ora nei dettagli). Con una sola riga Google mette l'immagine dei timbri subito sopra.
+    // Fronte della tessera: il nome del cliente, poi l'immagine dei timbri (Google la mette dopo la prima riga),
+    // poi "Timbri · Premio".
     classTemplateInfo: {
       cardTemplateOverride: {
-        cardRowTemplateInfos: [{
-          twoItems: {
-            startItem: { firstValue: { fields: [{ fieldPath: "object.textModulesData['timbri']" }] } },
-            endItem: { firstValue: { fields: [{ fieldPath: "object.textModulesData['premio']" }] } },
-          },
-        }],
+        cardRowTemplateInfos: [
+          ...(rich ? [{ oneItem: { item: textField('cliente') } }] : []),
+          { twoItems: { startItem: textField('timbri'), endItem: textField('premio') } },
+        ],
       },
-      ...(rich && { detailsTemplateOverride: { detailsItemInfos: detailsItems(c) } }),
+      ...(rich && { detailsTemplateOverride: { detailsItemInfos: detailsItems() } }),
     },
   };
 }
@@ -116,7 +103,7 @@ async function writeClass(method, url, c) {
   } catch (err) {
     if (status(err) !== 400 || !richClassSupported) throw err;
     richClassSupported = false;
-    console.warn(`[wallet] logo grande e dettagli su misura rifiutati (${describe(err)}): schema normale`);
+    console.warn(`[wallet] nome del cliente e dettagli su misura rifiutati (${describe(err)}): schema normale`);
     await request(method, url, classBody(c));
   }
 }
@@ -157,6 +144,7 @@ const heroUri = (c, state, animated) => `${c.stampsImageBase}/${heroFile(c, stat
 // Testi in italiano con la traduzione inglese: Google mostra quella della lingua del telefono.
 // Se Google rifiutasse i campi tradotti si torna ai soli testi italiani (vedi upsertObject).
 let i18nSupported = true;
+let qrImageSupported = true; // QR per la cassa come immagine sotto la tessera
 const loc = (it, en) => ({
   defaultValue: { language: 'it-IT', value: it },
   ...(en && en !== it && { translatedValues: [{ language: 'en', value: en }] }),
@@ -207,13 +195,23 @@ function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = 
       sourceUri: { uri: heroUri(c, state, extras.animated === true) },
       contentDescription: { defaultValue: { language: 'it-IT', value: `${state.stamps} timbri su ${n}` } },
     },
-    // Solo i due valori del fronte (vedi classTemplateInfo): sotto la tessera ci sono logo, messaggio e pulsanti
+    // Solo i valori del fronte (vedi classTemplateInfo): sotto la tessera ci sono QR, messaggio e pulsanti
     textModulesData: [
+      textModule('cliente', ['Cliente', 'Customer'], [customer.name], i18n),
       textModule('timbri', ['Timbri', 'Stamps'], [`${state.stamps} / ${n}`], i18n),
       textModule('premio', ['Premio', 'Reward'],
         state.rewards > 0 ? [`${state.rewards} da ritirare`, `${state.rewards} to collect`] : [c.rewardShort], i18n),
     ],
     linksModuleData: { uris: links },
+    ...(!c.walletQr && qrImageSupported && {
+      imageModulesData: [{
+        id: 'qr',
+        mainImage: {
+          sourceUri: { uri: `${c.baseUrl}/qr-tessera/${customer.code}.png` },
+          contentDescription: loc('QR della tessera per la cassa', 'Card QR code for the till'),
+        },
+      }],
+    }),
   };
 }
 
@@ -258,6 +256,9 @@ async function upsertObject(c, customer, state, { notifyOnUpdate = false, messag
       if (/\.gif(\?|$)/.test(body.heroImage.sourceUri.uri)) {
         gifSupported = false;
         console.warn(`[wallet] GIF animata rifiutata (${describe(err)}): uso le immagini fisse`);
+      } else if (body.imageModulesData) {
+        qrImageSupported = false;
+        console.warn(`[wallet] QR come immagine rifiutato (${describe(err)}): tessere senza`);
       } else if (opts.offerId) {
         opts = { ...opts, offerId: null };
         offersSupported = false;

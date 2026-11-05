@@ -10,7 +10,7 @@ const REGISTRY_KEY = 'shops';
 // Versione dei disegni dei timbri (images.js): si aumenta quando ne cambia uno, così gli indirizzi delle
 // immagini cambiano per tutti i locali e Google e i telefoni le scaricano di nuovo. 2: la pizza diventa una fetta;
 // 3: timbro e nome centrati nel logo largo del Wallet; 4: icona dell'app con il logo del locale.
-const DRAWINGS = 5; // 5: logo vero del locale nell'intestazione del Wallet
+const DRAWINGS = 6; // 5: logo vero del locale nell'intestazione del Wallet; 6: senza logo, niente "TESSERA FEDELTÀ"
 const imgVersionOf = (shop) => `${shop.imgVersion || 1}.${DRAWINGS}`;
 // Parole che non possono essere l'indirizzo di un locale (sono pagine o file del sito)
 // (anche sottodomini usati per altro: www, posta…)
@@ -88,8 +88,6 @@ function cfgOf(shop) {
     logoUrl: (shop.legacy && process.env.LOGO_URL) || `${baseUrl}/logo.png?v=${v}`,
     // logo largo dell'intestazione Wallet: file fisso per il locale legacy, generato per gli altri (images.js)
     wideLogoUrl: process.env.WIDE_LOGO_URL === 'off' ? '' : `${baseUrl}/wide-logo.png${shop.legacy ? '' : `?v=${v}`}`,
-    // logo grande sotto la tessera nel Wallet: solo per chi ha un logo vero (images.js)
-    bigLogoUrl: shop.logo || shop.legacy ? `${baseUrl}/logo-big.png?v=${v}` : '',
     stampsImageBase: `${baseUrl}/stamps`,
     imgVersion: v,
     walletQr: process.env.WALLET_QR === 'on',
