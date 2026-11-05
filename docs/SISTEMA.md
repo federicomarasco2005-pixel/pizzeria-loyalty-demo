@@ -173,9 +173,10 @@ render.yaml  Blueprint Render (servizio + database)
 - **Una classe per locale** (`loyaltyClass`) con:
   - logo, nome e colore;
   - logo largo, solo per il locale legacy;
-  - `cardTemplateOverride`, una riga "Timbri · Premio · Codice" sul fronte.
+  - `cardTemplateOverride`, una riga "Timbri · Premio" sul fronte (dal 5/11; prima c'era anche il codice, ora nei dettagli).
 - **Un oggetto per cliente** (`loyaltyObject`, id `<issuer>.c_<customerId>`):
   - aggiornato con **PUT completo**, senza leggerlo prima;
+  - dal 5/11 niente "Premi disponibili" (`secondaryLoyaltyPoints`) né emoji; dettagli in ordine: prossimo premio, codice tessera, timbri, premio, come funziona, link. Il saldo `loyaltyPoints` resta: serve all'avviso a ogni timbro (`notifyOnUpdate`);
   - i messaggi del pass li decide il server: resta solo l'ultimo messaggio attivo, con scadenza. Dopo un messaggio con notifica (`addMessage` TEXT_AND_NOTIFY) il pass si riordina **2 minuti dopo**, come dopo un timbro: riscriverlo subito riportava il messaggio a semplice testo e il telefono non suonava (25/10);
   - QR del Wallet spento di default (`WALLET_QR=on` per riaccenderlo); se acceso contiene il codice tessera, non il token.
   - Testi anche in inglese (`localizedHeader/Body`, `localizedLabel`, `localizedDescription`): Google mostra la lingua del telefono. Il testo del premio resta quello scritto dal locale.
