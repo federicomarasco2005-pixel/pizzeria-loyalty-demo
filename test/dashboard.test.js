@@ -41,6 +41,25 @@ test('pagine del locale: stile comune, colori del locale e nessuna load() che co
   assert.ok(fs.readFileSync(path.join(__dirname, '..', 'public', 'common.js'), 'utf8').includes('window.PALETTE'));
 });
 
+test('Wallet: il logo perde anche un fondo colorato, su bianco o no', async () => {
+  const { loadImage } = require('@napi-rs/canvas');
+  const src = createCanvas(400, 400); const sg = src.getContext('2d');
+  sg.fillStyle = '#ffffff'; sg.fillRect(0, 0, 400, 400); // il margine bianco che aggiunge prepareLogo
+  sg.fillStyle = '#1040c0'; sg.fillRect(40, 40, 320, 320); // il riquadro blu del logo
+  sg.fillStyle = '#f0d020'; sg.fillRect(160, 160, 80, 80); // il disegno
+  const r = await images.get({ slug: 'prova-riquadro', imgVersion: 1, name: 'P', theme: 'pizza', stampsForReward: 6, brandColor: '#112233', logo: src.toBuffer('image/png').toString('base64') }, 'wide-logo.png');
+  const img = await loadImage(r.buf); const c = createCanvas(img.width, img.height); const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, img.width, img.height).data;
+  let blu = 0, giallo = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 200) continue;
+    if (d[i + 2] > 150 && d[i] < 60) blu++;
+    if (d[i] > 200 && d[i + 2] < 80) giallo++;
+  }
+  assert.strictEqual(blu, 0, 'il riquadro blu è sparito');
+  assert.ok(giallo > 1000, 'il disegno è rimasto e ingrandito');
+});
+
 test('Wallet: contorno bianco solo se il logo si confonde col colore della tessera', async () => {
   const { loadImage } = require('@napi-rs/canvas');
   const edge = async (slug, brandColor) => {
@@ -51,7 +70,7 @@ test('Wallet: contorno bianco solo se il logo si confonde col colore della tesse
     return null;
   };
   assert.deepStrictEqual(await edge('prova-rosso', '#b3261e'), [255, 255, 255], 'su rosso il bordo del rosso è bianco');
-  assert.notDeepStrictEqual(await edge('prova-blu', '#1e4fb3'), [255, 255, 255], 'su blu niente contorno');
+  assert.notDeepStrictEqual(await edge('prova-chiaro', '#f2e8c9'), [255, 255, 255], 'su un colore chiaro niente contorno');
 });
 
 test('Wallet: sul fronte il nome del cliente; sotto la tessera QR, messaggio e pulsanti', async () => {
@@ -79,6 +98,29 @@ test('Wallet: sul fronte il nome del cliente; sotto la tessera QR, messaggio e p
   assert.deepStrictEqual(o.linksModuleData.uris.map((u) => u.id), ['web', 'tel'], 'il QR è già sotto la tessera: niente pulsante');
   assert.strictEqual(o.imageModulesData[0].mainImage.sourceUri.uri, `https://x/y/qr-tessera/AS-1.png?v=${require('../wallet').LAYOUT_VERSION}`);
   assert.ok(!JSON.stringify(o.imageModulesData).includes('/card/'), 'il QR non contiene il token');
+  setCfg(null);
+});
+
+test('Wallet: tessera nuova col nome del cliente grande; la vecchia solo per chi non è ancora passato', () => {
+  const { genericBody, genericClassBody, usesLegacy, setCfg } = require('../wallet')._forTest;
+  setCfg({ issuerId: '1' });
+  const c = { classSuffix: 'x', pizzeriaName: 'Assaje', rewardText: 'Pizza gratis', rewardShort: 'Pizza', stampsForReward: 6, baseUrl: 'https://x/y', stampsImageBase: 'https://x/y/stamps', imgVersion: '1', brandColor: '#112233', logoUrl: 'l', wideLogoUrl: 'w' };
+  const anna = { id: 'a1', code: 'AS-1', name: 'Anna', token: 't' };
+  const o = genericBody(c, anna, { stamps: 2, rewards: 0 }, { phone: '+39 1' });
+  assert.strictEqual(o.id, '1.g_a1');
+  assert.strictEqual(o.classId, '1.x_g');
+  assert.strictEqual(o.header.defaultValue.value, 'Anna');
+  assert.strictEqual(o.cardTitle.defaultValue.value, 'Assaje');
+  assert.strictEqual(o.subheader, undefined, 'solo il nome');
+  assert.strictEqual(o.accountId, undefined);
+  assert.deepStrictEqual(o.textModulesData.map((t) => t.id), ['timbri', 'premio']);
+  assert.deepStrictEqual(o.linksModuleData.uris.map((u) => u.id), ['web', 'tel']);
+  const premio = genericBody(c, anna, { stamps: 0, rewards: 1 }, {});
+  assert.strictEqual(premio.linksModuleData.uris[0].id, 'ritira');
+  assert.strictEqual(genericClassBody(c).id, '1.x_g');
+  assert.strictEqual(usesLegacy({}), false, 'cliente nuovo');
+  assert.strictEqual(usesLegacy({ walletSaved: true }), true, 'ha ancora la vecchia');
+  assert.strictEqual(usesLegacy({ walletSaved: true, genericSaved: true }), false, 'già passato');
   setCfg(null);
 });
 

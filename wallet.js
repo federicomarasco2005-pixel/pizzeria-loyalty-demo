@@ -1,4 +1,6 @@
-// Integrazione Google Wallet (loyalty pass) tramite REST API + link "Salva in Google Wallet" firmato JWT.
+// Integrazione Google Wallet tramite REST API + link "Salva in Google Wallet" firmato JWT.
+// Dal 5/11 le tessere nuove sono "generiche" (GenericObject): solo così il nome del cliente può stare grande in alto.
+// Chi ha ancora la vecchia tessera fedeltà (loyaltyObject) continua a riceverne gli aggiornamenti finché non salva quella nuova.
 // Se le credenziali non sono configurate il modulo resta disattivato e la demo usa solo la tessera web.
 // Un emittente (issuer) Google, una "classe" per ogni locale: le funzioni ricevono la configurazione del locale (c).
 const fs = require('fs');
@@ -36,6 +38,11 @@ function disabled(reason) {
 const enabled = () => !!auth;
 const classId = (c) => `${cfg.issuerId}.${c.classSuffix}`;
 const objectId = (customer) => `${cfg.issuerId}.c_${customer.id}`;
+const genericClassId = (c) => `${cfg.issuerId}.${c.classSuffix}_g`;
+const genericObjectId = (customer) => `${cfg.issuerId}.g_${customer.id}`;
+// Quali tessere aggiornare per questo cliente. La generica c'è sempre (è quella che si salva dal pulsante);
+// la vecchia solo se il cliente l'ha salvata e non è ancora passato alla nuova.
+const usesLegacy = (customer) => !!customer.walletSaved && !customer.genericSaved;
 
 async function request(method, url, data) {
   const client = await auth.getClient();
@@ -54,7 +61,7 @@ function describe(err) {
 // un campo vuoto (per esempio nessun messaggio o nessun telefono) Google non lo mostra.
 const LINK_IDS = ['web', 'review', 'maps', 'tel'];
 // Da aumentare quando cambiano i campi delle tessere: al prossimo avvio il server le riscrive tutte, una volta sola
-const LAYOUT_VERSION = 4;
+const LAYOUT_VERSION = 5;
 function detailsItems() {
   // i pulsanti tutti insieme, in un blocco solo, per averli più vicini; se Google non lo accetta, uno per uno
   const links = linkGroupSupported ? ['object.linksModuleData'] : LINK_IDS.map((id) => `object.linksModuleData.uris['${id}']`);
@@ -104,6 +111,17 @@ function classBody(c) {
   };
 }
 
+// Classe della tessera generica: i dati stanno quasi tutti nella singola tessera.
+function genericClassBody(c) {
+  return {
+    id: genericClassId(c),
+    classTemplateInfo: {
+      cardTemplateOverride: { cardRowTemplateInfos: [{ twoItems: { startItem: textField('timbri'), endItem: textField('premio') } }] },
+      ...(richClassSupported && { detailsTemplateOverride: { detailsItemInfos: detailsItems() } }),
+    },
+  };
+}
+
 async function writeClass(method, url, c) {
   try {
     await request(method, url, classBody(c));
@@ -120,8 +138,9 @@ async function writeClass(method, url, c) {
   }
 }
 
-// Crea la classe del programma se non esiste, altrimenti la aggiorna (nome, logo, colore).
+// Crea le classi del locale se non esistono, altrimenti le aggiorna (nome, logo, colore). La vecchia serve a chi non è ancora passato.
 async function ensureClass(c) {
+  await ensureGenericClass(c);
   const url = `${BASE}/loyaltyClass/${classId(c)}`;
   try {
     await request('GET', url);
@@ -133,6 +152,33 @@ async function ensureClass(c) {
   }
   await writeClass('PATCH', url, c);
   console.log(`[wallet] classe aggiornata: ${classId(c)}`);
+}
+
+async function ensureGenericClass(c) {
+  const url = `${BASE}/genericClass/${genericClassId(c)}`;
+  const write = async () => {
+    try {
+      await request('PUT', url, genericClassBody(c));
+    } catch (err) {
+      if (status(err) !== 404) throw err;
+      await request('POST', `${BASE}/genericClass`, genericClassBody(c));
+    }
+  };
+  try {
+    await write();
+  } catch (err) {
+    if (status(err) !== 400) throw err;
+    if (linkGroupSupported) {
+      linkGroupSupported = false;
+      console.warn(`[wallet] pulsanti in un blocco solo rifiutati (${describe(err)}): uno per uno`);
+      return ensureGenericClass(c);
+    }
+    if (!richClassSupported) throw err;
+    richClassSupported = false;
+    console.warn(`[wallet] dettagli su misura rifiutati (${describe(err)}): schema normale`);
+    await write();
+  }
+  console.log(`[wallet] tessera generica pronta: ${genericClassId(c)}`);
 }
 
 // Se Google rifiuta le GIF (non documentate ufficialmente) si torna alle immagini fisse.
@@ -174,8 +220,7 @@ function link(id, uri, description, i18n) {
 
 // extras (impostati dal gestore in Dashboard): reviewUrl, mapsUrl, phone
 // extras.offerId: buono premio collegato (vedi syncOffer)
-function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = {}) {
-  const n = c.stampsForReward;
+function cardLinks(c, customer, extras, i18n) {
   const cardUrl = `${c.baseUrl}/card/${customer.token}`;
   const links = [];
   // pulsanti sotto la tessera, senza emoji; gli id sono quelli di LINK_IDS
@@ -186,6 +231,55 @@ function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = 
     links.push(link('tel', `tel:${extras.phone.replace(/[^\d+]/g, '')}`,
       [`Chiama / prenota (${extras.phone})`, `Call / book (${extras.phone})`], i18n));
   }
+  return links;
+}
+
+const frontModules = (c, state, n, i18n) => [
+  textModule('timbri', ['Timbri', 'Stamps'], [`${state.stamps} / ${n}`], i18n),
+  textModule('premio', ['Premio', 'Reward'],
+    state.rewards > 0 ? [`${state.rewards} da ritirare`, `${state.rewards} to collect`] : [c.rewardShort], i18n),
+];
+const qrImage = (c, customer) => [{
+  id: 'qr',
+  mainImage: {
+    sourceUri: { uri: `${c.baseUrl}/qr-tessera/${customer.code}.png?v=${LAYOUT_VERSION}` },
+    contentDescription: loc('QR della tessera per la cassa', 'Card QR code for the till'),
+  },
+}];
+
+// Tessera generica: il nome di chi si è iscritto è il titolo grande in alto (header), preso dall'iscrizione.
+// Niente buono collegato (esiste solo per le tessere fedeltà): con un premio pronto c'è il pulsante per ritirarlo.
+function genericBody(c, customer, state, extras = {}, { i18n = i18nSupported } = {}) {
+  const n = c.stampsForReward;
+  const links = cardLinks(c, customer, extras, i18n);
+  if (state.rewards > 0) {
+    links.unshift(link('ritira', `${c.baseUrl}/card/${customer.token}?premio=1`, extras.selfRedeem !== false
+      ? ['Ritira il premio', 'Collect your reward']
+      : ['Mostra il QR in cassa per ritirarlo', 'Show the QR code at the till to collect it'], i18n));
+  }
+  return {
+    id: genericObjectId(customer),
+    classId: genericClassId(c),
+    state: 'ACTIVE',
+    cardTitle: loc(c.pizzeriaName),
+    header: loc(customer.name),
+    hexBackgroundColor: c.brandColor,
+    logo: { sourceUri: { uri: c.logoUrl }, contentDescription: loc(`Logo ${c.pizzeriaName}`) },
+    ...(c.wideLogoUrl && { wideLogo: { sourceUri: { uri: c.wideLogoUrl }, contentDescription: loc(c.pizzeriaName) } }),
+    ...(c.walletQr && { barcode: { type: 'QR_CODE', value: customer.code, alternateText: customer.code } }),
+    heroImage: {
+      sourceUri: { uri: heroUri(c, state, extras.animated === true) },
+      contentDescription: loc(`${state.stamps} timbri su ${n}`, `${state.stamps} stamps out of ${n}`),
+    },
+    textModulesData: frontModules(c, state, n, i18n),
+    linksModuleData: { uris: links },
+    ...(!c.walletQr && qrImageSupported && { imageModulesData: qrImage(c, customer) }),
+  };
+}
+
+function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = {}) {
+  const n = c.stampsForReward;
+  const links = cardLinks(c, customer, extras, i18n);
   return {
     id: objectId(customer),
     classId: classId(c),
@@ -212,20 +306,10 @@ function objectBody(c, customer, state, extras = {}, { i18n = i18nSupported } = 
     // Solo i valori del fronte (vedi classTemplateInfo): sotto la tessera ci sono QR, messaggio e pulsanti
     textModulesData: [
       textModule('cliente', ['Cliente', 'Customer'], [customer.name], i18n),
-      textModule('timbri', ['Timbri', 'Stamps'], [`${state.stamps} / ${n}`], i18n),
-      textModule('premio', ['Premio', 'Reward'],
-        state.rewards > 0 ? [`${state.rewards} da ritirare`, `${state.rewards} to collect`] : [c.rewardShort], i18n),
+      ...frontModules(c, state, n, i18n),
     ],
     linksModuleData: { uris: links },
-    ...(!c.walletQr && qrImageSupported && {
-      imageModulesData: [{
-        id: 'qr',
-        mainImage: {
-          sourceUri: { uri: `${c.baseUrl}/qr-tessera/${customer.code}.png?v=${LAYOUT_VERSION}` },
-          contentDescription: loc('QR della tessera per la cassa', 'Card QR code for the till'),
-        },
-      }],
-    }),
+    ...(!c.walletQr && qrImageSupported && { imageModulesData: qrImage(c, customer) }),
   };
 }
 
@@ -241,7 +325,48 @@ function walletMessage({ id, header, body, expiresAt }, type = 'TEXT') {
 // extras.messages: i soli messaggi che devono restare nella tessera (decisi dal server).
 // Sostituzione completa (PUT): tutto ciò che non è nell'elenco sparisce dal pass, compresi i
 // messaggi scaduti o eliminati e gli avvisi "timbro aggiunto". Nessuna lettura preliminare: più veloce.
-async function upsertObject(c, customer, state, { notifyOnUpdate = false, messages = [], ...extras } = {}) {
+async function upsertGeneric(c, customer, state, { messages = [], ...extras } = {}) {
+  let opts = extras;
+  for (;;) {
+    const body = { ...genericBody(c, customer, state, opts), messages: messages.map((m) => walletMessage(m)) };
+    try {
+      try {
+        await request('PUT', `${BASE}/genericObject/${body.id}`, body);
+      } catch (err) {
+        if (status(err) !== 404) throw err;
+        await request('POST', `${BASE}/genericObject`, body);
+      }
+      return;
+    } catch (err) {
+      if (status(err) !== 400) throw new Error(`aggiornamento tessera fallito: ${describe(err)}`);
+      if (/\.gif(\?|$)/.test(body.heroImage.sourceUri.uri)) {
+        gifSupported = false;
+        console.warn(`[wallet] GIF animata rifiutata (${describe(err)}): uso le immagini fisse`);
+      } else if (body.imageModulesData) {
+        qrImageSupported = false;
+        console.warn(`[wallet] QR come immagine rifiutato (${describe(err)}): tessere senza`);
+      } else if (i18nSupported) {
+        i18nSupported = false;
+        console.warn(`[wallet] testi tradotti rifiutati (${describe(err)}): solo italiano`);
+      } else {
+        throw new Error(`aggiornamento tessera fallito: ${describe(err)}`);
+      }
+    }
+  }
+}
+
+// Aggiorna la tessera generica e, per chi non è ancora passato alla nuova, anche quella vecchia.
+// Un errore su una delle due non blocca l'altra.
+async function upsertObject(c, customer, state, options = {}) {
+  const results = await Promise.allSettled([
+    upsertGeneric(c, customer, state, options),
+    usesLegacy(customer) ? upsertLegacy(c, customer, state, options) : null,
+  ]);
+  const failed = results.find((r) => r.status === 'rejected');
+  if (failed) throw failed.reason;
+}
+
+async function upsertLegacy(c, customer, state, { notifyOnUpdate = false, messages = [], ...extras } = {}) {
   const send = async (body) => {
     const full = { ...body, messages: messages.map((m) => walletMessage(m)) };
     try {
@@ -380,7 +505,9 @@ async function syncOffer(c, customer, state, selfRedeem = true) {
 // Restituisce { ok, push } con quello che è stato effettivamente inviato.
 // expiresAt: da quel momento Google non mostra più il messaggio nei dettagli della tessera.
 async function notify(customer, header, body, { push = true, messageId, expiresAt } = {}) {
-  const url = `${BASE}/loyaltyObject/${objectId(customer)}/addMessage`;
+  const url = usesLegacy(customer)
+    ? `${BASE}/loyaltyObject/${objectId(customer)}/addMessage`
+    : `${BASE}/genericObject/${genericObjectId(customer)}/addMessage`;
   const message = (type) => ({
     message: walletMessage({ id: messageId || `m_${Date.now()}`, header, body, expiresAt }, type),
   });
@@ -406,6 +533,13 @@ async function notify(customer, header, body, { push = true, messageId, expiresA
 // Tessera cancellata su richiesta del cliente: il pass resta nel telefono ma disattivato e senza il nome.
 async function deactivate(customer) {
   try {
+    await request('PATCH', `${BASE}/genericObject/${genericObjectId(customer)}`, {
+      state: 'INACTIVE', header: loc('Tessera cancellata'), textModulesData: [], linksModuleData: { uris: [] }, imageModulesData: [], messages: [],
+    });
+  } catch (err) {
+    if (status(err) !== 404) throw new Error(`disattivazione tessera fallita: ${describe(err)}`);
+  }
+  try {
     await request('PATCH', `${BASE}/loyaltyObject/${objectId(customer)}`, {
       state: 'INACTIVE', accountName: 'Tessera cancellata', accountId: '-', textModulesData: [], linksModuleData: { uris: [] }, messages: [],
       linkedOfferIds: [],
@@ -417,10 +551,17 @@ async function deactivate(customer) {
   await request('PATCH', `${BASE}/offerObject/${offerObjectId(customer)}`, { state: 'INACTIVE' }).catch(() => {});
 }
 
-// La tessera è già stata salvata in un Google Wallet? (campo hasUsers del pass)
+// Il cliente è passato alla tessera nuova: quella vecchia si disattiva, così non ne ha due uguali.
+async function retireLegacy(customer) {
+  await request('PATCH', `${BASE}/loyaltyObject/${objectId(customer)}`, { state: 'INACTIVE', messages: [], linkedOfferIds: [] }).catch((err) => {
+    if (status(err) !== 404) console.warn(`[wallet] vecchia tessera non disattivata: ${describe(err)}`);
+  });
+}
+
+// La tessera nuova è già stata salvata in un Google Wallet? (campo hasUsers del pass)
 async function isSaved(customer) {
   try {
-    const obj = await request('GET', `${BASE}/loyaltyObject/${objectId(customer)}`);
+    const obj = await request('GET', `${BASE}/genericObject/${genericObjectId(customer)}`);
     return !!obj.hasUsers;
   } catch {
     return false;
@@ -434,7 +575,7 @@ function saveUrl(customer) {
       aud: 'google',
       typ: 'savetowallet',
       origins: [cfg.origin],
-      payload: { loyaltyObjects: [{ id: objectId(customer) }] },
+      payload: { genericObjects: [{ id: genericObjectId(customer) }] },
     },
     creds.private_key,
     { algorithm: 'RS256' },
@@ -443,6 +584,6 @@ function saveUrl(customer) {
 }
 
 module.exports = {
-  init, enabled, ensureClass, upsertObject, notify, saveUrl, isSaved, heroFile, deactivate, LAYOUT_VERSION,
-  _forTest: { classBody, objectBody, setCfg: (v) => { cfg = v; } },
+  init, enabled, ensureClass, upsertObject, notify, saveUrl, isSaved, heroFile, deactivate, retireLegacy, LAYOUT_VERSION,
+  _forTest: { classBody, objectBody, genericBody, genericClassBody, usesLegacy, setCfg: (v) => { cfg = v; } },
 };

@@ -223,11 +223,8 @@ shop.get('/qr-tessera/:file', wrap(async (req, res) => {
 }));
 shop.get('/stamps/:file', wrap((req, res) => sendImage(req, res, `stamps/${req.params.file}`)));
 shop.get('/icons/:file', wrap((req, res) => sendImage(req, res, `icons/${req.params.file}`)));
-// Logo largo dell'intestazione Wallet: il locale legacy ha il suo file, gli altri lo hanno generato
-shop.get('/wide-logo.png', wrap(async (req, res) => {
-  if (req.ctx.shop.legacy) return res.sendFile(path.join(PUBLIC_DIR, 'wide-logo.png'));
-  return sendImage(req, res, 'wide-logo.png');
-}));
+// Logo largo dell'intestazione Wallet, generato per tutti i locali
+shop.get('/wide-logo.png', wrap((req, res) => sendImage(req, res, 'wide-logo.png')));
 
 // App "Cassa" installabile sul telefono del locale
 shop.get('/manifest.json', (req, res) => {
@@ -548,7 +545,8 @@ async function cardData(ctx, customer) {
     v: versionOf(ctx, customer),
     qr: await qrOf(customer.code),
     saveUrl: wallet.enabled() ? wallet.saveUrl(customer) : null,
-    walletSaved: !!customer.walletSaved,
+    // il pulsante "Aggiungi" resta finché non è salvata la tessera nuova, anche per chi ha ancora quella vecchia
+    walletSaved: !!customer.genericSaved,
     webPushKey: channelOf(ctx) === 'wallet' ? null : notificheWeb.publicKey(), // null: notifiche web spente (server o locale)
     pushWithWallet: channelOf(ctx) === 'both', // la tessera propone le notifiche web anche a chi l'ha nel Wallet
     webPush: (customer.webPush || []).length,
@@ -618,13 +616,14 @@ function broadcast(ctx, customer, type, extra = {}) {
 // prima di allora si chiede a Google al massimo ogni 20 secondi, in background.
 const savedChecks = new Map(); // customerId -> timestamp ultimo controllo
 function checkWalletSaved(ctx, customer) {
-  if (customer.walletSaved || !wallet.enabled()) return;
+  if (customer.genericSaved || !wallet.enabled()) return;
   const last = savedChecks.get(customer.id) || 0;
   if (Date.now() - last < 20000) return;
   savedChecks.set(customer.id, Date.now());
   wallet.isSaved(customer).then((saved) => {
     if (!saved || !ctx.db.findByToken(customer.token)) return;
-    ctx.db.updateCustomer(customer.id, { walletSaved: true });
+    if (customer.walletSaved) wallet.retireLegacy(customer);
+    ctx.db.updateCustomer(customer.id, { walletSaved: true, genericSaved: true });
     broadcast(ctx, customer, 'wallet'); // la tessera web nasconde il pulsante "Aggiungi a Google Wallet"
   }, () => {});
 }
@@ -1585,7 +1584,7 @@ async function ensureClass(ctx, { force = false } = {}) {
   if (!wallet.enabled() || (classReady.has(ctx.shop.slug) && !force)) return;
   // loghi pronti prima che Google li scarichi
   await images.get(shops.imageSpec(ctx.shop), 'logo.png');
-  if (!ctx.shop.legacy) await images.get(shops.imageSpec(ctx.shop), 'wide-logo.png');
+  await images.get(shops.imageSpec(ctx.shop), 'wide-logo.png');
   await wallet.ensureClass(ctx.cfg);
   classReady.add(ctx.shop.slug);
 }

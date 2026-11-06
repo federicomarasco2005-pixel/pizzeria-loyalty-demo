@@ -364,32 +364,67 @@ async function render(shop, file) {
   return null;
 }
 
-// Intestazione del Wallet per chi ha un logo (dal 5/11): il logo vero del locale, senza bordo vuoto e senza fondo bianco,
-// grande quanto l'immagine permette. Il bianco diventa trasparente in modo graduale, così i bordi restano puliti.
-// Se una parte del logo si confonde col colore della tessera, tutto il logo prende un sottile contorno bianco.
+// Colore del fondo di un logo: quello quasi uniforme lungo il bordo dell'immagine. null se il bordo è vario (es. una foto).
+function borderColor(canvas) {
+  const { width: w, height: h } = canvas;
+  const p = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+  const seen = [];
+  const add = (x, y) => { const i = (y * w + x) * 4; if (p[i + 3] > 200) seen.push([p[i], p[i + 1], p[i + 2]]); };
+  for (let x = 0; x < w; x += Math.max(1, Math.floor(w / 80))) { add(x, 0); add(x, h - 1); }
+  for (let y = 0; y < h; y += Math.max(1, Math.floor(h / 80))) { add(0, y); add(w - 1, y); }
+  if (!seen.length) return null;
+  const mid = [0, 1, 2].map((k) => seen.map((c) => c[k]).sort((a, b) => a - b)[Math.floor(seen.length / 2)]);
+  const near = seen.filter((c) => Math.hypot(c[0] - mid[0], c[1] - mid[1], c[2] - mid[2]) < 40).length;
+  return near / seen.length >= 0.8 ? mid : null;
+}
+
+// Toglie il fondo dal logo, qualunque colore abbia. Il bianco sfuma in modo graduale (bordi puliti, anche con le scritte
+// grigie); un fondo colorato sparisce dove il colore è molto vicino, così i colori del logo restano.
+function removeBackground(canvas, bg) {
+  const g = canvas.getContext('2d');
+  const img = g.getImageData(0, 0, canvas.width, canvas.height), p = img.data;
+  const white = !bg || Math.min(...bg) > 235;
+  for (let i = 0; i < p.length; i += 4) {
+    if (!p[i + 3]) continue;
+    if (white) {
+      const a = 1 - Math.min(p[i], p[i + 1], p[i + 2]) / 255;
+      if (a <= 0) { p[i + 3] = 0; continue; }
+      for (let k = 0; k < 3; k++) p[i + k] = Math.round((p[i + k] - (1 - a) * 255) / a);
+      p[i + 3] = Math.round(p[i + 3] * a);
+    } else {
+      const d = Math.hypot(p[i] - bg[0], p[i + 1] - bg[1], p[i + 2] - bg[2]);
+      p[i + 3] = Math.round(p[i + 3] * Math.max(0, Math.min(1, (d - 30) / 40)));
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return canvas;
+}
+
+// Intestazione del Wallet per chi ha un logo (dal 5/11): solo il logo vero del locale, senza nessun fondo né bordo vuoto,
+// grande quanto l'immagine permette. Se una parte si confonde col colore della tessera, tutto il logo prende un sottile
+// contorno bianco. Una foto (bordo non uniforme) non si può ritagliare: resta così com'è.
 function realLogoHeader(logo, brandColor) {
   const WL = 1280, HL = 400, margin = 8;
-  const t = trimLogo(logo);
+  const trimmed = trimLogo(logo);
+  const t = trimLogo(removeBackground(trimmed, borderColor(trimmed)));
   const s = Math.min((WL - 2 * margin) / t.width, (HL - 2 * margin) / t.height);
   const w = t.width * s, h = t.height * s;
   const c = createCanvas(WL, HL); const g = c.getContext('2d');
   g.drawImage(t, (WL - w) / 2, (HL - h) / 2, w, h);
-  const img = g.getImageData(0, 0, WL, HL), p = img.data;
-  for (let i = 0; i < p.length; i += 4) {
-    if (!p[i + 3]) continue;
-    const a = 1 - Math.min(p[i], p[i + 1], p[i + 2]) / 255;
-    if (a <= 0) { p[i + 3] = 0; continue; }
-    for (let k = 0; k < 3; k++) p[i + k] = Math.round((p[i + k] - (1 - a) * 255) / a);
-    p[i + 3] = Math.round(p[i + 3] * a);
-  }
-  g.putImageData(img, 0, 0);
-  // parte del logo troppo simile al colore della tessera?
-  const b = parseInt(String(brandColor || '#000000').slice(1), 16), br = b >> 16 & 255, bg = b >> 8 & 255, bb = b & 255;
+  const p = g.getImageData(0, 0, WL, HL).data;
+  // parte del logo poco leggibile sul colore della tessera? (contrasto di luminosità sotto 3, come un testo grande)
+  const b = parseInt(String(brandColor || '#000000').slice(1), 16);
+  const lum = (r, gr, bl) => [r, gr, bl].reduce((sum, v, k) => {
+    const u = v / 255;
+    return sum + [0.2126, 0.7152, 0.0722][k] * (u <= 0.03928 ? u / 12.92 : ((u + 0.055) / 1.055) ** 2.4);
+  }, 0);
+  const lb = lum(b >> 16 & 255, b >> 8 & 255, b & 255);
   let seen = 0, close = 0;
   for (let i = 0; i < p.length; i += 4) {
     if (p[i + 3] < 128) continue;
     seen++;
-    if (Math.hypot(p[i] - br, p[i + 1] - bg, p[i + 2] - bb) < 110) close++;
+    const l = lum(p[i], p[i + 1], p[i + 2]);
+    if ((Math.max(l, lb) + 0.05) / (Math.min(l, lb) + 0.05) < 3) close++;
   }
   if (!seen || close / seen < 0.05) return c;
   const mask = createCanvas(WL, HL), mg = mask.getContext('2d');
