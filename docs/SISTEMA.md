@@ -90,7 +90,7 @@ Tutti e tre sono esclusi da `.gitignore`.
 
 Dal 10 ottobre 2026 (nuovo PC) `loyalty-demo` è una copia git collegata a GitHub (`origin/main`). Node 24 e Git sono installati.
 
-1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 56.
+1. Modifica i file in locale e lancia **`npm test`**: devono passare tutti, oggi sono 58.
 2. Pubblica con git: `git add …`, `git commit`, `git push`.
    - Il login GitHub (account **federicomarasco2005-pixel**) è già salvato su questo PC: `git push` funziona.
    - Ripiego, se git non va: caricare i file dal browser su `github.com/federicomarasco2005-pixel/pizzeria-loyalty-demo/upload/main/<cartella>` (una cartella per commit).
@@ -170,13 +170,14 @@ render.yaml  Blueprint Render (servizio + database)
 - Se una scrittura su Postgres fallisce il server avvisa sul bot, al massimo ogni 30 minuti (`db.onWriteError`, dal 30/10 sera): il dato resta solo in memoria e si perde al riavvio.
 
 ### 4.4 Google Wallet (wallet.js)
+- **Dal 6/11 le tessere nuove sono generiche** (`genericClass` `<classSuffix>_g`, `genericObject` `g_<id>`, `genericBody`): il nome di chi si iscrive è il titolo grande (`header`), impossibile con le tessere fedeltà. Stessi timbri, riga "Timbri · Premio", QR, messaggio e pulsanti; niente buono collegato, al suo posto il pulsante "Ritira il premio". Il link Salva, `isSaved` e `genericSaved` riguardano la nuova. Le tessere fedeltà descritte sotto restano solo per chi le ha salvate e non è ancora passato (`usesLegacy`): quando salva la nuova, la vecchia va `INACTIVE` alla successiva apertura della tessera web (`retireLegacy`). Mai toccare `classSuffix`: la vecchia classe serve ancora.
 - **Una classe per locale** (`loyaltyClass`) con:
   - logo, nome e colore;
   - logo largo, solo per il locale legacy;
   - `cardTemplateOverride`: riga col nome del cliente, poi timbri (immagine), poi "Timbri · Premio". `programName` nella classe è il nome del locale: è il titolo fisso di Google, uguale per tutte le tessere del locale.
 - **Un oggetto per cliente** (`loyaltyObject`, id `<issuer>.c_<customerId>`):
   - aggiornato con **PUT completo**, senza leggerlo prima;
-  - dal 5/11 niente `accountId` (compariva come grande striscia bianca sul fronte; ripiego `accountIdHidden` se rifiutato) e niente "Premi disponibili" (`secondaryLoyaltyPoints`) né emoji. Testi solo per il fronte (cliente, timbri, premio). Sotto la tessera, con `detailsTemplateOverride`: QR per la cassa (`object.imageModulesData['qr']`, file `qr-tessera/<codice>.png`, immagine bianca piena (con il fondo trasparente si vedeva il riquadro semitrasparente di Google), contiene solo il codice e non legge l'archivio), ultimo messaggio (`object.messages[0]`), pulsanti in un blocco solo (`object.linksModuleData`; se Google lo rifiuta, uno per uno con `uris['id']`, `linkGroupSupported`), senza il pulsante del QR. Se Google rifiuta riga del cliente o dettagli (400) si torna allo schema normale fino al riavvio (`richClassSupported`); lo stesso per il QR (`qrImageSupported`). Quando cambiano i campi delle tessere si aumenta `LAYOUT_VERSION`: al prossimo avvio il server le riscrive tutte una volta sola, senza notifiche (kv `walletLayout`). Il saldo `loyaltyPoints` resta: serve all'avviso a ogni timbro (`notifyOnUpdate`). Con un logo, anche l'intestazione (`wide-logo.png`) è il logo vero senza fondo bianco, con contorno bianco automatico se si confonde col colore della tessera (`realLogoHeader`), tranne il locale legacy che usa il suo file;
+  - dal 5/11 niente `accountId` (compariva come grande striscia bianca sul fronte; ripiego `accountIdHidden` se rifiutato) e niente "Premi disponibili" (`secondaryLoyaltyPoints`) né emoji. Testi solo per il fronte (cliente, timbri, premio). Sotto la tessera, con `detailsTemplateOverride`: QR per la cassa (`object.imageModulesData['qr']`, file `qr-tessera/<codice>.png`, immagine bianca piena (con il fondo trasparente si vedeva il riquadro semitrasparente di Google), contiene solo il codice e non legge l'archivio), ultimo messaggio (`object.messages[0]`), pulsanti in un blocco solo (`object.linksModuleData`; se Google lo rifiuta, uno per uno con `uris['id']`, `linkGroupSupported`), senza il pulsante del QR. Se Google rifiuta riga del cliente o dettagli (400) si torna allo schema normale fino al riavvio (`richClassSupported`); lo stesso per il QR (`qrImageSupported`). Quando cambiano i campi delle tessere si aumenta `LAYOUT_VERSION`: al prossimo avvio il server le riscrive tutte una volta sola, senza notifiche (kv `walletLayout`). Il saldo `loyaltyPoints` resta: serve all'avviso a ogni timbro (`notifyOnUpdate`). Con un logo, anche l'intestazione (`wide-logo.png`) è il logo vero senza fondo bianco, con contorno bianco automatico se si confonde col colore della tessera (`realLogoHeader`), per tutti i locali. Toglie un fondo uniforme di qualsiasi colore; contorno se il contrasto è sotto 3; una foto resta così com'è;
   - i messaggi del pass li decide il server: resta solo l'ultimo messaggio attivo, con scadenza. Dopo un messaggio con notifica (`addMessage` TEXT_AND_NOTIFY) il pass si riordina **2 minuti dopo**, come dopo un timbro: riscriverlo subito riportava il messaggio a semplice testo e il telefono non suonava (25/10);
   - QR del Wallet spento di default (`WALLET_QR=on` per riaccenderlo); se acceso contiene il codice tessera, non il token.
   - Testi anche in inglese (`localizedHeader/Body`, `localizedLabel`, `localizedDescription`): Google mostra la lingua del telefono. Il testo del premio resta quello scritto dal locale.
@@ -355,7 +356,7 @@ render.yaml  Blueprint Render (servizio + database)
 - Bot Telegram: online (webhook), creazione dei locali verificata dal vivo. Dipendenti, gestori, report, backup e avvisi sono coperti dai test, **non ancora provati dal vivo** da Federico.
 - Postgres a tabelle e migrazione: eseguiti dal vivo l'8 ottobre 2026, senza perdite.
 - Sicurezza (email già usata, blocco PIN e recupero) e privacy (export, cancellazione): coperti dai test e pubblicati.
-- 56 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
+- 58 test automatici, che passano in locale e su GitHub. Auto-deploy dopo i test attivo su Render.
 
 ---
 
