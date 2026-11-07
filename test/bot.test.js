@@ -129,7 +129,7 @@ test('statistiche: link monouso solo per il proprietario, avviso a ogni accesso,
   assert.strictEqual(ok.status, 200);
   const cookie = ok.headers.get('set-cookie').split(';')[0];
   await new Promise((r) => setTimeout(r, 20));
-  assert.ok(sent.slice(before).some((m) => m.chat === 1 && /Statistiche aperte/.test(m.text)), 'avviso al proprietario');
+  assert.ok(sent.slice(before).some((m) => m.chat === 1 && /Accesso F5M aperto/.test(m.text)), 'avviso al proprietario');
   const page = await fetch(`${B}/statistiche`, { headers: { cookie } });
   assert.strictEqual(page.status, 200);
   assert.match(await page.text(), /window\.STATS = \{.*"bar-test-luna"/);
@@ -145,6 +145,47 @@ test('statistiche: link monouso solo per il proprietario, avviso a ogni accesso,
   const cookie2 = again.headers.get('set-cookie').split(';')[0];
   assert.strictEqual((await fetch(`${B}/statistiche/esci`, { method: 'POST', headers: { cookie: cookie2 } })).status, 200);
   assert.strictEqual((await fetch(`${B}/statistiche`, { headers: { cookie: cookie2 } })).status, 401);
+});
+
+test('dashboard: il proprietario entra in ogni locale senza PIN, gli altri no', async () => {
+  const B = `http://localhost:${PORT}`;
+  const S = `${B}/bar-test-luna`;
+  const entra = (t) => fetch(`${B}/statistiche/entra`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket: t }) });
+  const ctx = manager.get('bar-test-luna');
+  const pin = ctx.cfg.staffPin;
+
+  // senza sessione: serve il PIN
+  assert.strictEqual((await fetch(`${S}/api/admin/stats`)).status, 401);
+  const withPin = await fetch(`${S}/api/admin/stats`, { headers: { 'x-staff-pin': pin } });
+  assert.strictEqual(withPin.status, 200);
+  assert.strictEqual((await withPin.json()).owner, false, 'il gestore non è il proprietario');
+
+  // pulsante della scheda del locale nel bot: il link porta alla dashboard di quel locale
+  await tap(OWNER, 'own:bar-test-luna');
+  assert.match(last(1).text, /Entra nella dashboard di Bar Test Luna/);
+  const ok = await entra(last(1).text.match(/#t=([\w-]+)/)[1]);
+  assert.strictEqual(ok.status, 200);
+  assert.strictEqual((await ok.json()).next, '/bar-test-luna/admin');
+  const setCookie = ok.headers.get('set-cookie');
+  assert.match(setCookie, /Path=\/;/, 'il cookie vale su tutto il sito');
+  assert.match(setCookie, /HttpOnly/);
+  assert.match(setCookie, /SameSite=Strict/);
+  const cookie = setCookie.split(';')[0];
+
+  // con la sessione: dentro in ogni locale, senza PIN, anche con un PIN sbagliato salvato sul telefono
+  const dash = await fetch(`${S}/api/admin/stats`, { headers: { cookie, 'x-staff-pin': 'sbagliato' } });
+  assert.strictEqual(dash.status, 200);
+  assert.strictEqual((await dash.json()).owner, true);
+  assert.strictEqual((await fetch(`${B}/da-mario/api/admin/stats`, { headers: { cookie } })).status, 200, 'anche un altro locale');
+  // l'entrata resta nel registro degli accessi della pagina delle statistiche, una riga sola nonostante le richieste ripetute
+  await fetch(`${S}/api/admin/stats`, { headers: { cookie } });
+  const page = await (await fetch(`${B}/statistiche`, { headers: { cookie } })).text();
+  assert.strictEqual((page.match(/dashboard di Bar Test Luna/g) || []).length, 1);
+  // la Cassa resta con il PIN
+  assert.strictEqual((await fetch(`${S}/api/staff/search?q=a`, { headers: { cookie } })).status, 401);
+
+  await msg(OWNER, '/statistiche_esci');
+  assert.strictEqual((await fetch(`${S}/api/admin/stats`, { headers: { cookie } })).status, 401, 'uscita da tutti i dispositivi');
 });
 
 test('avvisi: lo stesso avviso non si ripete subito', async () => {

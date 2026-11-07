@@ -78,6 +78,9 @@
     .info code { background: var(--paper2); padding: 1px 5px; border-radius: 3px; }
     .links { display: flex; flex-direction: column; gap: 10px; }
 
+    /* barra del proprietario di F5M */
+    .owner-bar { padding: 9px 14px; margin-bottom: 18px; border-left: 3px solid var(--second); background: var(--paper2); font-size: .86rem; color: var(--soft); }
+
     .who .ago, .ev .when { display: none; }
     .who span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
     .who span span { display: inline; }
@@ -153,6 +156,7 @@
 
     <main class="main">
       <div class="mbar"><span class="brand">F5M<span>.</span></span><a href="#" id="logout3">Esci</a></div>
+      <div class="owner-bar hidden" id="ownerBar">Accesso F5M: sei entrato senza PIN e vedi quello che vede il locale. Il locale non vede questa barra.</div>
       <header class="top">
         <div>
           <h1 data-cfg="pizzeriaName"></h1>
@@ -310,7 +314,18 @@
       }
       $('login').classList.add('hidden');
       $('dash').classList.remove('hidden');
+      if (data.owner) enableOwner();
       if (tab === 'overview') render();
+    }
+
+    // ---------- Accesso del proprietario di F5M ----------
+    // Lo decide il server (data.owner): compare la barra e "Esci" riporta alle statistiche.
+    let owner = false;
+    function enableOwner() {
+      if (owner) return;
+      owner = true;
+      $('ownerBar').classList.remove('hidden');
+      [$('logout'), $('logout2'), $('logout3')].forEach((a) => { a.textContent = 'Le mie statistiche'; });
     }
 
     function render() {
@@ -429,7 +444,11 @@
     }
     $('loginBtn').onclick = doLogin;
     $('pin').onkeydown = (e) => { if (e.key === 'Enter') doLogin(); };
-    $('logout').onclick = $('logout2').onclick = $('logout3').onclick = (e) => { e.preventDefault(); setPin(''); location.reload(); };
+    $('logout').onclick = $('logout2').onclick = $('logout3').onclick = (e) => {
+      e.preventDefault();
+      if (owner) return location.assign('/statistiche');
+      setPin(''); location.reload();
+    };
 
     loadStats();
     setInterval(loadStats, 5000);

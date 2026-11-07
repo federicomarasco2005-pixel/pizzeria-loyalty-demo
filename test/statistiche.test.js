@@ -66,6 +66,21 @@ test('numeri di un locale: iscritti, ritorni, premi, controlli', () => {
   assert.strictEqual(s.weeklyStamps.reduce((a, b) => a + b, 0), 9);
 });
 
+test('numeri in più: clienti attivi, fasce di visite, premi in sospeso, annulli', () => {
+  const r = compute([bar, demo], NOW);
+  const { more } = r.shops.find((x) => x.slug === 'bar');
+  assert.strictEqual(more.activeMembers30, 2, 'Anna e Carla; il timbro annullato di Bruno non conta');
+  assert.strictEqual(more.neverStamped, 0);
+  assert.deepStrictEqual(more.visitBands, { one: 2, twoThree: 0, fourSeven: 1, eightPlus: 0 });
+  assert.deepStrictEqual(more.recency, { d30: 2, d60: 1, older: 0, never: 0 });
+  assert.strictEqual(more.nearReward, 0, 'premio ogni 3 timbri: Anna ne ha 7, Bruno e Carla 1, a tutti ne mancano 2');
+  assert.strictEqual(more.rewardsPending, 1, 'Anna ne ha maturati 2 e ritirato 1');
+  assert.strictEqual(more.voids30, 1);
+  assert.strictEqual(more.daysSinceStamp, 1);
+  assert.strictEqual(r.totals.activeMembers30, 2);
+  assert.strictEqual(r.totals.shopsActive7, 1);
+});
+
 test('totali senza il locale demo, mai dati dei clienti', () => {
   const r = compute([bar, demo], NOW);
   assert.strictEqual(r.totals.shops, 1);

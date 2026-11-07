@@ -739,8 +739,14 @@ function requirePin(req, res, next) {
   next();
 }
 
-// Dashboard, notifiche e impostazioni: solo il gestore
+// Dashboard, notifiche e impostazioni: solo il gestore.
+// Il proprietario di F5M (sessione aperta con il link del bot) entra in ogni locale senza PIN, anche se il PIN cambia.
 function requireManager(req, res, next) {
+  if (statistiche.isOwner(req)) {
+    req.who = { role: 'manager', name: 'F5M', owner: true };
+    statistiche.noteDashboard(req, req.ctx);
+    return next();
+  }
   requirePin(req, res, () => {
     if (req.who.role !== 'manager') return res.status(403).json({ error: 'Serve il PIN del gestore.' });
     next();
@@ -1059,6 +1065,7 @@ shop.get('/api/admin/stats', requireManager, (req, res) => {
     stampsForReward: cfg.stampsForReward,
     rewardText: cfg.rewardText,
     walletEnabled: wallet.enabled(),
+    owner: !!req.who.owner, // true solo per il proprietario di F5M: la pagina mostra la sua barra
     kpi,
     // la data d'iscrizione serve a ordinare l'elenco della dashboard (l'ordine lo sceglie il gestore)
     customers: views.map((v, i) => ({ ...v, createdAt: ctx.db.customers[i].createdAt }))
@@ -1679,7 +1686,7 @@ const manager = {
   get: (slug) => shops.get(slug),
   stats: (ctx) => stats(ctx).kpi,
   // Statistiche di tutti i locali: link monouso per il proprietario, uscita da tutti i dispositivi
-  statsLink: () => statistiche.newLink(PUBLIC_URL),
+  statsLink: (slug) => statistiche.newLink(PUBLIC_URL, slug),
   statsCloseAll: () => statistiche.closeAll(),
   links(ctx) {
     const b = ctx.cfg.baseUrl;
@@ -1871,6 +1878,7 @@ const ready = (async () => {
   db.onWriteError((err) => bot.alert(`🔴 Il database non salva più: ${err.message.slice(0, 200)}\nTimbri e iscrizioni nuovi restano solo in memoria e si perdono al prossimo riavvio del server.`, 'db-scrittura', 30 * 60e3));
   await db.init();
   await attempts.load();
+  await statistiche.load();
   await shops.init(PUBLIC_URL);
   wallet.init({
     issuerId: process.env.GOOGLE_ISSUER_ID || '',

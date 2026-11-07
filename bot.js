@@ -318,6 +318,15 @@ function sendStatsLink(chat) {
     'Per chiudere su tutti i dispositivi: /statistiche_esci');
 }
 
+// Link monouso per entrare nella dashboard di un locale senza PIN, per aiutarlo
+function sendOwnerLink(chat, slug) {
+  const ctx = M.get(slug);
+  if (!ctx) return send(chat, 'Locale non trovato.');
+  return send(chat,
+    `🔐 <b>Entra nella dashboard di ${esc(ctx.cfg.pizzeriaName)}</b>\n\n<a href="${esc(M.statsLink(slug))}">Apri la dashboard</a>\n\n` +
+    'Entri senza PIN e vedi quello che vede il locale, nomi dei clienti compresi. I numeri completi stanno in /statistiche. Il link vale 10 minuti e una volta sola: non inoltrarlo.');
+}
+
 function startCreate(chat) {
   sessions.set(chat, { mode: 'create', step: 0, data: {} });
   return ask(chat, CREATE_STEPS[0], '➕ <b>Nuova tessera</b> — 8 domande veloci (le ultime si possono saltare).\n\n');
@@ -488,6 +497,7 @@ async function onButton(chat, data, msg) {
 
   // locali esistenti
   if (action === 'shop') return showShop(chat, arg);
+  if (action === 'own') return sendOwnerLink(chat, arg);
   if (action === 'edit') {
     return send(chat, '✏️ Cosa vuoi modificare?',
       kb([...chunk(EDITABLE.map((f) => btn(FIELDS[f].label, `editf:${arg}|${f}`)), 2), [btn('⬅️ Indietro', `shop:${arg}`)]]));
@@ -773,6 +783,7 @@ async function showShop(chat, slug) {
     `⭐ Recensioni: ${st.reviewUrl ? esc(st.reviewUrl) : '—'} · 📞 ${st.phone ? esc(st.phone) : '—'}\n` +
     `👤 Dipendenti con PIN: ${(ctx.shop.staff || []).length} · 🤝 Gestori su Telegram: ${(ctx.shop.managers || []).map((m) => esc(m.name)).join(', ') || '—'}`;
   const rows = [
+    [btn('🔐 Entra come il locale', `own:${slug}`)],
     [urlBtn('📊 Dashboard', L.admin), urlBtn('🖨️ QR tavolo', L.poster)],
     [btn('✏️ Modifica', `edit:${slug}`), btn('🖼️ Anteprima', `preview:${slug}`)],
     [btn('👤 Dipendenti', `staff:${slug}`), btn('🤝 Accesso gestore', `inv:${slug}`)],

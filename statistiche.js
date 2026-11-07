@@ -1,6 +1,7 @@
 // Statistiche di tutti i locali, per il proprietario del servizio. Due sole entrate, nessun'altra:
 //  - Federico: comando /statistiche del bot Telegram (solo il proprietario) → link valido 10 minuti e una volta sola
-//    → sessione su quel dispositivo per 8 ore, con avviso su Telegram a ogni accesso;
+//    → sessione su quel dispositivo per 8 ore, con avviso su Telegram a ogni accesso.
+//    La stessa sessione apre senza PIN la dashboard di ogni locale, per aiutarlo (7/11); i numeri completi restano solo qui;
 //  - Claude: GET /api/statistiche con la chiave di sola lettura STATS_KEY (variabile su Render; senza, l'entrata è chiusa).
 // Solo numeri e nomi dei locali: mai nomi, email o codici dei clienti. I locali non vedono questa pagina.
 const fs = require('fs');
@@ -11,7 +12,7 @@ const db = require('./db');
 const DAY = 24 * 60 * 60 * 1000;
 const TICKET_MS = 10 * 60 * 1000;
 const SESSION_MS = 8 * 60 * 60 * 1000;
-const COOKIE = 'f5m_stat';
+const COOKIE = 'f5m_owner'; // vale su tutto il sito: apre anche le dashboard dei locali (vedi requireManager in server.js)
 const LOG_KEY = 'statistiche';
 
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest();
@@ -128,6 +129,30 @@ function shopStats(ctx, now) {
   const signups7 = customers.filter((c) => Date.parse(c.createdAt) - start < 7 * DAY).length;
   const kind = shop.theme === 'pizza' ? 'pizzeria' : 'bar';
 
+  // Numeri in più per il proprietario (7/11): quanti iscritti sono vivi, quanto tornano, cosa resta in sospeso
+  const stampsPrev7 = stamps.filter((e) => ago(e.at) >= 7 * DAY && ago(e.at) < 14 * DAY).length;
+  const visitBands = { one: 0, twoThree: 0, fourSeven: 0, eightPlus: 0 };
+  const recency = { d30: 0, d60: 0, older: 0, never: 0 };
+  let nearReward = 0;
+  for (const c of customers) {
+    const evs = byCustomer.get(c.id) || [];
+    const n = evs.length;
+    if (n === 1) visitBands.one++;
+    else if (n >= 2 && n <= 3) visitBands.twoThree++;
+    else if (n >= 4 && n <= 7) visitBands.fourSeven++;
+    else if (n >= 8) visitBands.eightPlus++;
+    if (!n) recency.never++;
+    else {
+      const since = ago(evs[n - 1].at);
+      if (since < 30 * DAY) recency.d30++;
+      else if (since < 60 * DAY) recency.d60++;
+      else recency.older++;
+    }
+    if (N > 1 && n % N === N - 1) nearReward++;
+  }
+  const earned = customers.reduce((sum, c) => sum + ctx.db.stateOf(c.id, N).earned, 0);
+  const lastStamp = stamps.reduce((last, e) => (!last || Date.parse(e.at) > Date.parse(last) ? e.at : last), null);
+
   return {
     slug: shop.slug,
     name: shop.name,
@@ -172,6 +197,19 @@ function shopStats(ctx, now) {
     nfc30: nfc30.length,
     nfcNight30: nfc30.filter((e) => { const h = rome(e.at).hour; return h >= 22 || h < 6; }).length,
     top3Share: stamps30.length >= 20 ? Math.round((top3 / stamps30.length) * 100) : null,
+    more: {
+      stampsPrev7,
+      activeMembers30: recency.d30,
+      neverStamped: recency.never,
+      visitBands,
+      recency,
+      nearReward,
+      rewardsPending: Math.max(0, earned - redeems.length),
+      returnShare30: ratio(returnVisits30, stamps30.length),
+      voids30: ctx.db.events.filter((e) => e.type === 'void' && ago(e.at) < 30 * DAY).length,
+      lastStampAt: lastStamp,
+      daysSinceStamp: lastStamp ? Math.floor(ago(lastStamp) / DAY) : null,
+    },
     pilot: {
       day,
       activated: day >= 7 ? signups7 >= 20 : null,
@@ -201,6 +239,8 @@ function compute(list, now = Date.now()) {
       rewardsRedeemed: sum((s) => s.rewards.redeemed),
       dormant: sum((s) => s.dormant),
       wallet: sum((s) => s.wallet),
+      activeMembers30: sum((s) => s.more.activeMembers30),
+      shopsActive7: real.filter((s) => s.stamps7 > 0).length,
       weeklyStamps: Array.from({ length: 8 }, (_, i) => sum((s) => s.weeklyStamps[i])),
     },
     shops: all,
@@ -209,8 +249,8 @@ function compute(list, now = Date.now()) {
 
 // ---------- Accessi ----------
 
-const tickets = new Map();  // impronta del link monouso -> scadenza
-const sessions = new Map(); // impronta della sessione -> { exp }
+const tickets = new Map();  // impronta del link monouso -> { exp, next }
+const sessions = new Map(); // impronta della sessione -> { exp }; salvata nel database: il server che si riaddormenta non fa uscire
 let accessLog = [];         // ultimi accessi: { at, who, device, ip }
 let alert = () => {};
 
@@ -222,19 +262,32 @@ const device = (ua = '') => {
 const maskIp = (ip = '') => ip.replace(/^::ffff:/, '').replace(/(\d+\.\d+)\.\d+\.\d+$/, '$1.x.x').replace(/^([0-9a-f]+:[0-9a-f]+):.*$/i, '$1:…');
 const hhmm = (d = new Date()) => d.toLocaleTimeString('it-IT', { timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit' });
 
+// Nel database solo impronte e scadenze: dal contenuto non si ricava nessun cookie valido
+const saveState = () => db.saveKey(LOG_KEY, { log: accessLog, sessions: [...sessions] });
+
 function logAccess(req, who) {
   accessLog.unshift({ at: new Date().toISOString(), who, device: device(req.get('user-agent')), ip: maskIp(req.ip) });
   accessLog = accessLog.slice(0, 100);
-  db.saveKey(LOG_KEY, { log: accessLog });
+  saveState();
+}
+
+// Da chiamare all'avvio, dopo db.init(): registro degli accessi e sessioni ancora valide
+async function load() {
+  const v = await db.loadKey(LOG_KEY);
+  if (!v) return;
+  if (v.log) accessLog = v.log;
+  const now = Date.now();
+  for (const [k, s] of v.sessions || []) if (s && s.exp > now) sessions.set(k, s);
 }
 
 // Nuovo link monouso (lo chiede il bot per il proprietario). Il codice sta dopo "#": non arriva mai al server
 // nell'indirizzo e non finisce nei registri; la pagina lo manda con un POST.
-function newLink(publicUrl) {
+// Con slug, dopo l'entrata si apre direttamente la dashboard di quel locale.
+function newLink(publicUrl, slug = null) {
   const now = Date.now();
-  for (const [k, exp] of tickets) if (exp < now) tickets.delete(k);
+  for (const [k, t] of tickets) if (t.exp < now) tickets.delete(k);
   const t = random();
-  tickets.set(hex(t), now + TICKET_MS);
+  tickets.set(hex(t), { exp: now + TICKET_MS, next: slug ? `/${encodeURIComponent(slug)}/admin` : '/statistiche' });
   return `${publicUrl}/statistiche/entra#t=${t}`;
 }
 
@@ -244,9 +297,10 @@ function sessionOf(req) {
   const k = hex(m[1]);
   const s = sessions.get(k);
   if (!s) return null;
-  if (s.exp < Date.now()) { sessions.delete(k); return null; }
+  if (s.exp < Date.now()) { sessions.delete(k); saveState(); return null; }
   return s;
 }
+const isOwner = (req) => !!sessionOf(req);
 
 // Chiave di sola lettura per Claude: almeno 32 caratteri, confronto a tempo costante
 const statsKey = () => (process.env.STATS_KEY || '').trim();
@@ -262,7 +316,6 @@ const inlineJson = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
 
 function mount(app, { all, alert: notify }) {
   alert = notify;
-  db.loadKey(LOG_KEY).then((v) => { if (v && v.log) accessLog = v.log; }).catch(() => {});
   const noStore = (res) => res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' });
   const sendPage = (res, data, status = 200) => {
     const html = template().replace('</head>', `  <script>window.STATS = ${inlineJson(data.stats || null)}; window.ACCESSI = ${inlineJson(data.log || [])};</script>\n</head>`);
@@ -279,26 +332,27 @@ function mount(app, { all, alert: notify }) {
     noStore(res);
     const t = String((req.body && req.body.ticket) || '');
     const k = hex(t);
-    const exp = tickets.get(k);
+    const ticket = tickets.get(k);
     tickets.delete(k); // una volta sola, anche se è scaduto
-    if (!t || !exp || exp < Date.now()) {
+    if (!t || !ticket || ticket.exp < Date.now()) {
       alert(`⚠️ Qualcuno ha aperto un link delle statistiche scaduto o già usato (${device(req.get('user-agent'))}, alle ${hhmm()}). Se non eri tu, non inoltrare i link del bot.`, 'stats-bad-ticket', 3600e3);
       return res.status(403).json({ error: 'Link scaduto o già usato: chiedine uno nuovo al bot con /statistiche.' });
     }
     const sid = random();
     sessions.set(hex(sid), { exp: Date.now() + SESSION_MS });
     const secure = req.secure ? '; Secure' : '';
-    res.append('Set-Cookie', `${COOKIE}=${sid}; Max-Age=${SESSION_MS / 1000}; Path=/statistiche; HttpOnly; SameSite=Strict${secure}`);
+    res.append('Set-Cookie', `${COOKIE}=${sid}; Max-Age=${SESSION_MS / 1000}; Path=/; HttpOnly; SameSite=Strict${secure}`);
     logAccess(req, 'Federico');
-    alert(`🔐 Statistiche aperte alle ${hhmm()} (${device(req.get('user-agent'))}). Se non sei stato tu, scrivi /statistiche_esci al bot.`, `stats-login|${hex(sid)}`, 0);
-    res.json({ ok: true });
+    alert(`🔐 Accesso F5M aperto alle ${hhmm()} (${device(req.get('user-agent'))}): statistiche e dashboard di tutti i locali. Se non sei stato tu, scrivi /statistiche_esci al bot.`, `stats-login|${hex(sid)}`, 0);
+    res.json({ ok: true, next: ticket.next });
   });
   // esce da tutti i dispositivi
   app.post('/statistiche/esci', (req, res) => {
     noStore(res);
     if (!sessionOf(req)) return res.status(401).json({ error: 'Non sei dentro.' });
     sessions.clear();
-    res.append('Set-Cookie', `${COOKIE}=; Max-Age=0; Path=/statistiche`);
+    saveState();
+    res.append('Set-Cookie', `${COOKIE}=; Max-Age=0; Path=/`);
     res.json({ ok: true });
   });
 
@@ -320,7 +374,17 @@ function mount(app, { all, alert: notify }) {
 }
 
 // Il bot: "esci da tutti i dispositivi" anche senza aprire la pagina
-function closeAll() { sessions.clear(); tickets.clear(); }
+function closeAll() { sessions.clear(); tickets.clear(); saveState(); }
+
+// Il proprietario è entrato nella dashboard di un locale: una riga nel registro degli accessi.
+// La dashboard chiede i dati ogni 5 secondi, quindi al massimo una riga ogni 30 minuti per locale.
+const dashboardSeen = new Map();
+function noteDashboard(req, ctx) {
+  const now = Date.now();
+  if (now - (dashboardSeen.get(ctx.shop.slug) || 0) < 30 * 60e3) return;
+  dashboardSeen.set(ctx.shop.slug, now);
+  logAccess(req, `Federico · dashboard di ${ctx.shop.name}`);
+}
 
 // Solo in anteprima sul PC (mai su Render): link di prova stampato all'avvio, perché lì il bot non c'è
 function devLink(publicUrl) {
@@ -328,4 +392,4 @@ function devLink(publicUrl) {
   return newLink(publicUrl);
 }
 
-module.exports = { mount, compute, newLink, closeAll, devLink };
+module.exports = { mount, load, compute, newLink, closeAll, devLink, isOwner, noteDashboard };
